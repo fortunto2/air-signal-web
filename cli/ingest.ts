@@ -479,56 +479,94 @@ export async function ingestComfort(
 
   // ── pass two: history, only where there are devices ──────────────────────
   const withHistory = targets.filter((c) => (byCity.get(c.id)?.length ?? 0) > 0);
-  const hBatches = up.chunk(withHistory, up.BATCH_HISTORY);
-  console.log(
-    `history: ${withHistory.length} cities with devices, ${historyDays} days, ` +
-      `${hBatches.length} batches of ${up.BATCH_HISTORY}`,
+
+  /**
+   * A city already holding a series needs the last couple of days, not the last thirty.
+   *
+   * Open-Meteo prices work as locations × variables × days, and this pass was asking for the full
+   * window every single night — thirty times the quota, to rewrite twenty-nine days that cannot
+   * change. It runs after pass one, so when the ceiling was reached it was the part that never ran,
+   * every time. `city_daily` was empty in production for exactly that reason.
+   *
+   * Two days rather than one because a day is only complete once it is over, and the run happens
+   * inside it — yesterday is still being written when today's pass looks at it.
+   */
+  const RECENT_DAYS = 2;
+  const stored = await query<{ city_id: number; days: number; newest: string }>(
+    "SELECT city_id, COUNT(*) days, MAX(day) newest FROM city_daily GROUP BY city_id",
+    opts,
   );
+  const coverage = new Map(stored.map((r) => [r.city_id, r]));
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
-  for (const [i, batch] of hBatches.entries()) {
-    if (i > 0) await up.sleep(2_000);
-
-    const [weather, air] = await Promise.all([
-      up.fetchDailyHistory(batch, historyDays),
-      up.fetchAir(batch, historyDays),
-    ]);
-
-    batch.forEach((city, j) => {
-      const days = weather[j] ?? [];
-      const pmByDay = new Map((air[j]?.daily ?? []).map((d) => [d.day, d.pm25]));
-
-      for (const d of days) {
-        const pm = pmByDay.get(d.day) ?? null;
-        // A past day's comfort from the three signals that have real history. Reconstructing all
-        // fourteen retroactively would mean inventing eleven of them.
-        const pastScores = scoresFrom({
-          pm25: pm ?? undefined,
-          temperatureC: d.temp ?? undefined,
-          uv: d.uv ?? undefined,
-        });
-        dailyRows.push([
-          city.id,
-          d.day,
-          Object.keys(pastScores).length ? comfortFrom(pastScores).total : null,
-          pm,
-          d.temp,
-          d.uv,
-        ]);
-      }
-    });
-
-    if ((i + 1) % 5 === 0 || i === hBatches.length - 1) {
-      console.log(
-        `  ${Math.min((i + 1) * up.BATCH_HISTORY, withHistory.length)}/${withHistory.length} cities`,
-      );
-      await flushDaily();
-    }
+  const cold: typeof withHistory = [];
+  const warm: typeof withHistory = [];
+  for (const c of withHistory) {
+    const cov = coverage.get(c.id);
+    // "Warm" means the series is both long enough and current. A city that fell behind — the site
+    // was down, the pass was cut short — falls back to the full window and heals itself.
+    (cov && cov.days >= historyDays - 2 && cov.newest >= yesterday ? warm : cold).push(c);
   }
-  await flushDaily();
+
+  /** One sub-pass. `days` is what makes the two cost wildly different, so batch size follows it. */
+  const runHistory = async (cities: typeof withHistory, days: number, batchSize: number) => {
+    if (cities.length === 0) return;
+    const hBatches = up.chunk(cities, batchSize);
+    console.log(
+      `history: ${cities.length} cities × ${days} days, ${hBatches.length} batches of ${batchSize}`,
+    );
+
+    for (const [i, batch] of hBatches.entries()) {
+      if (i > 0) await up.sleep(2_000);
+
+      const [weather, air] = await Promise.all([
+        up.fetchDailyHistory(batch, days),
+        up.fetchAir(batch, days),
+      ]);
+
+      batch.forEach((city, j) => {
+        const series = weather[j] ?? [];
+        const pmByDay = new Map((air[j]?.daily ?? []).map((d) => [d.day, d.pm25]));
+
+        for (const d of series) {
+          const pm = pmByDay.get(d.day) ?? null;
+          // A past day's comfort from the three signals that have real history. Reconstructing all
+          // fourteen retroactively would mean inventing eleven of them.
+          const pastScores = scoresFrom({
+            pm25: pm ?? undefined,
+            temperatureC: d.temp ?? undefined,
+            uv: d.uv ?? undefined,
+          });
+          dailyRows.push([
+            city.id,
+            d.day,
+            Object.keys(pastScores).length ? comfortFrom(pastScores).total : null,
+            pm,
+            d.temp,
+            d.uv,
+          ]);
+        }
+      });
+
+      if ((i + 1) % 5 === 0 || i === hBatches.length - 1) {
+        console.log(`  ${Math.min((i + 1) * batchSize, cities.length)}/${cities.length} cities`);
+        await flushDaily();
+      }
+    }
+    await flushDaily();
+  };
+
+  // Warm first, and deliberately: it is the cheap one, it keeps every existing chart current, and
+  // if the quota runs out during the backfill the site still moved forward today.
+  await runHistory(warm, RECENT_DAYS, up.BATCH);
+  await runHistory(cold, historyDays, up.BATCH_HISTORY);
+
   // Again: the first roll-up ran before any city had a score.
   await rollUpCountries(opts);
 
-  console.log(`comfort: ${done} cities scored, ${withHistory.length} with a stored history series`);
+  console.log(
+    `comfort: ${done} cities scored · history ${warm.length} topped up, ${cold.length} backfilled`,
+  );
 }
 
 // ── 4. per-device divergence ────────────────────────────────────────────────
