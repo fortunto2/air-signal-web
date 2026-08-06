@@ -26,7 +26,6 @@ import {
   type ExpressionSpecification,
   type MapGeoJSONFeature,
   type MapMouseEvent,
-  type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 // Vite bundles the worker and hands back its URL. Without this, MapLibre computes the URL itself
@@ -76,57 +75,32 @@ function bandColours() {
 }
 
 /**
- * A basemap built from our own tokens rather than someone's tiles.
+ * The basemap: OpenStreetMap, rendered by CARTO as Positron.
  *
- * There is no raster source here at all. A CARTO or OSM basemap arrives pre-coloured, and on a site
- * whose one rule is that colour belongs to the data, a beige-and-green map would out-shout every
- * reading on it. What a reader needs behind the pins is a graticule and a sense of scale, and both
- * are cheap to draw. It also means no third-party request before first paint, and no attribution
- * obligation to a CDN that might start charging.
+ * This replaces a graticule drawn from our own tokens. That version made a defensible argument — no
+ * third-party request, no attribution obligation, nothing behind the pins to compete with them —
+ * but it answered the wrong question. A reader looking at a sensor wants to know *where*: which
+ * district, which side of the river, is that the ring road. Meridians every ten degrees do not say,
+ * and nothing else on that map did either: a style with no `glyphs` cannot render a label, so there
+ * was no text on it at all.
+ *
+ * Positron and Dark Matter are OSM data in near-neutral grey, built for exactly this job — sitting
+ * under coloured data without arguing with it. Standard OSM tiles are the other reading of "OSM in
+ * the background" and are one URL away, but beige landuse and green parks under a PM2.5 scale would
+ * break the site's one rule in the most visible place available.
  */
-function style(c: ReturnType<typeof bandColours>): StyleSpecification {
-  return {
-    version: 8,
-    // No `glyphs` key at all. MapLibre validates it as a string when present, and `undefined`
-    // fails the style outright — which is also why there are no text layers here: a label needs a
-    // font server, and hosting one to print a cluster count would be a third-party request in
-    // front of a page whose whole promise is that the reading is already on screen.
-    sources: {
-      graticule: {
-        type: "geojson",
-        data: graticule(),
-      },
-    },
-    layers: [
-      { id: "bg", type: "background", paint: { "background-color": c.ground } },
-      {
-        id: "graticule",
-        type: "line",
-        source: "graticule",
-        paint: { "line-color": c.lineSoft, "line-width": 1 },
-      },
-    ],
-  };
+function basemap(dark: boolean): string {
+  return dark
+    ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+    : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 }
 
-/** Meridians and parallels every 10°, as plain GeoJSON. The whole basemap, in about ten lines. */
-function graticule(): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature[] = [];
-  for (let lon = -180; lon <= 180; lon += 10) {
-    features.push({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: [[lon, -85], [lon, 85]] },
-    });
-  }
-  for (let lat = -80; lat <= 80; lat += 10) {
-    features.push({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: [[-180, lat], [180, lat]] },
-    });
-  }
-  return { type: "FeatureCollection", features };
+/** The theme in force: the toggle's explicit choice if there is one, the OS preference otherwise. */
+function isDark(): boolean {
+  const set = document.documentElement.getAttribute("data-theme");
+  if (set === "dark") return true;
+  if (set === "light") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 /** Opens on the sensor-dense part of Europe, where three quarters of the network lives. */
@@ -267,11 +241,9 @@ export default function StationMap({
 
   useEffect(() => {
     if (!holder.current || map.current) return;
-    const c = bandColours();
-
     const m = new MlMap({
       container: holder.current,
-      style: style(c),
+      style: basemap(isDark()),
       center: centre,
       zoom,
       // The window follows the devices. A fixed zoom is right for the world map, which opens on a
@@ -279,8 +251,8 @@ export default function StationMap({
       // three in an empty field.
       ...(bbox ? { bounds: bbox, fitBoundsOptions: { padding: 28 } } : {}),
       attributionControl: false,
-      // The graticule has no labels, so there is nothing to rotate out of legibility — but a map
-      // that tilts under a stray gesture is a map the reader has to fix. Keep it flat.
+      // The basemap has labels now, and a rotated label is a label the reader has to tilt their
+      // head for. Flat, and no accidental rotation from a two-finger gesture.
       pitchWithRotate: false,
       dragRotate: false,
     });
@@ -296,6 +268,8 @@ export default function StationMap({
     m.addControl(
       new AttributionControl({
         compact: true,
+        // Only ours. The Positron style declares its own OSM and CARTO credit, and adding a second
+        // copy by hand printed the same two names twice across the bottom of the map.
         customAttribution: "Sensor.Community (ODbL) · Open-Meteo",
       }),
       "bottom-right",
@@ -311,7 +285,17 @@ export default function StationMap({
       setFailed(message);
     });
 
-    m.on("load", () => {
+    /**
+     * Everything of ours that a style change destroys.
+     *
+     * `setStyle` replaces the whole style document — basemap, sources, layers, all of it — so the
+     * theme toggle would otherwise swap Positron for Dark Matter and drop nine thousand sensors on
+     * the floor. Naming the work once and re-running it is the difference between a theme switch
+     * and a blank map. The palette is read here rather than captured, so the second run picks up
+     * the tokens the toggle just changed.
+     */
+    const addDataLayers = () => {
+      const c = bandColours();
       const step = (prop: string): ExpressionSpecification =>
         [
           "step",
@@ -499,6 +483,10 @@ export default function StationMap({
         });
       }
 
+    };
+
+    m.on("load", () => {
+      addDataLayers();
       setReady(true);
     });
 
@@ -527,35 +515,29 @@ export default function StationMap({
       m.on("mouseleave", layer, () => (m.getCanvas().style.cursor = ""));
     }
 
+    /**
+     * The theme toggle swaps the basemap, not just our paint.
+     *
+     * Before there was a basemap this only had to repaint a background and a graticule. Positron
+     * and Dark Matter are two different style documents, so the switch is a `setStyle` — which
+     * takes our sources and layers with it, hence the re-add on `styledata`. `once` rather than
+     * `on`: `styledata` fires repeatedly as tiles arrive, and adding the layers again on each one
+     * throws.
+     */
+    const observer = new MutationObserver(() => {
+      m.setStyle(basemap(isDark()));
+      m.once("styledata", () => addDataLayers());
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
     return () => {
+      observer.disconnect();
       m.remove();
       map.current = null;
       if (import.meta.env.DEV) {
         delete (window as unknown as { __airsignalMap?: unknown }).__airsignalMap;
       }
     };
-  }, []);
-
-  // The theme toggle repaints the tokens; the map has already read them into its style, so it has
-  // to be told. Without this the map keeps its light palette on a dark page — the exact failure
-  // CLAUDE.md warns about, one layer further out.
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      const m = map.current;
-      if (!m || !m.isStyleLoaded()) return;
-      const c = bandColours();
-      m.setPaintProperty("bg", "background-color", c.ground);
-      m.setPaintProperty("graticule", "line-color", c.lineSoft);
-      for (const id of ["cities", "clusters", "cluster-ring", "stations"]) {
-        if (m.getLayer(id)) m.setPaintProperty(id, "circle-stroke-color", c.surface);
-      }
-      if (m.getLayer("wind")) m.setPaintProperty("wind", "line-color", c.accent);
-      if (m.getLayer("wind-casing")) m.setPaintProperty("wind-casing", "line-color", c.surface);
-      if (m.getLayer("plume")) m.setPaintProperty("plume", "fill-color", c.poor);
-      if (m.getLayer("plume-edge")) m.setPaintProperty("plume-edge", "line-color", c.poor);
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => observer.disconnect();
   }, []);
 
   return (

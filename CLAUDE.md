@@ -16,7 +16,8 @@ data.** The chrome is near-neutral so the only saturated pixels on a page are me
 - Astro 6, `output: "server"`, `@astrojs/cloudflare`, deployed to Cloudflare **Workers**
 - D1 (`air-signal`) — read by the worker, written only by `cli/`
 - React islands (`@astrojs/react`) — live readings and the map
-- MapLibre GL, no third-party tiles: the basemap is a graticule drawn from our own tokens
+- MapLibre GL over CARTO Positron / Dark Matter — OSM data in near-neutral grey. The basemap tracks
+  the theme toggle, which means a theme change is a `setStyle` and takes our layers with it
 - Tailwind 4 via `@tailwindcss/vite`; tokens in `src/styles/tokens.css`, components in
   `src/styles/components.css`
 - `airq-core` WASM, vendored in two builds (`src/wasm/node/`, `src/wasm/web/`)

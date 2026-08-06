@@ -203,12 +203,20 @@ saturated by incumbents — stop investing in content, keep the site as the auth
 - **React islands.** `@astrojs/react`. The charts turned out not to need a library at all — the
   thirty-day line is an inline SVG path computed at render, which is both smaller than recharts by
   400 KB and, more importantly, present in the HTML a crawler receives.
-- **Map: MapLibre GL, and no third-party tiles.** Colour, radius and stroke are data-driven paint
+- **Map: MapLibre GL over CARTO Positron.** Colour, radius and stroke are data-driven paint
   expressions, which is exactly how the design describes the pins; in Leaflet they would be nine
-  thousand DOM nodes with inline styles. The basemap is a graticule drawn from our own tokens —
-  a CARTO or OSM raster arrives pre-coloured, and on a site whose one rule is that colour belongs to
-  the data, a beige-and-green map would out-shout every reading on it. It also means no third-party
-  request before first paint and no attribution to a CDN that may start charging.
+  thousand DOM nodes with inline styles.
+
+  The basemap was a graticule drawn from our own tokens, on the argument that a pre-coloured raster
+  would out-shout every reading. The argument was sound and answered the wrong question: a reader
+  looking at a sensor wants to know *where* — which district, which side of the river — and
+  meridians every ten degrees do not say. Nor did anything else, since a style with no `glyphs`
+  cannot render a label and there was no text on that map at all.
+
+  Positron and Dark Matter are OSM data rendered in near-neutral grey, built to sit under coloured
+  data. They keep the rule the graticule was protecting while answering the question it could not.
+  Standard OSM raster is the other reading of "OSM in the background" and is one URL away; beige
+  landuse under a PM2.5 scale is what it costs.
 - **History: D1.** `city_daily` for cities that have devices, `readings_daily` per device, both
   rolling. Cities without a sensor do not get a stored series — the model is a CORS-open fetch away
   in the browser, and storing a copy for ten thousand cities would be a third of a million rows a
