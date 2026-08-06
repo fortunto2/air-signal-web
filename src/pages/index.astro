@@ -107,10 +107,25 @@ const stamp = lastIngest ? ago(Math.round((Date.now() - lastIngest.getTime()) / 
           </div>
         ) : (
           <div style="padding:34px 20px">
-            <h1>{SITE.brand.head}<span style="color:var(--accent)">{SITE.brand.tail}</span></h1>
+            <h1>
+              {SITE.brand.head}
+              <span style="color:var(--accent)">{SITE.brand.tail}</span>
+            </h1>
             <p class="lede" style="margin-top:14px">{description}</p>
-            <p style="margin-top:18px;font-size:13px;color:var(--ink-3)">
-              The database is empty. Run <code>pnpm seed</code> then <code>pnpm ingest</code>.
+            {/*
+              The comfort pass has not run yet — the model upstream has a daily ceiling and the
+              scores arrive with the next scheduled ingest. The sensors are already here, so say
+              what is true and point at the thing that works, rather than showing a visitor an
+              apology or, worse, a shell command.
+            */}
+            <p style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+              <a class="seg" style="text-decoration:none" href={paths.map()}>Open the map →</a>
+              <a class="seg" style="text-decoration:none" href="/how-it-works">How it works →</a>
+            </p>
+            <p class="eyebrow num" style="margin-top:16px">
+              {counts.stations.toLocaleString("en-US")} community sensors across{" "}
+              {counts.cities.toLocaleString("en-US")} cities · comfort scores land with the next
+              refresh
             </p>
           </div>
         )

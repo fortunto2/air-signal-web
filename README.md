@@ -35,6 +35,11 @@ them with `make wasm` when the core changes — it expects the sibling checkout 
 | `make check` | `wrangler types` + `astro check` |
 | `make deploy` | build and deploy to Cloudflare Workers |
 
+Use `make deploy`, not `wrangler deploy` on its own: the adapter copies `wrangler.jsonc` into
+`dist/server/wrangler.json` at build time and wrangler reads *that* copy, so deploying without
+rebuilding ships the previous config. (`pnpm deploy` is also wrong — it is a built-in pnpm command
+that shadows the script; the target runs `pnpm run deploy`.)
+
 ## How it fits together
 
 ```

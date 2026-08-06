@@ -49,7 +49,9 @@ integration: ## Run the pipeline against live upstreams — no browser, no build
 	pnpm integration
 
 deploy: ## Build and deploy the worker to Cloudflare
-	pnpm deploy
+	# `pnpm deploy` is a built-in pnpm command (it deploys a workspace package) and shadows the
+	# script, failing with ERR_PNPM_CANNOT_DEPLOY. `pnpm run` is unambiguous.
+	pnpm run deploy
 
 clean: ## Remove build output and caches
 	rm -rf dist .astro .wrangler node_modules/.vite
