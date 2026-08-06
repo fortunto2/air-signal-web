@@ -11,6 +11,7 @@ import Bar from "../../../components/Bar.astro";
 import Spectrum from "../../../components/Spectrum.astro";
 import Sparkline from "../../../components/Sparkline.astro";
 import AirIntel from "../../../components/AirIntel.astro";
+import SetPlace from "../../../components/SetPlace.tsx";
 import LiveCity from "../../../components/LiveCity.tsx";
 import {
   getCity,
@@ -175,7 +176,15 @@ const schema = [
               }
             </div>
           </div>
-          <div style="margin-top:14px">
+          <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <SetPlace
+              client:idle
+              name={v.name}
+              country={v.country}
+              path={v.path}
+              lat={v.lat}
+              lon={v.lon}
+            />
             {
               live > 0 ? (
                 <span class:list={["chip", v.band && `fg-${v.band}`]}>

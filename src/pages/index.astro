@@ -11,6 +11,7 @@ import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
 import LiveCity from "../components/LiveCity.tsx";
+import MyPlace from "../components/MyPlace.tsx";
 import { getComfortExtremes, getLastIngest, getSitemapCounts } from "../lib/db";
 import { cityView, ago } from "../lib/view";
 import { SITE, paths } from "../lib/site";
@@ -122,6 +123,13 @@ const stamp = ago(lastIngest);
           </div>
         )
       }
+
+      {/*
+        Personalisation lives in an island because the HTML is cached at the edge for everyone. A
+        page rendered per visitor is a page nobody gets quickly, and "is it worth going outside" is
+        a question about *here* — so the answer arrives after the cache, not instead of it.
+      */}
+      <MyPlace client:idle />
 
       {
         ([["Most comfortable right now", best], ["Worst right now", worst]] as const).map(
