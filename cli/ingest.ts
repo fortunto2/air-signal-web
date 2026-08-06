@@ -19,6 +19,8 @@ export interface Opts {
   historyDays?: number;
   /** Stop after this many cities. For a fast pass while developing. */
   limitCities?: number;
+  /** Score every city, not just the ones with devices. See `ingestComfort` for why that is not the default. */
+  all?: boolean;
   /**
    * Redo cities that already have today's numbers.
    *
@@ -279,6 +281,33 @@ export async function ingestComfort(
 ): Promise<void> {
   const historyDays = opts.historyDays ?? 31;
   let targets = opts.limitCities ? cities.slice(0, opts.limitCities) : cities;
+
+  /**
+   * By default this warms only the cities that have devices — about 1 300 of 10 596.
+   *
+   * The other nine thousand are scored on demand by the Worker when someone first opens them
+   * (`src/lib/comfort-server.ts`), which is the right trade for a long tail that mostly sees no
+   * traffic for months. Scoring all of them nightly is what exhausted Open-Meteo's daily quota and
+   * left every page blank.
+   *
+   * The sensor cities cannot be lazy: the home page, `/ranking` and every country page are
+   * aggregates over them, and an aggregate cannot wait for its members to be visited.
+   *
+   * `--all` scores everything, for the rare case of wanting the whole set warm at once.
+   */
+  if (!opts.all && !opts.limitCities) {
+    const withDevices = new Set(
+      (await query<{ id: number }>("SELECT id FROM cities WHERE station_count > 0", opts)).map(
+        (r) => r.id,
+      ),
+    );
+    const before = targets.length;
+    targets = targets.filter((c) => withDevices.has(c.id));
+    console.log(
+      `comfort: warming ${targets.length} cities with devices; the other ${before - targets.length} ` +
+        "are scored on demand (pass --all to include them)",
+    );
+  }
 
   // Resume, unless told otherwise. See Opts.force — the upstream has an hourly ceiling and a run
   // that trips it must be restartable without re-fetching what it already has.

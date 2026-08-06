@@ -43,6 +43,7 @@ const opts: Opts = {
   historyDays: Number(flag("history") ?? 31),
   limitCities: flag("cities") ? Number(flag("cities")) : undefined,
   force: has("force"),
+  all: has("all"),
 };
 
 // ── comfort at a point ──────────────────────────────────────────────────────
@@ -232,7 +233,8 @@ flags:
   --remote                    act on the production database instead of the local one
   --cities <n>                stop after n cities (development)
   --history <n>               days of history to backfill (default 31)
-  --force                     redo cities that already have today's numbers`;
+  --force                     redo cities that already have today's numbers
+  --all                       score every city, not just the ones with sensors`;
 
 try {
   switch (cmd) {

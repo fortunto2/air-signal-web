@@ -52,9 +52,18 @@ src/lib/signals.ts readings → scores, shared by the ETL and the browser island
 src/middleware.ts  edge caching + Accept: text/markdown negotiation
 ```
 
-**The worker never writes.** Every row enters through `cli/`, run under Node in GitHub Actions,
-because the two largest inputs are 9 MB JSON documents and a 128 MB isolate is the wrong place for
-them.
+**The worker writes cache columns, and nothing else.** Rows are created only by `cli/`, run under
+Node in GitHub Actions, because the two largest inputs are 9 MB JSON documents and a 128 MB isolate
+is the wrong place for them. But a city page whose readings are stale scores itself — four upstream
+calls, the same WASM, a `waitUntil` write-back — so `saveCityReadings` in `src/lib/db.ts` may fill
+`comfort`, `signals_json`, `readings_json` and `updated_at` on a row that already exists. That is
+the entire write surface the worker has.
+
+**Comfort is computed on demand, not for ten thousand cities a night.** Most city pages get no
+traffic for months; scoring them all daily is what exhausted Open-Meteo's quota and left the site
+blank. The nightly pass now warms only the ~1 300 cities that have sensors, because the home page,
+the ranking and the country pages are aggregates and cannot be lazy. Everything else fills in when
+someone — usually a crawler — first opens it. Cold ~700 ms, warm ~20 ms.
 
 **The ETL only upserts.** A bad upstream minute ages a row; it never deletes one. `make integration`
 asserts the row count cannot go down — that property came free when the index was a committed file
@@ -111,3 +120,14 @@ has real numbers, and gating cities on sensors would delete the entire non-Europ
   A short answer is a broken download, not a quiet day — it is rejected.
 - **`sea` is the column, `marine` is the function name.** `SignalRow::from_pairs` drops keys it does
   not recognise without saying so.
+- **WebAssembly must be a deploy-time import in a Worker.** `WebAssembly.compile()` at runtime is
+  refused: *Wasm code generation disallowed by embedder*. And the binary may be imported exactly one
+  way across the whole project — Vite resolves `foo.wasm` and `foo.wasm?url` from a single id and
+  the client build wins, leaving the worker with an asset path and `No such module`. Duplicating the
+  file does not help; identical bytes hash to the same asset. The browser therefore does not load
+  WASM at all: it asks `/api/comfort`.
+- **MapLibre's data worker must be bundled explicitly** — `?worker&url` plus `worker: { format: "es" }`
+  in the Vite config. Without it the pool starts dead, no GeoJSON ever parses, `load` never fires,
+  and the only symptom is a blank map under a permanent "Loading sensors…". No error is raised.
+- **Deploy with `make deploy`.** The adapter copies `wrangler.jsonc` into `dist/server/wrangler.json`
+  at build time and wrangler reads *that*, so a bare `wrangler deploy` ships the previous config.
