@@ -36,7 +36,9 @@ const band = country.comfort === null ? null : comfortBand(country.comfort);
 const verdict = [
   `${country.city_count} cities in ${country.name}`,
   country.station_count > 0
-    ? `and ${country.station_count} community sensors across ${withSensors.length} of them.`
+    ? withSensors.length === cities.length
+      ? `and ${country.station_count} community sensors, with at least one in every one of them.`
+      : `and ${country.station_count} community sensors across ${withSensors.length} of them.`
     : "— none of them has a community sensor yet, so the readings are modelled.",
   country.pm25_median !== null
     ? `The typical city reads ${country.pm25_median.toFixed(1)} µg/m³ PM2.5.`

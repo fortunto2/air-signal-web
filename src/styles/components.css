@@ -619,7 +619,37 @@ a {
   .cols {
     grid-template-columns: 1fr;
   }
+  /*
+   * The nav wraps instead of disappearing.
+   *
+   * It used to be `display: none` below 760 px, which was fine when the site had one section and
+   * became a hole when it grew to four: on a phone — the common case — a reader on a city page had
+   * no route to the map, the countries or the ranking at all.
+   */
+  .bar {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
   .bar nav {
+    margin-left: 0;
+    width: 100%;
+    gap: 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .bar nav::-webkit-scrollbar {
     display: none;
+  }
+  .bar nav a {
+    white-space: nowrap;
+    /* A finger is not a mouse pointer. 24 px is the WCAG floor; this clears it with room. */
+    padding: 6px 0;
+  }
+
+  /* Same reason. `.seg` is the site's only button shape, and 27 px was uncomfortably small. */
+  .seg {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
   }
 }

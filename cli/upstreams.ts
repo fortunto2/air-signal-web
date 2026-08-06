@@ -493,7 +493,17 @@ export function fireDistance(fires: Fire[], lat: number, lon: number, capKm = 20
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Coerce to a number, or report absence.
+ *
+ * `null` is spelled out because `Number(null)` is **0**, not NaN — so a bare `Number.isFinite`
+ * guard passes every null an upstream sends and turns it into a measurement of zero. Open-Meteo
+ * returns `null` for a marine reading inland, which is how Berlin came to have a sea at 0 °C with
+ * flat water, scoring 95 out of 100 on a signal it has no business having at all. Absent is not
+ * zero, and this is the function where that rule is either kept or lost.
+ */
 function num(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }

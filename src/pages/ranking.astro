@@ -9,16 +9,26 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
-import { countCitiesWithSensors, getLastIngest, getRankedCities, parseSignals } from "../lib/db";
+import {
+  countCitiesWithSensors,
+  getLastIngest,
+  getRankedCities,
+  getSitemapCounts,
+  parseSignals,
+} from "../lib/db";
 import { comfortBand, pmBand, SITE, abs, paths } from "../lib/site";
 import { ago } from "../lib/view";
 
 const LIMIT = 150;
-const [ranked, total, lastIngest] = await Promise.all([
+const [ranked, total, counts, lastIngest] = await Promise.all([
   getRankedCities(LIMIT),
   countCitiesWithSensors(),
+  getSitemapCounts(),
   getLastIngest(),
 ]);
+
+/** Too few to be a ranking. Say so rather than presenting three rows as a league table. */
+const sparse = total < 20;
 
 const description =
   `Every city with community air sensors, ranked by outdoor comfort — ${total} places scored on ` +
@@ -63,6 +73,25 @@ const schema = [
           The fourteen bars beside each row are that city's spectrum — the same glyph as the hero,
           at 22 px, which is the reason it was chosen over a dial.
         </p>
+
+        {/*
+          A ranking of three cities is not a ranking, and showing one without saying why reads as a
+          broken page rather than an incomplete one. Scores arrive per city — on the nightly pass,
+          or the moment someone opens a city page — so the honest thing is to say how far along it
+          is and point at the surfaces that are already complete.
+        */}
+        {
+          sparse && (
+            <p style="margin-top:14px;max-width:62ch;font-size:13.5px;color:var(--ink-2)">
+              Only {total} of the {counts.cities.toLocaleString("en-US")} cities have been scored so
+              far — the model upstream has a daily ceiling, so scores fill in as pages are opened
+              and on the nightly pass. The sensor readings are complete either way:{" "}
+              <a href={paths.map()} style="color:var(--accent)">the map</a> and{" "}
+              <a href={paths.countries()} style="color:var(--accent)">the countries</a> have all
+              {" "}{counts.stations.toLocaleString("en-US")} of them.
+            </p>
+          )
+        }
       </div>
 
       <div class="rows">

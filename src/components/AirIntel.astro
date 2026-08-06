@@ -38,6 +38,13 @@ const newsworthy =
     ? event
     : null;
 
+/** The compass point a wind from `label` is blowing towards — for the arrow's tooltip. */
+const opposite = (label: string): string =>
+  label
+    .split("")
+    .map((c) => ({ N: "S", S: "N", E: "W", W: "E" })[c] ?? c)
+    .join("");
+
 /** What a wind speed means for what is in the air, in the Rust CLI's own words. */
 const ventilation = (kmh: number) =>
   kmh < 5 ? "calm, pollutants accumulate" : kmh < 15 ? "disperses gradually" : "good ventilation";
@@ -67,9 +74,17 @@ const ventilation = (kmh: number) =>
 
         {wind && (
           <div class="stat">
-            <span class="eyebrow">Wind from</span>
+            <span class="eyebrow">Wind</span>
+            {/*
+              The label is where it comes from, the arrow is where it goes — which is the same fact
+              said twice and reads as a contradiction unless the page says so. Hence "from NW" in
+              words and the arrow titled with its own meaning.
+            */}
             <span class="num" style="font-size:27px">
-              <span aria-hidden="true">{wind.arrow}</span> {wind.label}
+              from {wind.label}{" "}
+              <span aria-hidden="true" title={`blowing towards the ${opposite(wind.label)}`}>
+                {wind.arrow}
+              </span>
             </span>
             <span class="unit">
               {wind.speed !== undefined

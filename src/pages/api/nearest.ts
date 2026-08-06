@@ -14,8 +14,12 @@ import { paths } from "../../lib/site";
  * precision nobody needs to answer "which town am I in".
  */
 export const GET: APIRoute = async ({ url }) => {
-  const lat = Number(url.searchParams.get("lat"));
-  const lon = Number(url.searchParams.get("lon"));
+  // `Number(null)` is 0, so a missing parameter would silently become a valid coordinate in the
+  // Gulf of Guinea rather than a 400. Read them as strings first.
+  const latRaw = url.searchParams.get("lat");
+  const lonRaw = url.searchParams.get("lon");
+  const lat = latRaw === null ? NaN : Number(latRaw);
+  const lon = lonRaw === null ? NaN : Number(lonRaw);
 
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     return json({ error: "lat and lon required" }, 400, "no-store");
