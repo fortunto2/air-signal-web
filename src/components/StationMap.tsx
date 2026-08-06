@@ -29,7 +29,16 @@ import {
   type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+// Vite bundles the worker and hands back its URL. Without this, MapLibre computes the URL itself
+// from `import.meta.url`, Vite never emits the file, and `new Worker(...)` points at nothing — the
+// pool starts dead. Nothing errors: `load` simply never fires, no data event ever arrives, and the
+// map sits on "Loading sensors…" over a blank canvas forever. Every GeoJSON source is parsed on
+// that worker, so on this map it means no pins at all.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import { setWorkerUrl } from "maplibre-gl";
 import { pmBand } from "../lib/site";
+
+setWorkerUrl(maplibreWorkerUrl);
 
 const CITY_ZOOM_MAX = 8;
 
@@ -131,6 +140,7 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
   const map = useRef<InstanceType<typeof MlMap> | null>(null);
   const [selected, setSelected] = useState<Selected | null>(null);
   const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
     if (!holder.current || map.current) return;
@@ -148,6 +158,10 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
       dragRotate: false,
     });
     map.current = m;
+    // A handle for debugging a map that will not draw. Costs nothing and saves a build cycle every
+    // time a paint expression is wrong — which, on a map whose whole design is paint expressions,
+    // is often.
+    (window as unknown as { __airsignalMap?: unknown }).__airsignalMap = m;
 
     m.addControl(new NavigationControl({ showCompass: false }), "top-right");
     m.addControl(
@@ -158,6 +172,15 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
       "bottom-right",
     );
     m.keyboard.enable();
+
+    // Without this, MapLibre swallows style and expression failures: the `error` event has no
+    // listener, `load` never fires, and the only symptom is a permanent "Loading sensors…" over a
+    // blank canvas. Which is exactly how this shipped.
+    m.on("error", (e) => {
+      const message = (e as { error?: Error }).error?.message ?? String(e);
+      console.error("[map]", message);
+      setFailed(message);
+    });
 
     m.on("load", () => {
       const step = (prop: string): ExpressionSpecification =>
@@ -393,7 +416,7 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
 
       {!ready && (
         <div className="eyebrow" style={{ position: "absolute", left: 12, bottom: 12 }}>
-          Loading sensors…
+          {failed ? `Map failed: ${failed}` : "Loading sensors…"}
         </div>
       )}
     </div>

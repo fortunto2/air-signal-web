@@ -49,5 +49,10 @@ export default defineConfig({
     // structurally on a hook neither of them calls here. The plugin runs correctly; only `astro
     // check` objects, and silencing it with a cast beats pinning either package back.
     plugins: /** @type {any} */ ([tailwindcss()]),
+
+    // MapLibre creates its worker with `{ type: "module" }`, so the bundled worker has to be an ES
+    // module. Vite's default for workers is IIFE, which the browser then refuses to load as a
+    // module — same dead pool, different cause.
+    worker: { format: "es" },
   },
 });
