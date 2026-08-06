@@ -27,6 +27,7 @@ import { loadCities, loadPlaces } from "./places.ts";
 import { comfortFrom, scoresFrom, moonPhase, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { query } from "./d1.ts";
+import { backfill } from "./backfill.ts";
 import { SIGNALS, comfortBand } from "../src/lib/site.ts";
 
 // ── flags ───────────────────────────────────────────────────────────────────
@@ -234,6 +235,7 @@ const usage = `usage: tsx cli/main.ts <command> [flags]
 
   seed-cities                 load the cities database into D1
   ingest [--only <stage>]     stations | comfort | divergence | gate
+  backfill [--month YYYY-MM]  device history from the Sensor.Community monthly archive
   comfort <lat> <lon>         the fourteen signals for a point
   integration                 upstream shapes and the no-shrink guarantee
 
@@ -242,7 +244,8 @@ flags:
   --cities <n>                stop after n cities (development)
   --history <n>               days of history to backfill (default 31)
   --force                     redo cities that already have today's numbers
-  --all                       score every city, not just the ones with sensors`;
+  --all                       score every city, not just the ones with sensors
+  --dir <path>                where the downloaded archives are (backfill, default .archive)`;
 
 try {
   switch (cmd) {
@@ -284,6 +287,14 @@ try {
       break;
     }
 
+    case "backfill":
+      await backfill({
+        ...opts,
+        dir: flag("dir") ?? ".archive",
+        months: flag("month") ? [flag("month")!] : undefined,
+      });
+      break;
+
     case "comfort":
       await comfortAt(Number.parseFloat(argv[1] ?? "36.27"), Number.parseFloat(argv[2] ?? "32.32"));
       break;
@@ -297,6 +308,6 @@ try {
       process.exitCode = 1;
   }
 } catch (err) {
-  console.error(`\n${err instanceof Error ? err.message : String(err)}`);
+  console.error(`\n${err instanceof Error ? (process.env.DEBUG ? err.stack : err.message) : String(err)}`);
   process.exitCode = 1;
 }

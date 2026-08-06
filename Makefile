@@ -45,6 +45,21 @@ seed: ## One-off: load the cities database from WASM into D1
 ingest: ## Full ETL pass against live upstreams into the local D1
 	pnpm ingest
 
+# The archive holds one zip per hardware type per month, each a single deflate stream — so nothing
+# can be pulled out selectively and the whole file comes down before anything can be read. SDS011 is
+# 89 % of the devices we know and 3.3 GB of that; range requests parallelise it to about ten minutes.
+MONTH ?= 2026-07
+ARCHIVE ?= .archive
+
+backfill-fetch: ## Download the monthly archives for MONTH (3.4 GB — sds011 alone is 3.3)
+	@mkdir -p $(ARCHIVE)
+	@scripts/fetch-archive.sh $(ARCHIVE) $(MONTH) sds011 10
+	@scripts/fetch-archive.sh $(ARCHIVE) $(MONTH) pms7003 4
+	@scripts/fetch-archive.sh $(ARCHIVE) $(MONTH) pms5003 4
+
+backfill: ## Aggregate the downloaded archives into readings_daily (add REMOTE=1 for production)
+	pnpm backfill --dir $(ARCHIVE) --month $(MONTH) $(if $(REMOTE),--remote,)
+
 integration: ## Run the pipeline against live upstreams — no browser, no build
 	pnpm integration
 

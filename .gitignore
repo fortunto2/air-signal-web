@@ -21,3 +21,6 @@ worker-configuration.d.ts
 
 # playwright mcp scratch
 .playwright-mcp/
+
+# Monthly Sensor.Community archives — gigabytes, and re-downloadable
+.archive/
