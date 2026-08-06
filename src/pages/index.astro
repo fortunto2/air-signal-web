@@ -1,51 +1,211 @@
 ---
+/**
+ * The home page.
+ *
+ * Its job is to make the argument in one screen: this is not an AQI number, it is a reading across
+ * everything that makes being outside pleasant or not. So the spectrum comes first, at hero size,
+ * with a real city's real numbers under it — and the ranking below proves the glyph survives being
+ * shrunk into a list row, which is the whole reason that shape was chosen over a ring.
+ */
 import Layout from "../layouts/Layout.astro";
-import { SITE, SIGNALS } from "../lib/site";
+import Bar from "../components/Bar.astro";
+import Spectrum from "../components/Spectrum.astro";
+import LiveCity from "../components/LiveCity.tsx";
+import {
+  getComfortExtremes,
+  getLastIngest,
+  getSitemapCounts,
+  parseSignals,
+  type CityRow,
+} from "../lib/db";
+import { cityView, ago } from "../lib/view";
+import { SITE, paths } from "../lib/site";
 
-const title = `${SITE.name} — ${SITE.tagline}`;
+const [{ best, worst }, counts, lastIngest] = await Promise.all([
+  getComfortExtremes(6),
+  getSitemapCounts(),
+  getLastIngest(),
+]);
+
+// The hero speaks for one real place. The most comfortable city with sensors is the honest pick:
+// it is the best thing the network measured today, not a city chosen for its name.
+const hero: CityRow | undefined = best[0];
+const heroView = hero ? cityView(hero) : null;
+const heroScores = hero ? parseSignals(hero.signals_json) : {};
+
 const description =
   "Live air quality and outdoor comfort for any city: PM2.5 from community sensors combined with " +
   "temperature, wind, sea, UV, pollen and ten more signals into one score.";
 
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  name: SITE.name,
-  url: SITE.origin,
-  description,
-};
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: SITE.name,
+    url: SITE.origin,
+    applicationCategory: "ReferenceApplication",
+    operatingSystem: "Any",
+    description,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  },
+];
+
+const stamp = lastIngest ? ago(Math.round((Date.now() - lastIngest.getTime()) / 60000)) : "never";
 ---
 
-<Layout title={title} description={description} path="/" jsonLd={jsonLd}>
-  <main style="max-width:1080px;margin:0 auto;padding:64px 24px">
-    <p
-      style="font-family:var(--font-mono);font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)"
-    >
-      Scaffold — see docs/prd.md
-    </p>
+<Layout
+  title={`${SITE.name} — ${SITE.tagline}`}
+  description={description}
+  path="/"
+  schema={schema}
+  updatedAt={lastIngest}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar search={`Search ${counts.cities.toLocaleString("en-US")} cities`} searchHref="/map" />
 
-    <h1 style="font-size:clamp(30px,5vw,46px);font-weight:640;letter-spacing:-.022em;margin:12px 0 0">
-      {SITE.brand.head}<span style="color:var(--accent)">{SITE.brand.tail}</span>
-    </h1>
-
-    <p style="color:var(--ink-2);max-width:62ch;margin-top:14px;font-size:17px">
-      {description}
-    </p>
-
-    <!-- Proof the token layer and the signal vocabulary are wired. Replaced by the real
-         spectrum island in the first build task. -->
-    <div
-      style="display:grid;grid-template-columns:repeat(14,1fr);gap:3px;align-items:end;height:74px;margin-top:40px"
-    >
       {
-        SIGNALS.map((s, i) => (
-          <div title={s.name} style={`height:${40 + ((i * 37) % 60)}%;background:var(--s-good);border-radius:1px 1px 0 0`} />
-        ))
+        heroView ? (
+          <div class="readout">
+            <div>
+              <div class="eyebrow">
+                Now · {heroView.name}, {heroView.country}
+              </div>
+              <div class="score" style="margin-top:10px">
+                <div class:list={["value", heroView.band && `fg-${heroView.band}`]} data-live="comfort">
+                  {heroView.comfort}
+                </div>
+                <div class="of">/100</div>
+              </div>
+              <div class="verdict">
+                <div class:list={["word", heroView.band && `fg-${heroView.band}`]}>
+                  {heroView.word} outside
+                </div>
+                <div class="where">
+                  {heroView.worst?.measure
+                    ? `${heroView.worst.name} is the one thing holding it back`
+                    : `${heroView.stationCount} sensors within reach`}
+                </div>
+              </div>
+              <p style="margin-top:14px">
+                <a href={heroView.path} class="seg" style="text-decoration:none">
+                  Open {heroView.name} →
+                </a>
+              </p>
+            </div>
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+                <div class="eyebrow">Fourteen signals</div>
+                <div class="eyebrow">
+                  Updated {stamp} · {heroView.stationCount} sensors
+                </div>
+              </div>
+              <Spectrum scores={heroScores} size="hero" />
+              <div style="height:20px" />
+            </div>
+          </div>
+        ) : (
+          <div style="padding:34px 20px">
+            <h1>{SITE.brand.head}<span style="color:var(--accent)">{SITE.brand.tail}</span></h1>
+            <p class="lede" style="margin-top:14px">{description}</p>
+            <p style="margin-top:18px;font-size:13px;color:var(--ink-3)">
+              The database is empty. Run <code>pnpm seed</code> then <code>pnpm ingest</code>.
+            </p>
+          </div>
+        )
       }
+
+      {
+        best.length > 0 && (
+          <div class="rows">
+            <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
+              <div class="eyebrow">Most comfortable right now</div>
+              <div class="eyebrow">Comfort</div>
+            </div>
+            {best.map((c, i) => {
+              const v = cityView(c);
+              return (
+                <a class="row" href={v.path}>
+                  <span class="rank num">{i + 1}</span>
+                  <span>
+                    <span class="city">{v.name}</span>{" "}
+                    <span class="country">{v.country}</span>
+                  </span>
+                  <Spectrum scores={parseSignals(c.signals_json)} size="mini" />
+                  <span class:list={["n", v.band && `fg-${v.band}`]}>{v.comfort}</span>
+                </a>
+              );
+            })}
+          </div>
+        )
+      }
+
+      {
+        worst.length > 0 && (
+          <div class="rows">
+            <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
+              <div class="eyebrow">Worst right now</div>
+              <div class="eyebrow">Comfort</div>
+            </div>
+            {worst.map((c, i) => {
+              const v = cityView(c);
+              return (
+                <a class="row" href={v.path}>
+                  <span class="rank num">{i + 1}</span>
+                  <span>
+                    <span class="city">{v.name}</span>{" "}
+                    <span class="country">{v.country}</span>
+                  </span>
+                  <Spectrum scores={parseSignals(c.signals_json)} size="mini" />
+                  <span class:list={["n", v.band && `fg-${v.band}`]}>{v.comfort}</span>
+                </a>
+              );
+            })}
+          </div>
+        )
+      }
+
+      <div style="padding:16px 20px 20px;display:flex;gap:22px;flex-wrap:wrap;align-items:baseline">
+        <a class="seg" style="text-decoration:none" href={paths.map()}>
+          Open the map →
+        </a>
+        <span class="eyebrow num">
+          {counts.cities.toLocaleString("en-US")} cities · {counts.stations.toLocaleString("en-US")}{" "}
+          community sensors · {counts.stationsIndexable.toLocaleString("en-US")} past the quality bar
+        </span>
+      </div>
     </div>
 
-    <p style="color:var(--ink-3);font-size:13px;margin-top:28px">
-      Next: <code>pnpm stations</code> to build the station index, then the map and city pages.
-    </p>
+    <section style="padding:44px 0 8px">
+      <h2 style="font-size:clamp(24px,4vw,34px);font-weight:640">Colour belongs to the data.</h2>
+      <p class="lede" style="margin-top:12px">
+        Every other air-quality site paints its chrome in the same traffic-light green. If the
+        interface is already coloured, a reading has nothing left to say — so this one is
+        near-neutral, and the only saturated pixels on the page <em>are</em> the measurements.
+      </p>
+
+      <div class="cols" style="margin-top:22px">
+        <div class="card">
+          <div class="eyebrow">Community sensors lie, and nobody says so</div>
+          <p style="font-size:13.5px">
+            A cheap device indoors, next to a road, or with a dying fan reads several times high.
+            Every map plots that at face value. Here the sensors are compared against the
+            atmospheric model, the ones that disagree are down-weighted, and each station page says
+            by how much.
+          </p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">A person does not go outside for PM2.5</div>
+          <p style="font-size:13.5px">
+            They go out into a combination of heat, wind, UV, pollen, sea temperature and daylight.
+            One AQI number cannot say "the air is clean but the UV will burn you in twenty minutes",
+            which is the actually useful sentence.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    {heroView && <LiveCity client:idle lat={heroView.lat} lon={heroView.lon} cityName={heroView.name} />}
   </main>
 </Layout>

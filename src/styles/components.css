@@ -1,0 +1,625 @@
+/**
+ * The component layer, taken from the approved mockup.
+ *
+ * Tokens live in tokens.css and nothing here invents a colour — every value below is a variable.
+ * The rule the whole design follows: colour belongs to the data. If the chrome were also coloured,
+ * a reading would have nothing left to say, so the interface is near-neutral and the only
+ * saturated pixels on a page are measurements.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-size: 15px;
+}
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── typography ─────────────────────────────────────────────────────────── */
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  margin: 0;
+  letter-spacing: -0.022em;
+}
+h1 {
+  font-size: clamp(30px, 5vw, 46px);
+  font-weight: 640;
+  line-height: 1.08;
+}
+h2 {
+  font-size: 21px;
+  font-weight: 620;
+}
+h3 {
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+p {
+  margin: 0;
+  color: var(--ink-2);
+}
+.lede {
+  font-size: 17px;
+  max-width: 62ch;
+}
+
+a {
+  color: inherit;
+}
+
+/* ── frame and bar ──────────────────────────────────────────────────────── */
+
+.app {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  font-weight: 660;
+  letter-spacing: -0.03em;
+  font-size: 16px;
+  text-decoration: none;
+  color: var(--ink);
+}
+.logo span:last-child {
+  color: var(--accent);
+}
+
+.bar nav {
+  margin-left: auto;
+  display: flex;
+  gap: 20px;
+}
+.bar nav a {
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 13.5px;
+}
+.bar nav a:hover,
+.bar nav a:focus-visible {
+  color: var(--ink);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  background: var(--ground);
+  border-radius: var(--radius);
+  padding: 7px 11px;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  min-width: 210px;
+  text-decoration: none;
+}
+.search:hover,
+.search:focus-visible {
+  color: var(--ink-2);
+  border-color: var(--ink-3);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   THE SIGNAL BAR — the one place boldness is spent.
+   Fourteen readings drawn as a spectrum. It is the product's whole argument in
+   one glyph: not an AQI number, a reading across everything that makes being
+   outside pleasant or not. Changing this changes the visual identity.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.spectrum {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 3px;
+  align-items: end;
+  height: 74px;
+}
+.spectrum .col {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: linear-gradient(var(--line-soft), var(--line-soft)) no-repeat center bottom / 100% 1px;
+}
+.spectrum .bar-fill {
+  width: 100%;
+  border-radius: 1px 1px 0 0;
+  transition: height 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+/* A signal with no reading is drawn as absence, not as a floor value. */
+.spectrum .col.is-absent .bar-fill {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--line-soft) 0 2px,
+    transparent 2px 4px
+  );
+  height: 100% !important;
+  opacity: 0.7;
+}
+.spectrum .tick {
+  position: absolute;
+  bottom: -17px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scale-excellent { background: var(--s-excellent); }
+.scale-good      { background: var(--s-good); }
+.scale-fair      { background: var(--s-fair); }
+.scale-poor      { background: var(--s-poor); }
+.scale-bad       { background: var(--s-bad); }
+.scale-quiet     { background: var(--ink-3); }
+
+.fg-excellent { color: var(--s-excellent); }
+.fg-good      { color: var(--s-good); }
+.fg-fair      { color: var(--s-fair); }
+.fg-poor      { color: var(--s-poor); }
+.fg-bad       { color: var(--s-bad); }
+.fg-quiet     { color: var(--ink-3); }
+
+/* ── hero readout ───────────────────────────────────────────────────────── */
+
+.readout {
+  display: grid;
+  grid-template-columns: minmax(0, auto) 1fr;
+  gap: 34px;
+  padding: 26px 20px 34px;
+  align-items: center;
+}
+.score {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.score .value {
+  font-family: var(--font-mono);
+  font-size: 78px;
+  line-height: 0.84;
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+.score .of {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-3);
+  padding-top: 6px;
+}
+.verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 12px;
+}
+.verdict .word {
+  font-size: 19px;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+}
+.verdict .where {
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 100px;
+  padding: 2px 9px;
+  opacity: 0.95;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── ranked rows ────────────────────────────────────────────────────────── */
+
+.rows {
+  border-top: 1px solid var(--line-soft);
+}
+.row {
+  display: grid;
+  grid-template-columns: 26px 1fr 150px 62px;
+  gap: 16px;
+  align-items: center;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  text-decoration: none;
+  color: inherit;
+}
+.row:hover,
+.row:focus-visible {
+  background: var(--ground);
+}
+.row .rank {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.row .city {
+  font-weight: 560;
+  letter-spacing: -0.01em;
+}
+.row .country {
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 400;
+}
+.row .mini {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 2px;
+  height: 22px;
+  align-items: end;
+}
+.row .mini i {
+  display: block;
+  border-radius: 0.5px;
+}
+.row .n {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── signal grid (city page) ────────────────────────────────────────────── */
+
+.grid-signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  border-top: 1px solid var(--line-soft);
+}
+.sig {
+  padding: 13px 16px;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sig .name {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.sig .reading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sig .measure {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.sig .pts {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.sig .track {
+  height: 3px;
+  background: var(--line-soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sig .track i {
+  display: block;
+  height: 100%;
+}
+.sig.is-absent .measure {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/* ── charts ─────────────────────────────────────────────────────────────── */
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 78px;
+}
+
+/* ── map ────────────────────────────────────────────────────────────────── */
+
+.seg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-3);
+  background: var(--surface);
+  cursor: pointer;
+}
+.seg.is-on {
+  color: var(--surface);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.maplayout {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+}
+.rail {
+  border-right: 1px solid var(--line-soft);
+  max-height: 560px;
+  overflow-y: auto;
+}
+.rail-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  font: inherit;
+}
+.rail-item:hover,
+.rail-item:focus-visible {
+  background: var(--ground);
+}
+.rail-item.is-sel {
+  background: var(--ground);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.rail-item .place {
+  font-size: 13.5px;
+  font-weight: 540;
+  letter-spacing: -0.01em;
+}
+.rail-item .meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  grid-column: 1;
+}
+.rail-item .val {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.rail-item.is-quiet .place,
+.rail-item.is-quiet .val {
+  opacity: 0.45;
+}
+
+.mapview {
+  position: relative;
+  height: 560px;
+  overflow: hidden;
+  background: var(--ground);
+}
+
+.legend {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  backdrop-filter: blur(6px);
+  z-index: 2;
+}
+.lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-2);
+}
+.lg i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: block;
+}
+.lg i.ring {
+  background: none;
+  border: 1.5px solid var(--ink-3);
+  border-radius: 50%;
+}
+
+.peek {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 210px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+
+/* ── station page ───────────────────────────────────────────────────────── */
+
+.statrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+.stat {
+  padding: 13px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid var(--line-soft);
+}
+.stat .unit {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+.near {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12.5px;
+  text-decoration: none;
+  color: inherit;
+}
+.near:hover .nm,
+.near:focus-visible .nm {
+  color: var(--accent);
+}
+.near .km {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.near .pm {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* ── cards, footer ──────────────────────────────────────────────────────── */
+
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.foot {
+  padding: 40px 0 64px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.foot a {
+  color: var(--ink-2);
+}
+
+/* Visible only to assistive tech, until focused. */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  z-index: 10;
+}
+.skip:focus {
+  left: 8px;
+  top: 8px;
+}
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .maplayout {
+    grid-template-columns: 1fr;
+  }
+  .rail {
+    max-height: 190px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .mapview {
+    height: 380px;
+  }
+  .peek {
+    left: 12px;
+    width: auto;
+  }
+  .readout {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .row {
+    grid-template-columns: 1fr 62px;
+  }
+  .row .rank,
+  .row .mini {
+    display: none;
+  }
+  .cols {
+    grid-template-columns: 1fr;
+  }
+  .bar nav {
+    display: none;
+  }
+}

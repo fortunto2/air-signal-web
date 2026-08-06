@@ -1,0 +1,103 @@
+---
+/**
+ * The map screen.
+ *
+ * The rail beside it is the same data as a list, because a list is how you compare and a map is
+ * how you locate — neither replaces the other, and the rail is also the only version of this
+ * screen that works without JavaScript, with a keyboard, or in a crawler.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import StationMap from "../components/StationMap.tsx";
+import { getCityAggregates, getSitemapCounts, getLastIngest } from "../lib/db";
+import { SITE, abs, paths, pmBand } from "../lib/site";
+import { ago } from "../lib/view";
+
+const [cities, counts, lastIngest] = await Promise.all([
+  getCityAggregates(),
+  getSitemapCounts(),
+  getLastIngest(),
+]);
+
+// The rail shows the places with the most to say — most devices first, so the top of the list is
+// where the map is densest and the reader has somewhere to start.
+const rail = [...cities].sort((a, b) => b.station_count - a.station_count).slice(0, 60);
+
+const description =
+  `Every community air-quality sensor on one map — ${counts.stations.toLocaleString("en-US")} devices ` +
+  `across ${counts.cities.toLocaleString("en-US")} cities. Pin colour is the reading, size is how ` +
+  "recent it is, and a hollow ring means the station has gone quiet.";
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    name: "Community air-quality sensors",
+    description,
+    url: abs("/map"),
+    license: "https://opendatacommons.org/licenses/odbl/",
+    creator: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+    distribution: [
+      {
+        "@type": "DataDownload",
+        encodingFormat: "application/geo+json",
+        contentUrl: abs("/api/stations.geojson"),
+      },
+    ],
+  },
+];
+---
+
+<Layout
+  title={`Air quality sensor map — ${counts.stations.toLocaleString("en-US")} live stations`}
+  description={description}
+  path="/map"
+  schema={schema}
+  updatedAt={lastIngest}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div class="eyebrow">
+          {counts.stations.toLocaleString("en-US")} sensors · {cities.length.toLocaleString("en-US")} cities
+          {lastIngest && ` · updated ${ago(Math.round((Date.now() - lastIngest.getTime()) / 60000))}`}
+        </div>
+      </Bar>
+
+      <div class="maplayout">
+        <div class="rail">
+          <div style="padding:12px 14px 8px;display:flex;justify-content:space-between;align-items:baseline">
+            <span class="eyebrow">Where the sensors are</span>
+            <span class="eyebrow num">{rail.length}</span>
+          </div>
+
+          {
+            rail.map((c) => (
+              <a class="rail-item" href={paths.city(c.country_slug, c.slug)}>
+                <span class="place">{c.name}</span>
+                <span class:list={["val", `fg-${pmBand(c.pm25_median)}`]}>
+                  {c.pm25_median !== null ? c.pm25_median.toFixed(1) : "—"}
+                </span>
+                <span class="meta">
+                  {c.station_count} sensor{c.station_count === 1 ? "" : "s"}
+                  {c.comfort !== null && ` · comfort ${c.comfort}`}
+                </span>
+              </a>
+            ))
+          }
+        </div>
+
+        <StationMap client:only="react" />
+      </div>
+
+      <div style="padding:14px 20px 18px">
+        <p style="font-size:12.5px;max-width:78ch">
+          Zoomed out, each dot is a city and its colour is the median of the devices in it — three
+          and a half thousand German sensors in a thumbnail is not a map, it is a smear. Past zoom
+          8 the devices appear individually, clustered where they crowd, with the cluster showing
+          the average of what is inside it.
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>

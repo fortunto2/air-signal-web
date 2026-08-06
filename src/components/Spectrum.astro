@@ -1,0 +1,63 @@
+---
+/**
+ * The fourteen-bar spectrum. The product's signature, and the reason it is called Signal.
+ *
+ * Server-rendered, always. An island may replace the heights later, but a crawler and a cold
+ * visitor must see real bars in the HTML — that failure is the entire reason for this rewrite.
+ *
+ * Two sizes, one component: `hero` carries labels and stands 74 px, `mini` is 22 px and lives in a
+ * list row. The mockup's argument for this shape over a ring or a stack is that it survives the
+ * shrink, so shipping only the big one would give away what the choice was for.
+ */
+import { SIGNALS, comfortBand, type SignalKey } from "../lib/site";
+
+interface Props {
+  scores: Partial<Record<SignalKey, number>>;
+  size?: "hero" | "mini";
+  labels?: boolean;
+  /** Rendered into the container so a screen reader gets the summary, not fourteen unlabelled divs. */
+  caption?: string;
+}
+
+const { scores, size = "hero", labels = size === "hero", caption } = Astro.props;
+
+const known = SIGNALS.filter((s) => scores[s.key] !== undefined).length;
+const summary =
+  caption ??
+  `Fourteen environmental signals, ${known} of which have a reading: ` +
+    SIGNALS.filter((s) => scores[s.key] !== undefined)
+      .map((s) => `${s.name} ${scores[s.key]} out of 100`)
+      .join(", ");
+---
+
+{
+  size === "hero" ? (
+    <div class="spectrum" role="img" aria-label={summary}>
+      {SIGNALS.map((s) => {
+        const v = scores[s.key];
+        return (
+          <div class:list={["col", v === undefined && "is-absent"]}>
+            <div
+              class:list={["bar-fill", v !== undefined && `scale-${comfortBand(v)}`]}
+              style={v === undefined ? undefined : `height:${Math.max(4, v)}%`}
+              title={v === undefined ? `${s.name} — no reading` : `${s.name} — ${v}/100`}
+            />
+            {labels && <span class="tick">{s.label}</span>}
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div class="mini" role="img" aria-label={summary}>
+      {SIGNALS.map((s) => {
+        const v = scores[s.key];
+        return (
+          <i
+            class:list={[v === undefined ? "scale-quiet" : `scale-${comfortBand(v)}`]}
+            style={`height:${v === undefined ? 100 : Math.max(8, v)}%;opacity:${v === undefined ? 0.18 : 1}`}
+          />
+        );
+      })}
+    </div>
+  )
+}

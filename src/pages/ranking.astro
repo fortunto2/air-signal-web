@@ -1,0 +1,118 @@
+---
+/**
+ * Everywhere with sensors, ordered by comfort.
+ *
+ * This is the page that proves the mini spectrum survives being shrunk into a list row — the
+ * argument for choosing that glyph over a ring. It is also the most useful screen for the second
+ * audience in the PRD: someone comparing three towns before deciding where to spend a winter.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import Spectrum from "../components/Spectrum.astro";
+import { countCitiesWithSensors, getLastIngest, getRankedCities, parseSignals } from "../lib/db";
+import { comfortBand, pmBand, SITE, abs, paths } from "../lib/site";
+import { ago } from "../lib/view";
+
+const LIMIT = 150;
+const [ranked, total, lastIngest] = await Promise.all([
+  getRankedCities(LIMIT),
+  countCitiesWithSensors(),
+  getLastIngest(),
+]);
+
+const description =
+  `Every city with community air sensors, ranked by outdoor comfort — ${total} places scored on ` +
+  "air, temperature, wind, sea, UV, pollen and eight more signals.";
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "Cities ranked by outdoor comfort",
+    numberOfItems: total,
+    itemListElement: ranked.slice(0, 25).map((c, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: c.name,
+      url: abs(paths.city(c.country_slug, c.slug)),
+    })),
+  },
+];
+---
+
+<Layout
+  title={`Cities ranked by outdoor comfort — ${SITE.name}`}
+  description={description}
+  path="/ranking"
+  schema={schema}
+  updatedAt={lastIngest}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div class="eyebrow">
+          {total} cities with sensors
+          {lastIngest && ` · updated ${ago(Math.round((Date.now() - lastIngest.getTime()) / 60000))}`}
+        </div>
+      </Bar>
+
+      <div style="padding:22px 20px 10px">
+        <h1 style="font-size:27px;margin:0">Ranked by comfort, right now</h1>
+        <p style="margin-top:9px;max-width:62ch;font-size:14.5px">
+          One score from fourteen signals, for every city where community sensors are reporting.
+          The fourteen bars beside each row are that city's spectrum — the same glyph as the hero,
+          at 22 px, which is the reason it was chosen over a dial.
+        </p>
+      </div>
+
+      <div class="rows">
+        <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
+          <div class="eyebrow">City</div>
+          <div class="eyebrow">Comfort</div>
+        </div>
+
+        {
+          ranked.map((c, i) => (
+            <a class="row" href={paths.city(c.country_slug, c.slug)}>
+              <span class="rank num">{i + 1}</span>
+              <span>
+                <span class="city">{c.name}</span>{" "}
+                <span class="country">
+                  {c.country} · {c.station_count} sensor{c.station_count === 1 ? "" : "s"}
+                  {c.pm25_median !== null && (
+                    <span class={`fg-${pmBand(c.pm25_median)}`}>
+                      {" "}
+                      · {c.pm25_median.toFixed(1)} µg/m³
+                    </span>
+                  )}
+                </span>
+              </span>
+              <Spectrum
+                scores={parseSignals(c.signals_json)}
+                size="mini"
+                caption={`${c.name}: comfort ${c.comfort} out of 100`}
+              />
+              <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>
+                {c.comfort}
+              </span>
+            </a>
+          ))
+        }
+      </div>
+
+      {
+        total > ranked.length && (
+          <div style="padding:14px 20px 18px">
+            <p class="eyebrow">
+              Showing the first {ranked.length} of {total}. The rest are reachable from{" "}
+              <a href={paths.map()} style="color:var(--accent)">
+                the map
+              </a>
+              .
+            </p>
+          </div>
+        )
+      }
+    </div>
+  </main>
+</Layout>

@@ -1,0 +1,747 @@
+/* @ts-self-types="./airq_core.d.ts" */
+
+/**
+ * @param {number} aqi
+ * @returns {string}
+ */
+export function wasm_aqi_category(aqi) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_aqi_category(aqi);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * Classify what a PM10/PM2.5 ratio is telling you — dust, combustion, mixed traffic.
+ *
+ * Returns `{"category","label","confidence"}`. Cheap enough to run on every station page,
+ * and it turns two numbers into the sentence a reader actually wanted.
+ * @param {number} pm25
+ * @param {number} pm10
+ * @returns {string}
+ */
+export function wasm_classify_source(pm25, pm10) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_classify_source(pm25, pm10);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_comfort_score(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_comfort_score(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Feature names from matrix macro (single source of truth).
+ * @returns {string}
+ */
+export function wasm_feature_names() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_feature_names();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * @param {number} kp
+ * @returns {string}
+ */
+export function wasm_geomagnetic(kp) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_geomagnetic(kp);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * @param {number} lat1
+ * @param {number} lon1
+ * @param {number} lat2
+ * @param {number} lon2
+ * @returns {number}
+ */
+export function wasm_haversine(lat1, lon1, lat2, lon2) {
+    const ret = wasm.wasm_haversine(lat1, lon1, lat2, lon2);
+    return ret;
+}
+
+/**
+ * Latest row as SignalComfort JSON.
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_matrix_latest(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_matrix_latest(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * ML feature vector (35 dimensions).
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_matrix_ml_vector(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_matrix_ml_vector(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Push a row into matrix JSON, return updated matrix JSON.
+ * row_json: `[80, 70, 90, ...]` (11 scores)
+ * @param {string} matrix_json
+ * @param {number} ts
+ * @param {string} row_json
+ * @returns {string}
+ */
+export function wasm_matrix_push(matrix_json, ts, row_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(matrix_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(row_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_matrix_push(ptr0, len0, ts, ptr1, len1);
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Sub-matrix for last N hours.
+ * @param {string} json
+ * @param {number} hours
+ * @returns {string}
+ */
+export function wasm_matrix_slice(json, hours) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_matrix_slice(ptr0, len0, hours);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Per-column summary statistics.
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_matrix_summary(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_matrix_summary(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Merge a model forecast with a sensor median, weighting the model down as it diverges.
+ *
+ * This is the calculation behind the claim no other air map makes: a cheap sensor indoors or
+ * next to a road reads several times high, and the merge says by how much instead of plotting
+ * it at face value. Moscow, 2026-03: model 130 µg/m³ against a sensor median of 6.7 with ten
+ * sensors agreeing → divergence > 10, model weight < 0.05, merged 6.2.
+ *
+ * Input JSON — every field optional except `sensor_count`:
+ * `{"model_pm25":130,"model_pm10":160,"sensor_pm25":6.7,"sensor_pm10":10,"sensor_count":10}`
+ *
+ * Returns the serialized `MergedReading`: final `pm25`/`pm10`, both inputs, `model_weight`,
+ * `divergence` and a `source` string ("sensors+model" | "sensors" | "model-only" | "no-data").
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_merge(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_merge(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * @param {number} year
+ * @param {number} month
+ * @param {number} day
+ * @returns {number}
+ */
+export function wasm_moon_phase(year, month, day) {
+    const ret = wasm.wasm_moon_phase(year, month, day);
+    return ret;
+}
+
+/**
+ * @param {number} pm25
+ * @returns {number}
+ */
+export function wasm_normalize_air(pm25) {
+    const ret = wasm.wasm_normalize_air(pm25);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} hours
+ * @returns {number}
+ */
+export function wasm_normalize_daylight(hours) {
+    const ret = wasm.wasm_normalize_daylight(hours);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} magnitude
+ * @returns {number}
+ */
+export function wasm_normalize_earthquake(magnitude) {
+    const ret = wasm.wasm_normalize_earthquake(magnitude);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} distance_km
+ * @returns {number}
+ */
+export function wasm_normalize_fire(distance_km) {
+    const ret = wasm.wasm_normalize_fire(distance_km);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} kp
+ * @returns {number}
+ */
+export function wasm_normalize_geomagnetic(kp) {
+    const ret = wasm.wasm_normalize_geomagnetic(kp);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} humidity_pct
+ * @returns {number}
+ */
+export function wasm_normalize_humidity(humidity_pct) {
+    const ret = wasm.wasm_normalize_humidity(humidity_pct);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} wave_height_m
+ * @returns {number}
+ */
+export function wasm_normalize_marine(wave_height_m) {
+    const ret = wasm.wasm_normalize_marine(wave_height_m);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} phase
+ * @returns {number}
+ */
+export function wasm_normalize_moon(phase) {
+    const ret = wasm.wasm_normalize_moon(phase);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} db
+ * @returns {number}
+ */
+export function wasm_normalize_noise(db) {
+    const ret = wasm.wasm_normalize_noise(db);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} max_pollen
+ * @returns {number}
+ */
+export function wasm_normalize_pollen(max_pollen) {
+    const ret = wasm.wasm_normalize_pollen(max_pollen);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} current_hpa
+ * @param {number} change_3h
+ * @returns {number}
+ */
+export function wasm_normalize_pressure(current_hpa, change_3h) {
+    const ret = wasm.wasm_normalize_pressure(current_hpa, change_3h);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} temp_c
+ * @returns {number}
+ */
+export function wasm_normalize_temperature(temp_c) {
+    const ret = wasm.wasm_normalize_temperature(temp_c);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} uv
+ * @returns {number}
+ */
+export function wasm_normalize_uv(uv) {
+    const ret = wasm.wasm_normalize_uv(uv);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} speed_kmh
+ * @returns {number}
+ */
+export function wasm_normalize_wind(speed_kmh) {
+    const ret = wasm.wasm_normalize_wind(speed_kmh);
+    return ret >>> 0;
+}
+
+/**
+ * @param {string} json
+ * @returns {number}
+ */
+export function wasm_overall_aqi(json) {
+    const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.wasm_overall_aqi(ptr0, len0);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} value
+ * @returns {number}
+ */
+export function wasm_pm10_aqi(value) {
+    const ret = wasm.wasm_pm10_aqi(value);
+    return ret >>> 0;
+}
+
+/**
+ * @param {number} value
+ * @returns {number}
+ */
+export function wasm_pm25_aqi(value) {
+    const ret = wasm.wasm_pm25_aqi(value);
+    return ret >>> 0;
+}
+
+/**
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_pollen_status(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_pollen_status(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * @param {string} pollutant
+ * @param {number} value
+ * @returns {string}
+ */
+export function wasm_pollutant_status(pollutant, value) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(pollutant, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_pollutant_status(ptr0, len0, value);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * @param {number} score
+ * @returns {string}
+ */
+export function wasm_progress_bar(score) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_progress_bar(score);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * Input JSON: `{"air":22,"temperature":85,"uv":70,"sea":90,...}`
+ * Returns JSON: `{"total":75,"air":22,...}`
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_signal_comfort(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_signal_comfort(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Signal column names from macro.
+ * @returns {string}
+ */
+export function wasm_signal_names() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_signal_names();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * 35-dim ML vector from SignalComfort JSON.
+ * @param {string} json
+ * @returns {string}
+ */
+export function wasm_signal_vector(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_signal_vector(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Signal weights from macro.
+ * @returns {string}
+ */
+export function wasm_signal_weights() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_signal_weights();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * @param {number} degrees
+ * @returns {string}
+ */
+export function wasm_wind_direction(degrees) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.wasm_wind_direction(degrees);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+function __wbg_get_imports() {
+    const import0 = {
+        __proto__: null,
+        __wbindgen_init_externref_table: function() {
+            const table = wasm.__wbindgen_externrefs;
+            const offset = table.grow(4);
+            table.set(0, undefined);
+            table.set(offset + 0, undefined);
+            table.set(offset + 1, null);
+            table.set(offset + 2, true);
+            table.set(offset + 3, false);
+        },
+    };
+    return {
+        __proto__: null,
+        "./airq_core_bg.js": import0,
+    };
+}
+
+function getStringFromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return decodeText(ptr, len);
+}
+
+let cachedUint8ArrayMemory0 = null;
+function getUint8ArrayMemory0() {
+    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
+    }
+    return cachedUint8ArrayMemory0;
+}
+
+function passStringToWasm0(arg, malloc, realloc) {
+    if (realloc === undefined) {
+        const buf = cachedTextEncoder.encode(arg);
+        const ptr = malloc(buf.length, 1) >>> 0;
+        getUint8ArrayMemory0().subarray(ptr, ptr + buf.length).set(buf);
+        WASM_VECTOR_LEN = buf.length;
+        return ptr;
+    }
+
+    let len = arg.length;
+    let ptr = malloc(len, 1) >>> 0;
+
+    const mem = getUint8ArrayMemory0();
+
+    let offset = 0;
+
+    for (; offset < len; offset++) {
+        const code = arg.charCodeAt(offset);
+        if (code > 0x7F) break;
+        mem[ptr + offset] = code;
+    }
+    if (offset !== len) {
+        if (offset !== 0) {
+            arg = arg.slice(offset);
+        }
+        ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
+        const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
+        const ret = cachedTextEncoder.encodeInto(arg, view);
+
+        offset += ret.written;
+        ptr = realloc(ptr, len, offset, 1) >>> 0;
+    }
+
+    WASM_VECTOR_LEN = offset;
+    return ptr;
+}
+
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+cachedTextDecoder.decode();
+const MAX_SAFARI_DECODE_BYTES = 2146435072;
+let numBytesDecoded = 0;
+function decodeText(ptr, len) {
+    numBytesDecoded += len;
+    if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
+        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+        cachedTextDecoder.decode();
+        numBytesDecoded = len;
+    }
+    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+
+const cachedTextEncoder = new TextEncoder();
+
+if (!('encodeInto' in cachedTextEncoder)) {
+    cachedTextEncoder.encodeInto = function (arg, view) {
+        const buf = cachedTextEncoder.encode(arg);
+        view.set(buf);
+        return {
+            read: arg.length,
+            written: buf.length
+        };
+    };
+}
+
+let WASM_VECTOR_LEN = 0;
+
+let wasmModule, wasm;
+function __wbg_finalize_init(instance, module) {
+    wasm = instance.exports;
+    wasmModule = module;
+    cachedUint8ArrayMemory0 = null;
+    wasm.__wbindgen_start();
+    return wasm;
+}
+
+async function __wbg_load(module, imports) {
+    if (typeof Response === 'function' && module instanceof Response) {
+        if (typeof WebAssembly.instantiateStreaming === 'function') {
+            try {
+                return await WebAssembly.instantiateStreaming(module, imports);
+            } catch (e) {
+                const validResponse = module.ok && expectedResponseType(module.type);
+
+                if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
+                    console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
+
+                } else { throw e; }
+            }
+        }
+
+        const bytes = await module.arrayBuffer();
+        return await WebAssembly.instantiate(bytes, imports);
+    } else {
+        const instance = await WebAssembly.instantiate(module, imports);
+
+        if (instance instanceof WebAssembly.Instance) {
+            return { instance, module };
+        } else {
+            return instance;
+        }
+    }
+
+    function expectedResponseType(type) {
+        switch (type) {
+            case 'basic': case 'cors': case 'default': return true;
+        }
+        return false;
+    }
+}
+
+function initSync(module) {
+    if (wasm !== undefined) return wasm;
+
+
+    if (module !== undefined) {
+        if (Object.getPrototypeOf(module) === Object.prototype) {
+            ({module} = module)
+        } else {
+            console.warn('using deprecated parameters for `initSync()`; pass a single object instead')
+        }
+    }
+
+    const imports = __wbg_get_imports();
+    if (!(module instanceof WebAssembly.Module)) {
+        module = new WebAssembly.Module(module);
+    }
+    const instance = new WebAssembly.Instance(module, imports);
+    return __wbg_finalize_init(instance, module);
+}
+
+async function __wbg_init(module_or_path) {
+    if (wasm !== undefined) return wasm;
+
+
+    if (module_or_path !== undefined) {
+        if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
+            ({module_or_path} = module_or_path)
+        } else {
+            console.warn('using deprecated parameters for the initialization function; pass a single object instead')
+        }
+    }
+
+    if (module_or_path === undefined) {
+        module_or_path = new URL('airq_core_bg.wasm', import.meta.url);
+    }
+    const imports = __wbg_get_imports();
+
+    if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {
+        module_or_path = fetch(module_or_path);
+    }
+
+    const { instance, module } = await __wbg_load(await module_or_path, imports);
+
+    return __wbg_finalize_init(instance, module);
+}
+
+export { initSync, __wbg_init as default };

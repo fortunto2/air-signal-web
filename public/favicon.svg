@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    The spectrum, at sixteen pixels. Fourteen bars is unreadable that small, so this is five —
+    one per comfort band, in the product's own ramp, left to right from clean to bad. It reads as
+    an instrument rather than a logo, which is the point of the whole design.
+  -->
+  <rect width="32" height="32" rx="3" fill="#12171C"/>
+  <g>
+    <rect x="4"  y="17" width="4" height="11" rx="1" fill="#0E7A73"/>
+    <rect x="10" y="13" width="4" height="15" rx="1" fill="#6B9A4C"/>
+    <rect x="16" y="8"  width="4" height="20" rx="1" fill="#C08D2A"/>
+    <rect x="22" y="15" width="4" height="13" rx="1" fill="#BD5C33"/>
+  </g>
+</svg>

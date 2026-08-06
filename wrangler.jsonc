@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "air-signal-web",
+  // The unified entrypoint the adapter ships in v13 — the same file serves `astro dev` and the
+  // deployed worker. Pointing this at a path under dist/ instead fails before the build has made
+  // it, because the Cloudflare Vite plugin resolves `main` at config time.
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-08-06",
+
+  // `nodejs_compat` is what lets the Astro server bundle run at all.
+  // `global_fetch_strictly_public` makes a `fetch()` to our own origin leave the worker and come
+  // back through the edge, instead of being short-circuited — without it, a page fetching its own
+  // /api/ route silently bypasses the cache it was written to use.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "air-signal",
+      // Filled by `wrangler d1 create air-signal`. Committed so every machine and CI talk to the
+      // same database — it is an id, not a secret.
+      "database_id": "2bbc6622-0292-46e6-8b80-be39ec1a2ae0"
+    }
+  ],
+
+  "observability": { "enabled": true },
+
+  // The domain is the product name; workers.dev stays off so there is exactly one indexable host
+  // and nothing competes with it in search.
+  "workers_dev": false,
+  "routes": [{ "pattern": "airsignal.app", "custom_domain": true }]
+}

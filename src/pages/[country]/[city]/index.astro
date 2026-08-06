@@ -1,0 +1,265 @@
+---
+/**
+ * The city page. The reason the rewrite exists.
+ *
+ * Everything a search engine needs is in this HTML before any script runs: the heading, a verdict
+ * sentence containing real numbers, all fourteen readings, and JSON-LD. The island that follows
+ * may refresh the numbers; it may not be the thing that produces them.
+ */
+import Layout from "../../../layouts/Layout.astro";
+import Bar from "../../../components/Bar.astro";
+import Spectrum from "../../../components/Spectrum.astro";
+import Sparkline from "../../../components/Sparkline.astro";
+import LiveCity from "../../../components/LiveCity.tsx";
+import { getCity, getCityHistory, getStationsForCity, getNearbyCities, parseSignals } from "../../../lib/db";
+import { cityView, ago } from "../../../lib/view";
+import { SITE, abs, paths, comfortBand, pmBand } from "../../../lib/site";
+
+const { country, city: citySlug } = Astro.params;
+const row = await getCity(country!, citySlug!);
+if (!row) return new Response(null, { status: 404 });
+
+const [history, stations, nearby] = await Promise.all([
+  getCityHistory(row.id, 30),
+  getStationsForCity(row.id, 24),
+  getNearbyCities(row.lat, row.lon, 2, 5, row.id),
+]);
+
+const v = cityView(row, history);
+const scores = parseSignals(row.signals_json);
+
+// Where today sits in its own month. A number is only meaningful next to the ones before it.
+const past = history.map((d) => d.comfort).filter((n): n is number => n !== null);
+const better =
+  past.length > 6 && v.comfort !== null
+    ? Math.round((past.filter((p) => p < v.comfort!).length / past.length) * 100)
+    : null;
+
+const live = stations.filter((s) => s.pm25 !== null).length;
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Place",
+    name: `${v.name}, ${v.country}`,
+    url: abs(v.path),
+    geo: { "@type": "GeoCoordinates", latitude: v.lat, longitude: v.lon },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    name: `Air quality and outdoor comfort in ${v.name}`,
+    description: v.description,
+    url: abs(v.path),
+    temporalCoverage: history.length ? `${history[0]!.day}/${history.at(-1)!.day}` : undefined,
+    variableMeasured: v.signals
+      .filter((s) => s.measure !== null)
+      .map((s) => ({ "@type": "PropertyValue", name: s.name, value: s.measure })),
+    isBasedOn: [
+      { "@type": "Dataset", name: "Sensor.Community", url: "https://sensor.community/" },
+      { "@type": "Dataset", name: "Open-Meteo", url: "https://open-meteo.com/" },
+    ],
+    license: "https://opendatacommons.org/licenses/odbl/",
+    creator: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Map", item: abs(paths.map()) },
+      { "@type": "ListItem", position: 2, name: v.country, item: abs(`/${row.country_slug}/`) },
+      { "@type": "ListItem", position: 3, name: v.name, item: abs(v.path) },
+    ],
+  },
+];
+---
+
+<Layout
+  title={v.title}
+  description={v.description}
+  path={v.path}
+  schema={schema}
+  updatedAt={v.updatedAt}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div style="font-size:13.5px;color:var(--ink-3)">
+          <a href={paths.map()} style="color:var(--accent);text-decoration:none">Map</a> · {v.country}
+        </div>
+      </Bar>
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">Air &amp; comfort in</div>
+        <h1 style="font-size:27px;margin:5px 0 0">{v.name}, {v.country}</h1>
+        <p style="margin-top:9px;max-width:60ch;font-size:14.5px">{v.verdict}</p>
+      </div>
+
+      <div class="readout" style="padding-top:16px">
+        <div>
+          <div class="score">
+            <div class:list={["value", v.band && `fg-${v.band}`]} data-live="comfort">
+              {v.comfort ?? "—"}
+            </div>
+            <div class="of">/100</div>
+          </div>
+          <div class="verdict">
+            <div class:list={["word", v.band && `fg-${v.band}`]}>{v.word}</div>
+            <div class="where">
+              {
+                better !== null
+                  ? `Better than ${better} % of the past ${past.length} days`
+                  : `${v.stationCount} sensor${v.stationCount === 1 ? "" : "s"} within reach`
+              }
+            </div>
+          </div>
+          <div style="margin-top:14px">
+            {
+              live > 0 ? (
+                <span class:list={["chip", v.band && `fg-${v.band}`]}>
+                  <span class="dot" />
+                  {live} sensor{live === 1 ? "" : "s"} live
+                </span>
+              ) : (
+                <span class="chip fg-quiet">
+                  <span class="dot" />
+                  modelled — no sensor here
+                </span>
+              )
+            }
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+            <div class="eyebrow">Signal spectrum</div>
+            <div class="eyebrow" data-live="stamp">
+              {v.updatedAt ? `Updated ${ago(Math.round((Date.now() - v.updatedAt.getTime()) / 60000))}` : ""}
+            </div>
+          </div>
+          <Spectrum scores={scores} size="hero" />
+          <div style="height:20px"></div>
+        </div>
+      </div>
+
+      <div class="grid-signals">
+        {
+          v.signals.map((s) => (
+            <div class:list={["sig", s.measure === null && "is-absent"]}>
+              <span class="name">{s.name}</span>
+              <div class="reading">
+                <span class:list={["measure", s.band && `fg-${s.band}`]}>
+                  {s.measure ?? "no reading"}
+                </span>
+                <span class="pts">{s.score !== undefined ? `${s.score}` : "—"}</span>
+              </div>
+              <div class="track">
+                {s.score !== undefined && (
+                  <i class={`scale-${s.band}`} style={`width:${s.score}%`} />
+                )}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+      {
+        history.length > 2 && (
+          <div style="padding:18px 20px 22px;border-bottom:1px solid var(--line-soft)">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div class="eyebrow">Comfort, last {history.length} days</div>
+              <div class="eyebrow num">
+                min {Math.min(...past)} · avg {Math.round(past.reduce((a, b) => a + b, 0) / past.length)} ·
+                max {Math.max(...past)}
+              </div>
+            </div>
+            <Sparkline
+              points={history.map((d) => d.comfort)}
+              labels={history.map((d) => d.day)}
+              band={v.band ?? undefined}
+              label={`Comfort in ${v.name} over the last ${history.length} days`}
+            />
+          </div>
+        )
+      }
+
+      {
+        v.divergence !== null && v.divergence > 1.3 && (
+          <div style="padding:16px 20px;border-bottom:1px solid var(--line-soft)">
+            <div class="eyebrow" style="margin-bottom:8px">
+              Sensors versus the model
+            </div>
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span class="num fg-fair" style="font-size:23px">
+                ×{v.divergence.toFixed(1)}
+              </span>
+              <span style="font-size:13px;color:var(--ink-2)">apart</span>
+            </div>
+            <p style="font-size:12.5px;margin-top:8px;max-width:70ch">
+              The community sensors here and the atmospheric model disagree by that factor. Where
+              they do, the sensors win and the model is down-weighted — a cheap device indoors or
+              beside a road reads several times high, and plotting that at face value is what every
+              other air map does.
+            </p>
+          </div>
+        )
+      }
+
+      {
+        stations.length > 0 && (
+          <div style="padding:16px 20px 20px;border-bottom:1px solid var(--line-soft)">
+            <div class="eyebrow" style="margin-bottom:10px">
+              The {stations.length} sensor{stations.length === 1 ? "" : "s"} this was computed from
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:7px 20px">
+              {stations.map((s) => (
+                <a class="near" href={paths.station(row.country_slug, row.slug, s.id)}>
+                  <span class="nm">
+                    Station {s.id}
+                    {s.sensor_type && (
+                      <span style="color:var(--ink-3)"> · {s.sensor_type.toUpperCase()}</span>
+                    )}
+                  </span>
+                  <span class="km">{s.distance_km !== null ? `${s.distance_km} km` : ""}</span>
+                  <span class:list={["pm", `fg-${pmBand(s.pm25)}`]}>
+                    {s.pm25 !== null ? s.pm25.toFixed(1) : "—"}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )
+      }
+
+      {
+        nearby.length > 0 && (
+          <div style="padding:16px 20px 20px">
+            <div class="eyebrow" style="margin-bottom:10px">
+              Nearby
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              {nearby.map((c) => (
+                <a
+                  class="seg"
+                  style="text-decoration:none"
+                  href={paths.city(c.country_slug, c.slug)}
+                >
+                  {c.name}
+                  {c.comfort !== null && (
+                    <span class={`fg-${comfortBand(c.comfort)}`}> {c.comfort}</span>
+                  )}
+                </a>
+              ))}
+            </div>
+          </div>
+        )
+      }
+    </div>
+
+    <!--
+      The island. It refreshes what is already above it and nothing more — if this never runs, the
+      page is still complete and still correct as of the last ingest.
+    -->
+    <LiveCity client:idle lat={v.lat} lon={v.lon} cityName={v.name} />
+  </main>
+</Layout>

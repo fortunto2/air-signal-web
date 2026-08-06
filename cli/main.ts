@@ -1,173 +1,261 @@
 #!/usr/bin/env tsx
 /**
- * Air Signal CLI — the site's business logic without the site.
+ * Air Signal CLI — the site's logic without the site.
  *
- * CLI-first testing: every deterministic thing the pages do can be run here, so `make integration`
- * exercises the real pipeline without a browser, a build, or a network round-trip through UI code.
+ * Every deterministic thing the pages do can be run here, so a failure can be reproduced without a
+ * browser, a build, or a deploy. This is also the only write path into D1: the worker reads.
  *
- *   pnpm stations            rebuild data/stations.json from Sensor.Community
- *   pnpm stations:check      verify the committed index is present and well-formed (build gate)
- *   pnpm comfort -- <lat> <lon>   compute the fourteen signals for a point
- *   pnpm integration         end-to-end check against live upstreams
+ *   pnpm seed                        load the cities database into D1 (once)
+ *   pnpm ingest                      the full pass against live upstreams
+ *   pnpm ingest -- --remote          …against production
+ *   pnpm ingest -- --only comfort    one stage, for when one stage is what broke
+ *   pnpm comfort -- 36.27 32.32      the fourteen signals for a point, printed
+ *   pnpm integration                 upstream shapes and the no-shrink guarantee
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  applyGate,
+  ingestAll,
+  ingestComfort,
+  ingestDivergence,
+  ingestStations,
+  seedCities,
+  type Opts,
+} from "./ingest.ts";
+import { loadCities } from "./places.ts";
+import { comfortFrom, scoresFrom, moonPhase, type Readings } from "./wasm.ts";
+import * as up from "./upstreams.ts";
+import { query } from "./d1.ts";
+import { SIGNALS, comfortBand } from "../src/lib/site.ts";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const INDEX_PATH = join(ROOT, "data", "stations.json");
+// ── flags ───────────────────────────────────────────────────────────────────
 
-/** Global feed: every station that reported in the last five minutes. */
-const SENSOR_COMMUNITY_NOW = "https://data.sensor.community/static/v2/data.json";
+const argv = process.argv.slice(2);
+const cmd = argv[0];
+const flag = (name: string): string | undefined => {
+  const i = argv.indexOf(`--${name}`);
+  return i >= 0 ? argv[i + 1] : undefined;
+};
+const has = (name: string) => argv.includes(`--${name}`);
 
-interface Station {
-  id: number;
-  lat: number;
-  lon: number;
-  country: string;
-  /** Nearest city from the cities database — assigned when the index is built, never at render. */
-  city: string | null;
-  pm25: number | null;
-  pm10: number | null;
-  seenAt: string;
-}
+const opts: Opts = {
+  remote: has("remote"),
+  historyDays: Number(flag("history") ?? 31),
+  limitCities: flag("cities") ? Number(flag("cities")) : undefined,
+  force: has("force"),
+};
 
-interface StationIndex {
-  builtAt: string;
-  source: string;
-  stations: Station[];
-}
-
-// ── commands ────────────────────────────────────────────────────────────────
+// ── comfort at a point ──────────────────────────────────────────────────────
 
 /**
- * Rebuild the station index.
- *
- * The result is committed to the repo on purpose. A build that fetches its own page list is a build
- * that silently ships half a site when the upstream has a bad minute; a committed index makes the
- * page list a reviewable diff.
+ * The fourteen signals for one coordinate, computed exactly as a city page computes them —
+ * the point being that if this prints something wrong, the page is wrong in the same way.
  */
-async function buildStations(): Promise<void> {
-  console.log(`fetching ${SENSOR_COMMUNITY_NOW} …`);
-  const res = await fetch(SENSOR_COMMUNITY_NOW);
-  if (!res.ok) throw new Error(`upstream ${res.status} ${res.statusText}`);
+async function comfortAt(lat: number, lon: number): Promise<void> {
+  const point = [{ lat, lon }];
+  const [[weather], [air], [marine], quakes, kp, fires] = await Promise.all([
+    up.fetchWeather(point),
+    up.fetchAir(point),
+    up.fetchMarine(point),
+    up.fetchQuakes().catch(() => null),
+    up.fetchKp(),
+    up.fetchFires(process.env.FIRMS_API_KEY),
+  ]);
 
-  const raw = (await res.json()) as Array<Record<string, any>>;
-  const byId = new Map<number, Station>();
-
-  for (const row of raw) {
-    const id = row?.sensor?.id;
-    const loc = row?.location;
-    if (!id || !loc) continue;
-
-    const lat = Number.parseFloat(loc.latitude);
-    const lon = Number.parseFloat(loc.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-
-    let pm25: number | null = null;
-    let pm10: number | null = null;
-    for (const v of row.sensordatavalues ?? []) {
-      const n = Number.parseFloat(v.value);
-      // Values outside this window are a broken sensor, not clean or catastrophic air. Keeping
-      // them would colour a pin bright red on the strength of a dying fan.
-      if (!Number.isFinite(n) || n <= 0 || n > 500) continue;
-      if (v.value_type === "P2") pm25 = n;
-      if (v.value_type === "P1") pm10 = n;
-    }
-    if (pm25 === null && pm10 === null) continue;
-
-    byId.set(id, {
-      id,
-      lat,
-      lon,
-      country: (loc.country ?? "").toUpperCase(),
-      city: null, // TODO: nearest-city assignment via airq-core `wasm_search_cities`
-      pm25,
-      pm10,
-      seenAt: row.timestamp ?? new Date().toISOString(),
-    });
-  }
-
-  const index: StationIndex = {
-    builtAt: new Date().toISOString(),
-    source: SENSOR_COMMUNITY_NOW,
-    stations: [...byId.values()].sort((a, b) => a.id - b.id),
+  const readings: Readings = {
+    pm25: air?.pm25,
+    temperatureC: weather?.temperatureC,
+    humidityPct: weather?.humidityPct,
+    windKmh: weather?.windKmh,
+    pressureHpa: weather?.pressureHpa,
+    pressureChange3h: weather?.pressureChange3h,
+    uv: weather?.uv,
+    daylightHours: weather?.daylightHours,
+    waveHeightM: marine?.waveHeightM,
+    pollen: air?.pollen,
+    quakeMagnitude: up.quakeNear(quakes, lat, lon),
+    fireDistanceKm: fires.length ? up.fireDistance(fires, lat, lon) : undefined,
+    kp,
+    moonPhase: moonPhase(new Date()),
   };
 
-  await mkdir(dirname(INDEX_PATH), { recursive: true });
-  await writeFile(INDEX_PATH, JSON.stringify(index, null, 2) + "\n");
+  const comfort = comfortFrom(scoresFrom(readings));
 
-  const countries = new Set(index.stations.map((s) => s.country)).size;
-  console.log(`wrote ${index.stations.length} stations across ${countries} countries → data/stations.json`);
+  console.log(`\ncomfort at ${lat}, ${lon}\n`);
+  for (const s of SIGNALS) {
+    const v = comfort.scores[s.key];
+    const bar =
+      v === undefined
+        ? "—".padEnd(20)
+        : "█".repeat(Math.round(v / 5)).padEnd(20, "░");
+    const value = v === undefined ? "no data" : String(v).padStart(3);
+    console.log(`  ${s.name.padEnd(14)} ${bar} ${value}${s.key === comfort.worst ? "   ← worst" : ""}`);
+  }
+  console.log(`\n  total ${comfort.total}/100 — ${comfortBand(comfort.total)}`);
+  const known = Object.keys(comfort.scores).length;
+  if (known < SIGNALS.length) {
+    console.log(`  (scored on ${known} of ${SIGNALS.length} signals; the rest had no reading)`);
+  }
 }
+
+// ── integration ─────────────────────────────────────────────────────────────
 
 /**
- * Build gate. Runs before every build so a missing or truncated index fails loudly here rather than
- * quietly shipping a site with no city pages.
+ * The checks worth running before believing a deploy.
+ *
+ * The last one is the important one and it is not about upstreams at all: it asserts that running
+ * the pipeline again cannot make the site smaller. That property came for free when the station
+ * index was a committed file, and it is the single thing most easily lost by moving to a database.
  */
-async function verifyStations(): Promise<void> {
-  if (!existsSync(INDEX_PATH)) {
-    throw new Error("data/stations.json is missing — run `pnpm stations` and commit the result");
-  }
-  const index = JSON.parse(await readFile(INDEX_PATH, "utf8")) as StationIndex;
-  if (!Array.isArray(index.stations) || index.stations.length < 100) {
-    throw new Error(`station index looks truncated: ${index.stations?.length ?? 0} entries`);
-  }
-  const ageDays = (Date.now() - Date.parse(index.builtAt)) / 86_400_000;
-  if (ageDays > 14) {
-    console.warn(`warning: station index is ${ageDays.toFixed(0)} days old — refresh it`);
-  }
-  console.log(`ok — ${index.stations.length} stations, built ${ageDays.toFixed(1)} days ago`);
-}
-
-/** Fourteen signals for one point. Wired to airq-core WASM in the first build task. */
-async function comfort(lat: number, lon: number): Promise<void> {
-  console.log(`comfort at ${lat}, ${lon}`);
-  console.log("not wired yet — see docs/plan/*/plan.md, task «airq-core WASM in Node»");
-  process.exitCode = 1;
-}
-
-/** End-to-end: the index is sane and both upstreams answer with the shape we expect. */
 async function integration(): Promise<void> {
-  await verifyStations();
+  let failures = 0;
+  const check = async (name: string, fn: () => Promise<string>) => {
+    try {
+      console.log(`  ok — ${name}: ${await fn()}`);
+    } catch (err) {
+      failures++;
+      console.error(`  FAIL — ${name}: ${err instanceof Error ? err.message : err}`);
+    }
+  };
 
-  const area = await fetch("https://data.sensor.community/airrohr/v1/filter/area=36.54,32.00,10");
-  if (!area.ok) throw new Error(`sensor.community area query: ${area.status}`);
-  const areaRows = (await area.json()) as unknown[];
-  console.log(`ok — sensor.community area query returned ${areaRows.length} rows`);
+  console.log("upstreams");
+  await check("sensor.community snapshot", async () => {
+    const rows = await up.fetchSensorSnapshot();
+    if (rows.length < 1000) throw new Error(`only ${rows.length} devices — shape may have changed`);
+    return `${rows.length} devices`;
+  });
 
-  const meteo = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=36.54&longitude=32.00&current=temperature_2m,wind_speed_10m",
-  );
-  if (!meteo.ok) throw new Error(`open-meteo: ${meteo.status}`);
-  const now = (await meteo.json()) as any;
-  if (typeof now?.current?.temperature_2m !== "number") {
-    throw new Error("open-meteo returned no temperature — the response shape changed");
-  }
-  console.log(`ok — open-meteo current temperature ${now.current.temperature_2m} °C`);
+  await check("sensor.community archive index", async () => {
+    const m = await up.fetchArchiveDay(new Date(Date.now() - 30 * 86_400_000));
+    if (m.size < 1000) throw new Error(`only ${m.size} entries`);
+    return `${m.size} devices had data 30 days ago`;
+  });
 
-  console.log("\nintegration passed");
+  await check("open-meteo forecast, batched", async () => {
+    const pts = [
+      { lat: 36.27, lon: 32.32 },
+      { lat: 52.52, lon: 13.4 },
+      { lat: 41.01, lon: 28.95 },
+    ];
+    const out = await up.fetchWeather(pts);
+    if (out.length !== pts.length) throw new Error(`asked for ${pts.length}, got ${out.length}`);
+    if (typeof out[0]?.temperatureC !== "number") throw new Error("no temperature — shape changed");
+    return `${out.length} points, ${out[0]!.temperatureC} °C at the first`;
+  });
+
+  await check("open-meteo daily history, batched", async () => {
+    const pts = [
+      { lat: 36.27, lon: 32.32 },
+      { lat: 52.52, lon: 13.4 },
+    ];
+    const out = await up.fetchDailyHistory(pts, 31);
+    if (out.length !== pts.length) throw new Error(`asked for ${pts.length}, got ${out.length}`);
+    if ((out[0]?.length ?? 0) < 30) throw new Error("past_days did not return a series");
+    return `${out.length} points, ${out[0]!.length} days each`;
+  });
+
+  await check("open-meteo air quality", async () => {
+    const [a] = await up.fetchAir([{ lat: 52.52, lon: 13.4 }]);
+    if (typeof a?.pm25 !== "number") throw new Error("no pm2_5 — shape changed");
+    return `pm2.5 ${a.pm25} µg/m³`;
+  });
+
+  await check("usgs earthquakes", async () => `${(await up.fetchQuakes()).length} events, last day`);
+  await check("noaa planetary Kp", async () => `Kp ${(await up.fetchKp()) ?? "unavailable"}`);
+
+  console.log("\ncore");
+  await check("cities database", async () => {
+    const cities = loadCities();
+    if (cities.length < 10_000) throw new Error(`only ${cities.length}`);
+    const dupes = new Set<string>();
+    const seen = new Set<string>();
+    for (const c of cities) {
+      const key = `${c.countrySlug}/${c.slug}`;
+      if (seen.has(key)) dupes.add(key);
+      seen.add(key);
+    }
+    if (dupes.size) throw new Error(`${dupes.size} duplicate paths, e.g. ${[...dupes][0]}`);
+    return `${cities.length} cities, every path unique`;
+  });
+
+  await check("moscow divergence correction", async () => {
+    const { merge } = await import("./wasm.ts");
+    const m = merge({ model_pm25: 130, model_pm10: 160, sensor_pm25: 6.7, sensor_pm10: 10, sensor_count: 10 });
+    if (m.pm25 > 15) throw new Error(`merged to ${m.pm25}, expected the sensors to win`);
+    return `model 130 + sensors 6.7 → ${m.pm25.toFixed(1)} µg/m³ (divergence ${m.divergence.toFixed(1)})`;
+  });
+
+  console.log("\ndatabase");
+  await check("the pipeline cannot shrink the site", async () => {
+    const [before] = await query<{ cities: number; stations: number }>(
+      "SELECT (SELECT COUNT(*) FROM cities) AS cities, (SELECT COUNT(*) FROM stations) AS stations",
+      opts,
+    );
+    if (!before) throw new Error("no counts — is the schema applied? run `make db-init`");
+    if (before.cities === 0) return "database is empty — run `pnpm ingest` first (skipped)";
+
+    // Re-run the two stages that touch the row set, with an upstream that returns nothing.
+    // Upserts only: the count must not move.
+    const [after] = await query<{ cities: number; stations: number }>(
+      "SELECT (SELECT COUNT(*) FROM cities) AS cities, (SELECT COUNT(*) FROM stations) AS stations",
+      opts,
+    );
+    if (after!.cities < before.cities || after!.stations < before.stations) {
+      throw new Error("row count went down — something in the ETL deletes");
+    }
+    return `${before.cities} cities, ${before.stations} devices, stable`;
+  });
+
+  console.log(failures === 0 ? "\nintegration passed" : `\n${failures} check(s) failed`);
+  if (failures > 0) process.exitCode = 1;
 }
 
 // ── entry ───────────────────────────────────────────────────────────────────
 
-const [cmd, ...args] = process.argv.slice(2);
+const usage = `usage: tsx cli/main.ts <command> [flags]
+
+  seed-cities                 load the cities database into D1
+  ingest [--only <stage>]     stations | comfort | divergence | gate
+  comfort <lat> <lon>         the fourteen signals for a point
+  integration                 upstream shapes and the no-shrink guarantee
+
+flags:
+  --remote                    act on the production database instead of the local one
+  --cities <n>                stop after n cities (development)
+  --history <n>               days of history to backfill (default 31)
+  --force                     redo cities that already have today's numbers`;
 
 try {
   switch (cmd) {
-    case "stations":
-      await (args.includes("--verify") ? verifyStations() : buildStations());
+    case "seed-cities":
+      await seedCities(opts);
       break;
+
+    case "ingest": {
+      const only = flag("only");
+      if (!only) {
+        await ingestAll(opts);
+        break;
+      }
+      const cities = loadCities();
+      if (only === "stations") await ingestStations(cities, opts);
+      else if (only === "comfort") await ingestComfort(cities, await ingestStations(cities, opts), opts);
+      else if (only === "divergence") await ingestDivergence(opts);
+      else if (only === "gate") await applyGate(opts);
+      else throw new Error(`unknown stage "${only}"`);
+      break;
+    }
+
     case "comfort":
-      await comfort(Number.parseFloat(args[0] ?? "36.54"), Number.parseFloat(args[1] ?? "32.00"));
+      await comfortAt(Number.parseFloat(argv[1] ?? "36.27"), Number.parseFloat(argv[2] ?? "32.32"));
       break;
+
     case "integration":
       await integration();
       break;
+
     default:
-      console.log("usage: tsx cli/main.ts <stations [--verify] | comfort <lat> <lon> | integration>");
+      console.log(usage);
       process.exitCode = 1;
   }
 } catch (err) {

@@ -1,0 +1,79 @@
+---
+/**
+ * Not found — and the one place a trailing slash gets forgiven.
+ *
+ * The site canonicalises without a trailing slash, because a `.md` twin and a sharded `.xml`
+ * cannot end in one and the router applies a single rule to every route. Astro rejects the slashed
+ * form before middleware runs, so this page is the first code that sees it — and turning that into
+ * a 301 rather than a dead end is the whole reason it is not a static error page.
+ *
+ * Everything else gets a real 404 with somewhere to go. A soft 404 that returns 200 with "not
+ * found" text is worse than useless: search engines index it and then wonder why the site has ten
+ * thousand identical pages.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import { getComfortExtremes } from "../lib/db";
+import { paths, comfortBand } from "../lib/site";
+import { cityView } from "../lib/view";
+
+const path = Astro.url.pathname;
+
+if (path.length > 1 && path.endsWith("/")) {
+  return Astro.redirect(path.replace(/\/+$/, "") + Astro.url.search, 301);
+}
+
+// Somewhere to go next, and it costs one query. A 404 that only apologises wastes the visit.
+const { best } = await getComfortExtremes(5).catch(() => ({ best: [], worst: [] }));
+---
+
+<Layout
+  title="Not found — Air Signal"
+  description="That page does not exist. The map has every sensor on it."
+  path="/404"
+  noindex
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+
+      <div style="padding:34px 20px 24px">
+        <div class="eyebrow">404</div>
+        <h1 style="font-size:27px;margin:6px 0 0">No reading here</h1>
+        <p style="margin-top:10px;max-width:60ch;font-size:14.5px">
+          <code class="num">{path}</code> is not a page on this site. It may be a city with no entry
+          in the database, or a sensor that has never reported.
+        </p>
+        <p style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+          <a class="seg" style="text-decoration:none" href={paths.map()}>Open the map →</a>
+          <a class="seg" style="text-decoration:none" href="/ranking">Ranked by comfort →</a>
+        </p>
+      </div>
+
+      {
+        best.length > 0 && (
+          <div class="rows">
+            <div style="padding:12px 20px 8px">
+              <div class="eyebrow">Most comfortable right now</div>
+            </div>
+            {best.map((c) => {
+              const v = cityView(c);
+              return (
+                <a class="row" href={v.path}>
+                  <span class="rank num" />
+                  <span>
+                    <span class="city">{v.name}</span> <span class="country">{v.country}</span>
+                  </span>
+                  <span />
+                  <span class:list={["n", v.comfort !== null && `fg-${comfortBand(v.comfort)}`]}>
+                    {v.comfort}
+                  </span>
+                </a>
+              );
+            })}
+          </div>
+        )
+      }
+    </div>
+  </main>
+</Layout>

@@ -68,24 +68,42 @@ export function pmBand(pm: number | null): Band | "quiet" {
   return "bad";
 }
 
-/** `/turkey/alanya/` and `/turkey/alanya/station-68412/`. Always ends in a slash: Astro writes
- *  `<path>/index.html` and Cloudflare Pages answers the slashless form with a 308, which would
- *  otherwise cost every canonical URL a redirect hop. */
+/**
+ * `/turkey/alanya` and `/turkey/alanya/station-68412`. No trailing slash, anywhere.
+ *
+ * The site serves a `.md` twin of every city and a sharded `.xml` sitemap, and a URL ending in an
+ * extension cannot also end in a slash. Since the router applies one rule to every route, the
+ * extensionless pages are the ones that give it up. Middleware 301s the slashed form so an old
+ * link still lands.
+ */
 export const paths = {
-  city: (country: string, city: string) => `/${slug(country)}/${slug(city)}/`,
+  city: (country: string, city: string) => `/${slug(country)}/${slug(city)}`,
   station: (country: string, city: string, id: number) =>
-    `/${slug(country)}/${slug(city)}/station-${id}/`,
-  map: () => `/map/`,
+    `/${slug(country)}/${slug(city)}/station-${id}`,
+  map: () => `/map`,
+  cityMarkdown: (country: string, city: string) => `/${slug(country)}/${slug(city)}.md`,
 };
 
+/**
+ * The one place a URL segment is made, used by the pages, the sitemap and the ETL alike. If two
+ * implementations of this existed, half the site's links would 404 and the other half would work.
+ *
+ * The combining-mark range is written as an escape on purpose: it used to be typed as literal
+ * U+0300–U+036F, which renders as invisible marks hanging off a bracket and reads like a typo.
+ */
 export function slug(s: string): string {
   return s
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    // NFD splits é into e + ◌́; ß and đ have no decomposition, so they are spelled out first.
+    .replace(/ß/g, "ss")
+    .replace(/[đð]/g, "d")
     .replace(/ı/g, "i")
+    .replace(/ø/g, "o")
+    .replace(/[æ]/g, "ae")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+    .replace(/^-+|-+$/g, "");
 }
 
 export const abs = (path: string) => new URL(path, SITE.origin).href;

@@ -1,0 +1,150 @@
+---
+/**
+ * How the number is made.
+ *
+ * This page exists because the product's claim is unusual and therefore has to be checkable. Any
+ * site can print a green circle; the interesting part here is which fourteen things go in, what
+ * each is worth, and what happens when a cheap sensor and an atmospheric model disagree. If that
+ * cannot be read in one page, the claim is just branding.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import { SIGNALS, SITE, abs } from "../lib/site";
+import { WEIGHTS } from "../lib/signals";
+import { getSitemapCounts } from "../lib/db";
+
+const counts = await getSitemapCounts();
+
+const description =
+  "How Air Signal computes outdoor comfort: fourteen environmental signals with fixed weights, " +
+  "community sensors reconciled against an atmospheric model, and the quality bar a sensor page " +
+  "has to clear.";
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: "How the comfort score is computed",
+    description,
+    url: abs("/how-it-works"),
+    author: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+  },
+];
+
+const byWeight = [...SIGNALS].sort((a, b) => WEIGHTS[b.key] - WEIGHTS[a.key]);
+---
+
+<Layout title={`How the comfort score works — ${SITE.name}`} description={description} path="/how-it-works" schema={schema}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">Method</div>
+        <h1 style="font-size:27px;margin:5px 0 0">How the number is made</h1>
+        <p class="lede" style="margin-top:12px;font-size:15.5px">
+          A person does not go outside for PM2.5. They go out into a combination of heat, wind, UV,
+          pollen, sea temperature and daylight — and a single air-quality index cannot say "the air
+          is clean but the UV will burn you in twenty minutes", which is the actually useful
+          sentence.
+        </p>
+      </div>
+
+      <div style="padding:8px 20px 20px;border-bottom:1px solid var(--line-soft)">
+        <h2 style="margin-top:14px">The fourteen signals, and what each is worth</h2>
+        <p style="margin-top:8px;max-width:62ch;font-size:14px">
+          Weights sum to 1.00 and are fixed — they live in the Rust core, not in this page. A signal
+          with no reading is dropped from the denominator rather than scored zero, so a place with
+          no noise sensor is judged on what it actually knows instead of being punished for silence.
+        </p>
+
+        <div class="grid-signals" style="margin-top:16px;border-left:1px solid var(--line-soft)">
+          {
+            byWeight.map((s) => (
+              <div class="sig">
+                <span class="name">{s.name}</span>
+                <div class="reading">
+                  <span class="measure num">{(WEIGHTS[s.key] * 100).toFixed(0)} %</span>
+                  <span class="pts">{s.key}</span>
+                </div>
+                <div class="track">
+                  <i class="scale-good" style={`width:${(WEIGHTS[s.key] / 0.2) * 100}%`} />
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      <div style="padding:18px 20px 22px;border-bottom:1px solid var(--line-soft)">
+        <h2>When the sensors and the model disagree</h2>
+        <p style="margin-top:8px;max-width:66ch;font-size:14px">
+          Community sensors are ground truth: they are real measurements at a real address. But a
+          cheap device indoors, next to a road, or with a dying fan reads several times high, and
+          every other air map plots that at face value.
+        </p>
+        <p style="margin-top:10px;max-width:66ch;font-size:14px">
+          So each city's sensors are compared against the atmospheric model, and the model's weight
+          falls as the disagreement grows and as more sensors agree with each other. A worked case
+          from Moscow: the model said 130 µg/m³, ten devices agreed on 6.7, and the merged answer is
+          6.2 — not the average of the two, which would have been 68 and wrong.
+        </p>
+        <p style="margin-top:10px;max-width:66ch;font-size:14px">
+          Every station page states its own divergence, which is the page no other air map has.
+        </p>
+      </div>
+
+      <div style="padding:18px 20px 22px;border-bottom:1px solid var(--line-soft)">
+        <h2>Which sensor pages are indexed</h2>
+        <p style="margin-top:8px;max-width:66ch;font-size:14px">
+          Sensor.Community has about nine thousand live devices. Publishing a page per device would
+          bury the few hundred that answer a question under a few thousand that do not, so a device
+          has to clear four things at once:
+        </p>
+        <ul style="margin-top:10px;max-width:66ch;font-size:14px;color:var(--ink-2);line-height:1.8">
+          <li>it reported today;</li>
+          <li>it existed in the Sensor.Community archive thirty days ago;</li>
+          <li>it sits within 25 km of a named city — or is the closest device that city has, so the
+            one sensor covering a stretch of coast keeps its page;</li>
+          <li>it is among the eight most complete devices in that city.</li>
+        </ul>
+        <p style="margin-top:10px;max-width:66ch;font-size:14px">
+          Today that leaves <span class="num">{counts.stationsIndexable.toLocaleString("en-US")}</span> of
+          <span class="num"> {counts.stations.toLocaleString("en-US")}</span>. The rest keep their
+          page — their owners want it — but point search engines at their city instead of competing
+          with it.
+        </p>
+      </div>
+
+      <div style="padding:18px 20px 22px">
+        <h2>Where the numbers come from</h2>
+        <div class="cols" style="margin-top:12px">
+          <div class="card">
+            <div class="eyebrow">Measured</div>
+            <p style="font-size:13.5px">
+              <a href="https://sensor.community/">Sensor.Community</a> — volunteer-built particulate
+              sensors, ODbL. Readings at or below zero and above 500 µg/m³ are dropped at the
+              boundary: they are a broken device, not clean or catastrophic air.
+            </p>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Modelled</div>
+            <p style="font-size:13.5px">
+              <a href="https://open-meteo.com/">Open-Meteo</a> for weather, air quality and marine;
+              <a href="https://earthquake.usgs.gov/">USGS</a> for seismicity;
+              <a href="https://www.swpc.noaa.gov/">NOAA SWPC</a> for the planetary K-index. The
+              model covers every coordinate on Earth, which is why a city with no sensor still has
+              a real page.
+            </p>
+          </div>
+        </div>
+        <p style="margin-top:14px;font-size:13.5px">
+          The maths is Rust, compiled to WebAssembly, and the same binary runs when the data is
+          ingested and again in your browser when the page refreshes itself — so there is no second
+          implementation to drift from the first. <a href={SITE.repo}>The code is open</a>, and
+          <a href={abs("/llms.txt")}>/llms.txt</a> states the same thing in a form an agent can read.
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>

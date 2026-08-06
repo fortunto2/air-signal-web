@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!--
+    The share card is the design's argument in one frame: a near-neutral field, and the only
+    saturated pixels are the fourteen bars. No photograph, no gradient, no stock sky.
+  -->
+  <rect width="1200" height="630" fill="#0D1114"/>
+
+  <text x="80" y="120" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="20" letter-spacing="4" fill="#77848F">AIRSIGNAL.APP</text>
+
+  <text x="80" y="230" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="76" font-weight="640" letter-spacing="-2" fill="#EDF1F4">air<tspan fill="#7FB6DC">signal</tspan></text>
+
+  <text x="80" y="292" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="30" fill="#A9B4BE">what it is actually like outside</text>
+
+  <!-- the fourteen -->
+  <g>
+    <rect x="80"  y="400" width="58" height="150" rx="2" fill="#2BA79D"/>
+    <rect x="148" y="440" width="58" height="110" rx="2" fill="#8FBF62"/>
+    <rect x="216" y="418" width="58" height="132" rx="2" fill="#2BA79D"/>
+    <rect x="284" y="408" width="58" height="142" rx="2" fill="#2BA79D"/>
+    <rect x="352" y="512" width="58" height="38"  rx="2" fill="#C15570"/>
+    <rect x="420" y="398" width="58" height="152" rx="2" fill="#2BA79D"/>
+    <rect x="488" y="478" width="58" height="72"  rx="2" fill="#DCA83C"/>
+    <rect x="556" y="432" width="58" height="118" rx="2" fill="#8FBF62"/>
+    <rect x="624" y="404" width="58" height="146" rx="2" fill="#2BA79D"/>
+    <rect x="692" y="424" width="58" height="126" rx="2" fill="#8FBF62"/>
+    <rect x="760" y="466" width="58" height="84"  rx="2" fill="#DCA83C"/>
+    <rect x="828" y="396" width="58" height="154" rx="2" fill="#2BA79D"/>
+    <rect x="896" y="440" width="58" height="110" rx="2" fill="#8FBF62"/>
+    <rect x="964" y="460" width="58" height="90"  rx="2" fill="#DCA83C"/>
+  </g>
+
+  <text x="1120" y="428" text-anchor="end"
+        font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="110" fill="#8FBF62" letter-spacing="-4">74</text>
+  <text x="1120" y="462" text-anchor="end"
+        font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="22" fill="#77848F">/100 COMFORT</text>
+
+  <line x1="80" y1="562" x2="1120" y2="562" stroke="#2A343C" stroke-width="1"/>
+  <text x="80" y="596" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="18" fill="#77848F">FOURTEEN SIGNALS · COMMUNITY SENSORS · CORRECTED AGAINST THE MODEL</text>
+</svg>

@@ -1,0 +1,99 @@
+---
+/**
+ * A thirty-day line, drawn as inline SVG.
+ *
+ * Deliberately not recharts. That library is ~400 KB of JavaScript to draw one polyline on a site
+ * whose entire promise is that the reading is already on screen — and a chart rendered in the
+ * browser is a chart a crawler never sees. This is a path, computed at render, in the HTML.
+ */
+import { comfortBand, type Band } from "../lib/site";
+
+interface Props {
+  points: (number | null)[];
+  /** Days, for the accessible label. */
+  labels?: string[];
+  band?: Band;
+  height?: number;
+  label: string;
+}
+
+const { points, labels = [], band, height = 78, label } = Astro.props;
+
+const W = 600;
+const H = height;
+const PAD = 6;
+
+const known = points.filter((p): p is number => p !== null);
+const min = known.length ? Math.min(...known) : 0;
+const max = known.length ? Math.max(...known) : 1;
+const span = max - min || 1;
+
+const x = (i: number) => (points.length < 2 ? W / 2 : (i / (points.length - 1)) * W);
+const y = (v: number) => H - PAD - ((v - min) / span) * (H - PAD * 2);
+
+// Gaps are gaps. A day with no reading breaks the line rather than being interpolated across —
+// drawing straight through a hole invents data, which is the one thing this site must not do.
+const segments: string[] = [];
+let current: string[] = [];
+points.forEach((p, i) => {
+  if (p === null) {
+    if (current.length) segments.push(current.join(" "));
+    current = [];
+    return;
+  }
+  current.push(`${current.length ? "L" : "M"}${x(i).toFixed(1)} ${y(p).toFixed(1)}`);
+});
+if (current.length) segments.push(current.join(" "));
+
+const first = points.findIndex((p) => p !== null);
+const lastIndex = points.length - 1 - [...points].reverse().findIndex((p) => p !== null);
+const lastValue = points[lastIndex];
+
+const area =
+  first >= 0 && lastValue !== null && lastValue !== undefined
+    ? `M${x(first).toFixed(1)} ${H} ` +
+      points
+        .map((p, i) => (p === null ? "" : `L${x(i).toFixed(1)} ${y(p).toFixed(1)}`))
+        .join("") +
+      ` L${x(lastIndex).toFixed(1)} ${H} Z`
+    : "";
+
+const stroke = band ? `var(--s-${band})` : "var(--accent)";
+const id = `spark-${Math.abs(label.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7))}`;
+
+const summary =
+  known.length === 0
+    ? `${label}: no history yet`
+    : `${label}: min ${Math.round(min)}, max ${Math.round(max)}` +
+      (labels.length ? `, from ${labels[0]} to ${labels.at(-1)}` : "");
+---
+
+<svg
+  class="spark"
+  style={`height:${H}px`}
+  viewBox={`0 0 ${W} ${H}`}
+  preserveAspectRatio="none"
+  role="img"
+  aria-label={summary}
+>
+  <defs>
+    <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color={stroke} stop-opacity=".22"></stop>
+      <stop offset="100%" stop-color={stroke} stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+
+  <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="var(--line-soft)" stroke-width="1"></line>
+
+  {area && <path d={area} fill={`url(#${id})`} />}
+  {
+    segments.map((d) => (
+      <path d={d} fill="none" stroke={stroke} stroke-width="1.6" stroke-linejoin="round" />
+    ))
+  }
+  {
+    lastValue !== null && lastValue !== undefined && (
+      <circle cx={x(lastIndex)} cy={y(lastValue)} r="3.2" fill={stroke} />
+    )
+  }
+</svg>

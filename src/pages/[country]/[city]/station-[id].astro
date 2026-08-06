@@ -1,0 +1,257 @@
+---
+/**
+ * One Sensor.Community device.
+ *
+ * The page exists for the block halfway down: how far this box disagrees with the model, and what
+ * the city aggregate did about it. Every other air map plots a cheap sensor's reading at face
+ * value; this one says "×3.9 higher than its neighbours, so we leaned on them instead".
+ *
+ * A station below the indexing bar still gets this page — it costs nothing to render and its owner
+ * wants it — but it canonicals to the city and stays out of the sitemap. See docs/prd.md §7.
+ */
+import Layout from "../../../layouts/Layout.astro";
+import Bar from "../../../components/Bar.astro";
+import Sparkline from "../../../components/Sparkline.astro";
+import {
+  getCityById,
+  getCityPmMedian,
+  getStation,
+  getStationHistory,
+  getStationsForCity,
+} from "../../../lib/db";
+import { stationView, ago } from "../../../lib/view";
+import { SITE, abs, paths, pmBand } from "../../../lib/site";
+
+const { country, city: citySlug, id } = Astro.params;
+const stationId = Number.parseInt(id ?? "", 10);
+if (!Number.isFinite(stationId)) return new Response(null, { status: 404 });
+
+const station = await getStation(stationId);
+if (!station || station.city_id === null) return new Response(null, { status: 404 });
+
+const city = await getCityById(station.city_id);
+if (!city) return new Response(null, { status: 404 });
+
+// The device is the identity; the path is derived from it. Reaching it under the wrong city is a
+// stale link, not a 404 — send the reader to the URL that is actually canonical.
+if (city.country_slug !== country || city.slug !== citySlug) {
+  return Astro.redirect(paths.station(city.country_slug, city.slug, stationId), 301);
+}
+
+const [median, history, siblings] = await Promise.all([
+  getCityPmMedian(city.id),
+  getStationHistory(stationId, 30),
+  getStationsForCity(city.id, 6),
+]);
+
+const v = stationView(station, city, median);
+const nearest = siblings.filter((s) => s.id !== stationId).slice(0, 4);
+
+const schema = v.indexable
+  ? [
+      {
+        "@context": "https://schema.org",
+        "@type": "Place",
+        name: `Sensor.Community station ${v.id}, ${v.cityName}`,
+        url: abs(v.path),
+        geo: { "@type": "GeoCoordinates", latitude: v.lat, longitude: v.lon },
+        containedInPlace: { "@type": "Place", name: v.cityName, url: abs(v.cityPath) },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        name: `PM2.5 and PM10 from station ${v.id}, ${v.cityName}`,
+        description: v.description,
+        url: abs(v.path),
+        measurementTechnique: v.sensorType ?? undefined,
+        license: "https://opendatacommons.org/licenses/odbl/",
+        isBasedOn: {
+          "@type": "Dataset",
+          name: "Sensor.Community",
+          url: `https://data.sensor.community/airrohr/v1/sensor/${v.id}/`,
+        },
+        creator: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: v.cityName, item: abs(v.cityPath) },
+          { "@type": "ListItem", position: 2, name: `Station ${v.id}`, item: abs(v.path) },
+        ],
+      },
+    ]
+  : [];
+---
+
+<Layout
+  title={v.title}
+  description={v.description}
+  path={v.path}
+  schema={schema}
+  canonicalTo={v.indexable ? undefined : v.cityPath}
+  noindex={!v.indexable}
+  updatedAt={v.lastSeen}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div style="font-size:13.5px;color:var(--ink-3)">
+          <a href={v.cityPath} style="color:var(--accent);text-decoration:none">{v.cityName}</a> ·
+          Station {v.id}
+        </div>
+      </Bar>
+
+      <div style="padding:22px 20px 6px">
+        <div class="eyebrow">Sensor.Community station</div>
+        <h1 style="font-size:25px;margin:5px 0 0">
+          {v.cityName} — station {v.id}
+        </h1>
+        <p style="margin-top:8px;max-width:60ch;font-size:14.5px">{v.verdict}</p>
+      </div>
+
+      <div class="statrow">
+        <div class="stat">
+          <span class="eyebrow">PM2.5</span>
+          <span class:list={["num", `fg-${v.band}`]} style="font-size:27px">
+            {v.pm25 !== null ? v.pm25.toFixed(1) : "—"}
+          </span>
+          <span class="unit">
+            µg/m³{v.pm25_24h !== null ? ` · 24 h avg ${v.pm25_24h.toFixed(1)}` : ""}
+          </span>
+        </div>
+        <div class="stat">
+          <span class="eyebrow">PM10</span>
+          <span class:list={["num", `fg-${pmBand(v.pm10)}`]} style="font-size:27px">
+            {v.pm10 !== null ? v.pm10.toFixed(1) : "—"}
+          </span>
+          <span class="unit">µg/m³</span>
+        </div>
+        <div class="stat">
+          <span class="eyebrow">Hardware</span>
+          <span class="num" style="font-size:27px">
+            {v.sensorType ? v.sensorType.toUpperCase() : "—"}
+          </span>
+          <span class="unit">
+            {v.historyDays >= 180 ? "180+ days of history" : `${v.historyDays} days of history`}
+          </span>
+        </div>
+        <div class="stat">
+          <span class="eyebrow">Last reading</span>
+          <span class:list={["num", v.quiet && "fg-quiet"]} style="font-size:27px">
+            {ago(v.ageMinutes)}
+          </span>
+          <span class="unit">
+            {v.distanceKm !== null ? `${v.distanceKm} km from ${v.cityName}` : ""}
+          </span>
+        </div>
+      </div>
+
+      {
+        history.length > 2 && (
+          <div style="padding:16px 20px 20px;border-bottom:1px solid var(--line-soft)">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+              <span class="eyebrow">PM2.5 · last {history.length} days</span>
+              <span class="eyebrow">
+                {median !== null ? `city median ${median.toFixed(1)} µg/m³` : ""}
+              </span>
+            </div>
+            <Sparkline
+              points={history.map((d) => d.pm25)}
+              labels={history.map((d) => d.day)}
+              band={v.band === "quiet" ? undefined : v.band}
+              height={96}
+              label={`PM2.5 at station ${v.id} over ${history.length} days`}
+            />
+          </div>
+        )
+      }
+
+      <div class="cols" style="gap:0;border-bottom:1px solid var(--line-soft)">
+        <div style="padding:16px 20px;border-right:1px solid var(--line-soft)">
+          <div class="eyebrow" style="margin-bottom:8px">Agreement with the model</div>
+          {
+            v.divergenceText ? (
+              <>
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span class="num fg-fair" style="font-size:23px">
+                    ×{v.divergence!.toFixed(1)}
+                  </span>
+                  <span style="font-size:13px;color:var(--ink-2)">
+                    {(v.pm25 ?? 0) > (median ?? 0) ? "higher" : "lower"} than its neighbours
+                  </span>
+                </div>
+                <p style="font-size:12.5px;margin-top:8px">
+                  Down-weighted in the {v.cityName} aggregate. A sensor indoors, next to a road, or
+                  with a dying fan reads high — until it agrees again, the city score leans on the
+                  devices around it.
+                </p>
+              </>
+            ) : (
+              <>
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span class="num fg-excellent" style="font-size:23px">
+                    {v.divergence !== null ? `×${v.divergence.toFixed(2)}` : "—"}
+                  </span>
+                  <span style="font-size:13px;color:var(--ink-2)">in line with its neighbours</span>
+                </div>
+                <p style="font-size:12.5px;margin-top:8px">
+                  This device reads close to the other sensors around {v.cityName} and to the
+                  atmospheric model, so it carries full weight in the city score.
+                </p>
+              </>
+            )
+          }
+        </div>
+
+        <div style="padding:16px 20px">
+          <div class="eyebrow" style="margin-bottom:8px">Nearest stations</div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            {
+              nearest.length === 0 ? (
+                <p style="font-size:12.5px">
+                  Nothing else within reach — this is the only device covering {v.cityName}.
+                </p>
+              ) : (
+                nearest.map((s) => (
+                  <a class="near" href={paths.station(city.country_slug, city.slug, s.id)}>
+                    <span class="nm">Station {s.id}</span>
+                    <span class="km">{s.distance_km !== null ? `${s.distance_km} km` : ""}</span>
+                    <span class:list={["pm", `fg-${pmBand(s.pm25)}`]}>
+                      {s.pm25 !== null ? s.pm25.toFixed(1) : "—"}
+                    </span>
+                  </a>
+                ))
+              )
+            }
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:14px 20px 18px;display:flex;gap:22px;flex-wrap:wrap">
+        <span class="eyebrow">Sensor {v.id}{v.sensorType ? ` · ${v.sensorType.toUpperCase()}` : ""}</span>
+        <span class="eyebrow num">{v.lat.toFixed(3)} N, {v.lon.toFixed(3)} E</span>
+        <a class="eyebrow" href={`https://data.sensor.community/airrohr/v1/sensor/${v.id}/`}>
+          Raw feed ↗
+        </a>
+        <span class="eyebrow">Data · Sensor.Community, ODbL</span>
+      </div>
+
+      {
+        !v.indexable && (
+          <div style="padding:0 20px 18px">
+            <p style="font-size:12.5px;color:var(--ink-3);max-width:70ch">
+              This device is below the bar for indexing — it needs a month of history, a named place
+              within 25 km, and a place among the eight most complete sensors in its city. The page
+              stays; it points search engines at{" "}
+              <a href={v.cityPath} style="color:var(--accent)">
+                {v.cityName}
+              </a>{" "}
+              instead of competing with it.
+            </p>
+          </div>
+        )
+      }
+    </div>
+  </main>
+</Layout>
