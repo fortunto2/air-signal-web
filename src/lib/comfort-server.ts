@@ -45,6 +45,7 @@ interface AirqExtras {
   wasm_pm25_aqi(v: number): number;
   wasm_pm10_aqi(v: number): number;
   wasm_wind_direction(degrees: number): string;
+  wasm_haversine(lat1: number, lon1: number, lat2: number, lon2: number): number;
   wasm_merge(json: string): string;
 }
 
@@ -61,9 +62,6 @@ function core(): SignalCore & AirqExtras {
   }
   return wasm as unknown as SignalCore & AirqExtras;
 }
-
-/** The Rust core, instantiated. Exported so pages can reach the parts that are not comfort. */
-export const airq = (): SignalCore & AirqExtras => core();
 
 // ── the things Rust knows that the score does not say ───────────────────────
 
@@ -119,6 +117,11 @@ export function aqi(pm25: number | null, pm10: number | null): AqiReading | null
   } catch {
     return null;
   }
+}
+
+/** Great-circle kilometres, from Rust rather than a fourth JavaScript copy of the formula. */
+export function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  return core().wasm_haversine(lat1, lon1, lat2, lon2);
 }
 
 /** 16-point compass label and an arrow, from Rust so the vocabulary matches the CLI's. */

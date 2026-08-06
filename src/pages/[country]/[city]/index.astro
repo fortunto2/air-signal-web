@@ -17,7 +17,6 @@ import {
   getCityHistory,
   getStationsForCity,
   getNearbyCities,
-  parseSignals,
   saveCityReadings,
 } from "../../../lib/db";
 import { aqi, classifySource, computeComfort, detectEvent, isStale, windDirection } from "../../../lib/comfort-server";
@@ -69,7 +68,7 @@ if (isStale(row.updated_at)) {
 }
 
 const v = cityView(row, history);
-const scores = parseSignals(row.signals_json);
+const scores = v.scores;
 
 // Everything below comes out of the Rust core, from data already on this page — no extra request.
 // The event baseline is the median of the city's own devices, which is what lets it run at all.
@@ -197,7 +196,7 @@ const schema = [
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
             <div class="eyebrow">Signal spectrum</div>
             <div class="eyebrow" data-live="stamp">
-              {v.updatedAt ? `Updated ${ago(Math.round((Date.now() - v.updatedAt.getTime()) / 60000))}` : ""}
+              {v.updatedAt ? `Updated ${ago(v.updatedAt)}` : ""}
             </div>
           </div>
           <Spectrum scores={scores} size="hero" />
@@ -326,6 +325,6 @@ const schema = [
       The island. It refreshes what is already above it and nothing more — if this never runs, the
       page is still complete and still correct as of the last ingest.
     -->
-    <LiveCity client:idle lat={v.lat} lon={v.lon} cityName={v.name} />
+    <LiveCity client:idle lat={v.lat} lon={v.lon} computedAt={v.updatedAt?.toISOString() ?? null} />
   </main>
 </Layout>

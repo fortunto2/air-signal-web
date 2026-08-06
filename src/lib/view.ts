@@ -9,13 +9,7 @@
  * Nothing here touches the database or the DOM. It takes rows and returns strings and numbers.
  */
 
-import {
-  SIGNALS,
-  comfortBand,
-  paths,
-  type Band,
-  type SignalKey,
-} from "./site";
+import { SIGNALS, comfortBand, paths, pmBand, type Band, type SignalKey } from "./site";
 import type { CityRow, StationRow, DayPoint } from "./db";
 
 // ── readings ────────────────────────────────────────────────────────────────
@@ -143,6 +137,8 @@ export interface CityView {
   /** "Good", "Fair" — the one word above the score. */
   word: string;
   signals: SignalLine[];
+  /** The raw score map, as `Spectrum` wants it. Parsed here so no page parses the blob twice. */
+  scores: Partial<Record<SignalKey, number>>;
   readings: Readings;
   worst: SignalLine | null;
   stationCount: number;
@@ -155,12 +151,17 @@ export interface CityView {
   history: DayPoint[];
 }
 
-const WORD: Record<Band, string> = {
-  excellent: "Excellent",
-  good: "Good",
-  fair: "Fair",
-  poor: "Poor",
-  bad: "Bad",
+/**
+ * The two things a band is said as: the word above the score, and the opener of the verdict
+ * sentence. One table rather than two, because they are the same judgement and a reader who sees
+ * "Poor" over "Comfortable in Alanya today" has caught the site contradicting itself.
+ */
+const BAND_WORDS: Record<Band, { word: string; opener: string }> = {
+  excellent: { word: "Excellent", opener: "Comfortable in" },
+  good: { word: "Good", opener: "Comfortable in" },
+  fair: { word: "Fair", opener: "Mixed conditions in" },
+  poor: { word: "Poor", opener: "Unpleasant in" },
+  bad: { word: "Bad", opener: "Unpleasant in" },
 };
 
 export function cityView(row: CityRow, history: DayPoint[] = []): CityView {
@@ -179,8 +180,9 @@ export function cityView(row: CityRow, history: DayPoint[] = []): CityView {
     lon: row.lon,
     comfort: row.comfort,
     band,
-    word: band ? WORD[band] : "No reading",
+    word: band ? BAND_WORDS[band].word : "No reading",
     signals,
+    scores,
     readings,
     worst,
     stationCount: row.station_count,
@@ -205,14 +207,7 @@ function cityVerdict(row: CityRow, r: Readings, worst: SignalLine | null): strin
   const parts: string[] = [];
 
   if (row.comfort !== null) {
-    const band = comfortBand(row.comfort);
-    parts.push(
-      band === "excellent" || band === "good"
-        ? `Comfortable in ${row.name} today.`
-        : band === "fair"
-          ? `Mixed conditions in ${row.name} today.`
-          : `Unpleasant in ${row.name} today.`,
-    );
+    parts.push(`${BAND_WORDS[comfortBand(row.comfort)].opener} ${row.name} today.`);
   }
 
   if (r.pm25 !== undefined) {
@@ -327,7 +322,7 @@ export function stationView(s: StationRow, city: CityRow, cityMedian: number | n
     pm25: s.pm25,
     pm10: s.pm10,
     pm25_24h: s.pm25_24h,
-    band: quiet ? "quiet" : pmBandOf(s.pm25),
+    band: quiet ? "quiet" : pmBand(s.pm25),
     lastSeen,
     ageMinutes,
     quiet,
@@ -360,19 +355,18 @@ function article(word: string): string {
   return vowelSounding.includes(first) ? "An" : "A";
 }
 
-function pmBandOf(pm: number | null): Band | "quiet" {
-  if (pm === null) return "quiet";
-  if (pm < 10) return "excellent";
-  if (pm < 20) return "good";
-  if (pm < 35) return "fair";
-  if (pm < 55) return "poor";
-  return "bad";
-}
 
 // ── shared bits ─────────────────────────────────────────────────────────────
 
-/** "4 min ago", "2 h ago". A page that shows a stale number has to say that it is stale. */
-export function ago(minutes: number | null): string {
+/**
+ * "4 min ago", "2 h ago". A page that shows a stale number has to say that it is stale.
+ *
+ * Takes a `Date` as well as a minute count, because every call site held a `Date` and was writing
+ * `ago(Math.round((Date.now() - x.getTime()) / 60000))` — five copies of one subtraction.
+ */
+export function ago(at: number | Date | null): string {
+  const minutes =
+    at instanceof Date ? Math.round((Date.now() - at.getTime()) / 60_000) : at;
   if (minutes === null) return "never";
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes} min ago`;

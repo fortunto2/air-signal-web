@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "astro";
-import { SITE } from "./lib/site";
+import { SITE, paths } from "./lib/site";
 
 /**
  * Three jobs, all of which exist because the site is server-rendered.
@@ -55,12 +55,18 @@ function quality(accept: string, type: string): number {
   return best;
 }
 
-/** `/turkey/alanya` twins to `/turkey/alanya.md`. */
+/**
+ * `/turkey/alanya` twins to `/turkey/alanya.md`.
+ *
+ * Built through `paths.cityMarkdown` rather than by appending `.md`, so the twin's shape is stated
+ * once beside the shape of the page it mirrors. The segment count is still a proxy for "this is a
+ * city URL" — when `ru`/`tr` land it becomes wrong, and this is the line that has to move.
+ */
 function markdownPath(pathname: string): string | null {
   if (pathname.includes(".")) return null;
-  // Only city pages have a twin today. Depth is the cheapest way to say that without a lookup.
-  if (pathname.split("/").filter(Boolean).length !== 2) return null;
-  return `${pathname}.md`;
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length !== 2) return null;
+  return paths.cityMarkdown(segments[0]!, segments[1]!);
 }
 
 function withHeaders(response: Response, cacheControl?: string): Response {

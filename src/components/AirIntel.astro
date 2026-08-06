@@ -29,10 +29,18 @@ const { aqi, source, event, wind, placeName } = Astro.props;
 
 // A "widespread" or directional event is news; "normal" and "noise" are not, and printing them
 // would train a reader to ignore this block on the days it matters.
+// The event itself when it is news, null when it is not — rather than a separate boolean, which
+// TypeScript cannot narrow from and which forced every use below to re-test `event` as well.
 const newsworthy =
   event &&
   (event.concordance.event_type === "Widespread" ||
-    (event.concordance.event_type === "Event" && event.directional?.is_directional));
+    (event.concordance.event_type === "Event" && event.directional?.is_directional))
+    ? event
+    : null;
+
+/** What a wind speed means for what is in the air, in the Rust CLI's own words. */
+const ventilation = (kmh: number) =>
+  kmh < 5 ? "calm, pollutants accumulate" : kmh < 15 ? "disperses gradually" : "good ventilation";
 
 // Nothing to say is a valid outcome — the guard below renders nothing rather than an empty box.
 ---
@@ -65,11 +73,7 @@ const newsworthy =
             </span>
             <span class="unit">
               {wind.speed !== undefined
-                ? wind.speed < 5
-                  ? `${wind.speed} km/h · calm, pollutants accumulate`
-                  : wind.speed < 15
-                    ? `${wind.speed} km/h · disperses gradually`
-                    : `${wind.speed} km/h · good ventilation`
+                ? `${wind.speed} km/h · ${ventilation(wind.speed)}`
                 : "direction only"}
             </span>
           </div>
@@ -100,31 +104,31 @@ const newsworthy =
         </div>
       )}
 
-      {newsworthy && event && (
+      {newsworthy && (
         <div style="padding:14px 20px 18px">
           <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
             <span
               class:list={[
                 "chip",
-                event.concordance.event_type === "Widespread" ? "fg-poor" : "fg-fair",
+                newsworthy.concordance.event_type === "Widespread" ? "fg-poor" : "fg-fair",
               ]}
             >
               <span class="dot" />
-              {event.concordance.event_type === "Widespread" ? "widespread" : "localised event"}
+              {newsworthy.concordance.event_type === "Widespread" ? "widespread" : "localised event"}
             </span>
-            {event.directional?.is_directional && (
+            {newsworthy.directional?.is_directional && (
               <span class="eyebrow num">
-                from the {event.directional.bearing_label} · spread{" "}
-                {Math.round(event.directional.spread_deg)}°
+                from the {newsworthy.directional.bearing_label} · spread{" "}
+                {Math.round(newsworthy.directional.spread_deg)}°
               </span>
             )}
-            <span class="eyebrow num">{Math.round(event.confidence * 100)} % confidence</span>
+            <span class="eyebrow num">{Math.round(newsworthy.confidence * 100)} % confidence</span>
           </div>
           <p style="font-size:13.5px;margin-top:8px;max-width:74ch">
-            {event.concordance.anomaly_count} of {event.concordance.total_sensors} devices around{" "}
+            {newsworthy.concordance.anomaly_count} of {newsworthy.concordance.total_sensors} devices around{" "}
             {placeName} are reading well above their neighbours
-            {event.directional?.is_directional
-              ? `, and they are all on the ${event.directional.bearing_label} side — which is what a
+            {newsworthy.directional?.is_directional
+              ? `, and they are all on the ${newsworthy.directional.bearing_label} side — which is what a
                  plume arriving looks like rather than a sensor misbehaving.`
               : ", but they are scattered across the city rather than clustered on one side."}
           </p>

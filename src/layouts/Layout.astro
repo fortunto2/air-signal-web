@@ -6,7 +6,7 @@ import "../styles/components.css";
 interface Props {
   title: string;
   description: string;
-  /** Path of this page, always with a trailing slash. Canonical derives from it. */
+  /** Path of this page, without a trailing slash. Canonical derives from it. */
   path: string;
   /** JSON-LD nodes for the page. City and station pages always set them. */
   schema?: unknown[];
@@ -64,11 +64,6 @@ const graph = [
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="sitemap" href="/sitemap.xml" />
     <link rel="alternate" type="text/plain" href={abs("/llms.txt")} title="llms.txt" />
-
-    <!-- Both upstreams are contacted by the live-readings island. Warming the connection here
-         costs nothing and saves a round trip when it fires. -->
-    <link rel="preconnect" href="https://data.sensor.community" />
-    <link rel="preconnect" href="https://api.open-meteo.com" />
 
     <script is:inline type="application/ld+json" set:html={JSON.stringify(graph)} />
 

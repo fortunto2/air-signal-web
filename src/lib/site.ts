@@ -83,6 +83,8 @@ export const paths = {
   station: (country: string, city: string, id: number) =>
     `/${slug(country)}/${slug(city)}/station-${id}`,
   map: () => `/map`,
+  ranking: () => `/ranking`,
+  howItWorks: () => `/how-it-works`,
   cityMarkdown: (country: string, city: string) => `/${slug(country)}/${slug(city)}.md`,
 };
 

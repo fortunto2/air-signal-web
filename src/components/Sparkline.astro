@@ -103,6 +103,7 @@ const summary =
 
   {
     showGuide && (
+      <g>
       <line
         x1="0"
         y1={guideY}
@@ -113,10 +114,6 @@ const summary =
         stroke-dasharray="4 4"
         opacity="0.8"
       />
-    )
-  }
-  {
-    showGuide && (
       <text
         x="6"
         y={guideY - 4}
@@ -126,6 +123,7 @@ const summary =
       >
         {guide!.label}
       </text>
+      </g>
     )
   }
 

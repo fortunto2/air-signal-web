@@ -139,9 +139,10 @@ const byWeight = [...SIGNALS].sort((a, b) => WEIGHTS[b.key] - WEIGHTS[a.key]);
           </div>
         </div>
         <p style="margin-top:14px;font-size:13.5px">
-          The maths is Rust, compiled to WebAssembly, and the same binary runs when the data is
-          ingested and again in your browser when the page refreshes itself — so there is no second
-          implementation to drift from the first. <a href={SITE.repo}>The code is open</a>, and
+          The maths is Rust, compiled to WebAssembly. The same binary runs when the data is
+          ingested and again in the edge worker that renders this page, so there is no second
+          implementation to drift from the first. Your browser does not compute any of it — it asks
+          the same worker, which is both cheaper for you and one fewer place to be wrong. <a href={SITE.repo}>The code is open</a>, and
           <a href={abs("/llms.txt")}>/llms.txt</a> states the same thing in a form an agent can read.
         </p>
       </div>

@@ -14,12 +14,14 @@ import { SIGNALS, comfortBand, type SignalKey } from "../lib/site";
 interface Props {
   scores: Partial<Record<SignalKey, number>>;
   size?: "hero" | "mini";
-  labels?: boolean;
   /** Rendered into the container so a screen reader gets the summary, not fourteen unlabelled divs. */
   caption?: string;
 }
 
-const { scores, size = "hero", labels = size === "hero", caption } = Astro.props;
+const { scores, size = "hero", caption } = Astro.props;
+
+/** Only the hero has room for them; the 22 px version is the same glyph with the words taken out. */
+const labels = size === "hero";
 
 const known = SIGNALS.filter((s) => scores[s.key] !== undefined).length;
 const summary =

@@ -9,19 +9,18 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import StationMap from "../components/StationMap.tsx";
-import { getCityAggregates, getSitemapCounts, getLastIngest } from "../lib/db";
+import { getTopSensorCities, getSitemapCounts, getLastIngest } from "../lib/db";
 import { SITE, abs, paths, pmBand } from "../lib/site";
 import { ago } from "../lib/view";
 
-const [cities, counts, lastIngest] = await Promise.all([
-  getCityAggregates(),
+// The rail shows the places with the most to say — most devices first, so the top of the list is
+// where the map is densest and the reader has somewhere to start. Sorted and cut by the database:
+// pulling all ~1 300 sensor cities to render 60 rows was the page's most expensive query.
+const [rail, counts, lastIngest] = await Promise.all([
+  getTopSensorCities(60),
   getSitemapCounts(),
   getLastIngest(),
 ]);
-
-// The rail shows the places with the most to say — most devices first, so the top of the list is
-// where the map is densest and the reader has somewhere to start.
-const rail = [...cities].sort((a, b) => b.station_count - a.station_count).slice(0, 60);
 
 const description =
   `Every community air-quality sensor on one map — ${counts.stations.toLocaleString("en-US")} devices ` +
@@ -34,7 +33,7 @@ const schema = [
     "@type": "Dataset",
     name: "Community air-quality sensors",
     description,
-    url: abs("/map"),
+    url: abs(paths.map()),
     license: "https://opendatacommons.org/licenses/odbl/",
     creator: { "@type": "Organization", name: SITE.name, url: SITE.origin },
     distribution: [
@@ -51,7 +50,7 @@ const schema = [
 <Layout
   title={`Air quality sensor map — ${counts.stations.toLocaleString("en-US")} live stations`}
   description={description}
-  path="/map"
+  path={paths.map()}
   schema={schema}
   updatedAt={lastIngest}
 >
@@ -59,8 +58,8 @@ const schema = [
     <div class="app">
       <Bar>
         <div class="eyebrow">
-          {counts.stations.toLocaleString("en-US")} sensors · {cities.length.toLocaleString("en-US")} cities
-          {lastIngest && ` · updated ${ago(Math.round((Date.now() - lastIngest.getTime()) / 60000))}`}
+          {counts.stations.toLocaleString("en-US")} sensors · {counts.cities.toLocaleString("en-US")} cities
+          {lastIngest && ` · updated ${ago(lastIngest)}`}
         </div>
       </Bar>
 

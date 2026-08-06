@@ -129,14 +129,11 @@ function graticule(): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
-interface Props {
-  /** Opening view. A city page centres on itself; /map/ opens on the sensor-dense part of Europe. */
-  lat?: number;
-  lon?: number;
-  zoom?: number;
-}
+/** Opens on the sensor-dense part of Europe, where three quarters of the network lives. */
+const CENTER: [number, number] = [10.5, 50.5];
+const ZOOM = 4;
 
-export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) {
+export default function StationMap() {
   const holder = useRef<HTMLDivElement>(null);
   const map = useRef<InstanceType<typeof MlMap> | null>(null);
   const [selected, setSelected] = useState<Selected | null>(null);
@@ -150,8 +147,8 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
     const m = new MlMap({
       container: holder.current,
       style: style(c),
-      center: [lon, lat],
-      zoom,
+      center: CENTER,
+      zoom: ZOOM,
       attributionControl: false,
       // The graticule has no labels, so there is nothing to rotate out of legibility — but a map
       // that tilts under a stray gesture is a map the reader has to fix. Keep it flat.
@@ -159,10 +156,12 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
       dragRotate: false,
     });
     map.current = m;
-    // A handle for debugging a map that will not draw. Costs nothing and saves a build cycle every
-    // time a paint expression is wrong — which, on a map whose whole design is paint expressions,
-    // is often.
-    (window as unknown as { __airsignalMap?: unknown }).__airsignalMap = m;
+    // A handle for debugging a map that will not draw — worth a build cycle every time a paint
+    // expression is wrong, which on a map made of paint expressions is often. Dev only: in
+    // production it would ship a global that keeps a removed map's 9 000 parsed features alive.
+    if (import.meta.env.DEV) {
+      (window as unknown as { __airsignalMap?: unknown }).__airsignalMap = m;
+    }
 
     m.addControl(new NavigationControl({ showCompass: false }), "top-right");
     m.addControl(
@@ -345,8 +344,11 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
     return () => {
       m.remove();
       map.current = null;
+      if (import.meta.env.DEV) {
+        delete (window as unknown as { __airsignalMap?: unknown }).__airsignalMap;
+      }
     };
-  }, [lat, lon, zoom]);
+  }, []);
 
   // The theme toggle repaints the tokens; the map has already read them into its style, so it has
   // to be told. Without this the map keeps its light palette on a dark page — the exact failure

@@ -21,6 +21,7 @@ import {
   ingestStations,
   seedCities,
   type Opts,
+  type StationFacts,
 } from "./ingest.ts";
 import { loadCities, loadPlaces } from "./places.ts";
 import { comfortFrom, scoresFrom, moonPhase, type Readings } from "./wasm.ts";
@@ -204,16 +205,23 @@ async function integration(): Promise<void> {
     if (!before) throw new Error("no counts — is the schema applied? run `make db-init`");
     if (before.cities === 0) return "database is empty — run `pnpm ingest` first (skipped)";
 
-    // Re-run the two stages that touch the row set, with an upstream that returns nothing.
-    // Upserts only: the count must not move.
+    // Actually re-run the pass, rather than reading the same number twice and declaring victory.
+    // The earlier version compared `before` to an identical query issued a millisecond later, so
+    // the assertion was unreachable and the check printed "ok" on a run that deleted every row.
+    await ingestStations(loadCities(), opts);
+
     const [after] = await query<{ cities: number; stations: number }>(
       "SELECT (SELECT COUNT(*) FROM cities) AS cities, (SELECT COUNT(*) FROM stations) AS stations",
       opts,
     );
-    if (after!.cities < before.cities || after!.stations < before.stations) {
-      throw new Error("row count went down — something in the ETL deletes");
+    if (!after) throw new Error("counts unreadable after the pass");
+    if (after.cities < before.cities || after.stations < before.stations) {
+      throw new Error(
+        `row count went down: ${before.cities}→${after.cities} cities, ` +
+          `${before.stations}→${after.stations} devices — something in the ETL deletes`,
+      );
     }
-    return `${before.cities} cities, ${before.stations} devices, stable`;
+    return `${before.stations}→${after.stations} devices across a full pass, nothing lost`;
   });
 
   console.log(failures === 0 ? "\nintegration passed" : `\n${failures} check(s) failed`);
@@ -250,7 +258,26 @@ try {
       }
       const cities = loadCities();
       if (only === "stations") await ingestStations(cities, opts);
-      else if (only === "comfort") await ingestComfort(cities, await ingestStations(cities, opts), opts);
+      else if (only === "comfort") {
+        // Read the devices back rather than re-fetching them. The comfort pass needs four fields
+        // per device, all of them already written by the station pass — and re-running that pass
+        // first meant ~27 MB of downloads before the stage you actually wanted could start. This
+        // is the stage most likely to need a rerun, because it is the one with the hourly ceiling.
+        const rows = await query<{ id: number; city_id: number; pm25: number | null; pm10: number | null }>(
+          "SELECT id, city_id, pm25, pm10 FROM stations WHERE city_id IS NOT NULL",
+          opts,
+        );
+        await ingestComfort(
+          cities,
+          rows.map((r) => ({
+            id: r.id,
+            cityId: r.city_id,
+            pm25: r.pm25,
+            pm10: r.pm10,
+          })) as StationFacts[],
+          opts,
+        );
+      }
       else if (only === "divergence") await ingestDivergence(opts);
       else if (only === "gate") await applyGate(opts);
       else throw new Error(`unknown stage "${only}"`);

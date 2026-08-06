@@ -13,17 +13,20 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
-import { getCitiesInCountry, getCountry, getCityById, parseSignals } from "../lib/db";
+import { getCitiesInCountry, getCountry, parseSignals } from "../lib/db";
 import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
 
 const country = await getCountry(Astro.params.country!);
 if (!country) return new Response(null, { status: 404 });
 
-const cities = await getCitiesInCountry(country.id, 200);
-const [best, worst] = await Promise.all([
-  country.best_city_id ? getCityById(country.best_city_id) : null,
-  country.worst_city_id ? getCityById(country.worst_city_id) : null,
-]);
+const cities = await getCitiesInCountry(country.id);
+
+// The list is ordered sensor-cities-first by comfort, so both extremes are almost always already
+// in it. Looking them up here costs a map build; fetching them cost two queries and a round trip
+// on all 156 country pages.
+const byId = new Map(cities.map((c) => [c.id, c]));
+const best = country.best_city_id ? (byId.get(country.best_city_id) ?? null) : null;
+const worst = country.worst_city_id ? (byId.get(country.worst_city_id) ?? null) : null;
 
 const withSensors = cities.filter((c) => c.station_count > 0);
 const band = country.comfort === null ? null : comfortBand(country.comfort);

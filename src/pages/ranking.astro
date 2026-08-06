@@ -52,7 +52,7 @@ const schema = [
       <Bar>
         <div class="eyebrow">
           {total} cities with sensors
-          {lastIngest && ` · updated ${ago(Math.round((Date.now() - lastIngest.getTime()) / 60000))}`}
+          {lastIngest && ` · updated ${ago(lastIngest)}`}
         </div>
       </Bar>
 

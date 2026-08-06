@@ -113,6 +113,14 @@ export function storedReadings(r: Readings, extra: Extras = {}): Record<string, 
   put("sea_temp", extra.seaTempC, 1);
   put("wind_dir", extra.windDirection, 0);
   put("pollen", r.pollen, 0);
+  // The four the ingest can supply and a live refresh cannot: they come from global feeds it
+  // downloads once for the whole world, which is not worth a request for one page view. Listed
+  // here anyway so there is exactly one description of what `readings_json` holds — the ETL used
+  // to keep its own copy of this table and the two had already drifted in opposite directions.
+  put("kp", r.kp, 2);
+  put("quake", r.quakeMagnitude, 1);
+  put("fire_km", r.fireDistanceKm, 0);
+  put("moon", r.moonPhase, 2);
   return out;
 }
 

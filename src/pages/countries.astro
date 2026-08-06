@@ -9,15 +9,21 @@
  */
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
-import { listCountries, getLastIngest } from "../lib/db";
+import { listCountries, getLastIngest, getSitemapCounts } from "../lib/db";
 import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
 
-const [countries, lastIngest] = await Promise.all([listCountries(), getLastIngest()]);
+const [countries, counts, lastIngest] = await Promise.all([
+  listCountries(),
+  // Not a sum of the rollup columns: those are maintained by the ETL and would disagree with the
+  // rest of the site the first moment a rollup half-failed — in an indexed <title>, silently.
+  getSitemapCounts(),
+  getLastIngest(),
+]);
 
 const withSensors = countries.filter((c) => c.station_count > 0);
 const rest = countries.filter((c) => c.station_count === 0);
-const totalCities = countries.reduce((n, c) => n + c.city_count, 0);
-const totalStations = countries.reduce((n, c) => n + c.station_count, 0);
+const totalCities = counts.cities;
+const totalStations = counts.stations;
 
 const description =
   `Air quality and outdoor comfort in ${countries.length} countries — ${totalCities} cities and ` +

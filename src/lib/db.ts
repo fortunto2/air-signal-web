@@ -154,6 +154,12 @@ const CITY_SELECT = `
   SELECT c.*, co.slug AS country_slug, co.name AS country
     FROM cities c JOIN countries co ON co.id = c.country_id`;
 
+/**
+ * What makes a city rankable. Written once because the count printed beside a list has to agree
+ * with the list — "showing the first 150 of 1 312" is a lie the moment these two drift apart.
+ */
+const RANKABLE = "c.comfort IS NOT NULL AND c.station_count > 0";
+
 export async function getCity(countrySlug: string, citySlug: string): Promise<CityRow | null> {
   return await DB()
     .prepare(`${CITY_SELECT} WHERE co.slug = ?1 AND c.slug = ?2`)
@@ -205,21 +211,6 @@ export async function getNearbyCities(
   return results ?? [];
 }
 
-/** Prefix search for the city picker. SQL, not the WASM cities database — that stays in the ETL. */
-export async function searchCities(query: string, limit = 8): Promise<CityRow[]> {
-  const q = query.trim();
-  if (q.length < 2) return [];
-  const { results } = await DB()
-    .prepare(
-      `${CITY_SELECT}
-        WHERE c.name LIKE ?1 ESCAPE '\\'
-        ORDER BY c.rank
-        LIMIT ?2`,
-    )
-    .bind(`${q.replace(/[%_\\]/g, "\\$&")}%`, limit)
-    .all<CityRow>();
-  return results ?? [];
-}
 
 /**
  * Every city with a device, best comfort first — the ranking page.
@@ -231,10 +222,7 @@ export async function searchCities(query: string, limit = 8): Promise<CityRow[]>
 export async function getRankedCities(limit = 200): Promise<CityRow[]> {
   const { results } = await DB()
     .prepare(
-      `${CITY_SELECT}
-        WHERE c.comfort IS NOT NULL AND c.station_count > 0
-        ORDER BY c.comfort DESC, c.station_count DESC
-        LIMIT ?1`,
+      `${CITY_SELECT} WHERE ${RANKABLE} ORDER BY c.comfort DESC, c.station_count DESC LIMIT ?1`,
     )
     .bind(limit)
     .all<CityRow>();
@@ -244,7 +232,7 @@ export async function getRankedCities(limit = 200): Promise<CityRow[]> {
 /** How many cities have a device at all — the total behind a truncated ranking. */
 export async function countCitiesWithSensors(): Promise<number> {
   const row = await DB()
-    .prepare("SELECT COUNT(*) AS n FROM cities WHERE comfort IS NOT NULL AND station_count > 0")
+    .prepare(`SELECT COUNT(*) AS n FROM cities c WHERE ${RANKABLE}`)
     .first<{ n: number }>();
   return row?.n ?? 0;
 }
@@ -254,16 +242,12 @@ export async function getComfortExtremes(limit = 6): Promise<{ best: CityRow[]; 
   const [best, worst] = await DB().batch<CityRow>([
     DB()
       .prepare(
-        `${CITY_SELECT}
-          WHERE c.comfort IS NOT NULL AND c.station_count > 0
-          ORDER BY c.comfort DESC LIMIT ?1`,
+        `${CITY_SELECT} WHERE ${RANKABLE} ORDER BY c.comfort DESC LIMIT ?1`,
       )
       .bind(limit),
     DB()
       .prepare(
-        `${CITY_SELECT}
-          WHERE c.comfort IS NOT NULL AND c.station_count > 0
-          ORDER BY c.comfort ASC LIMIT ?1`,
+        `${CITY_SELECT} WHERE ${RANKABLE} ORDER BY c.comfort ASC LIMIT ?1`,
       )
       .bind(limit),
   ]);
@@ -328,6 +312,38 @@ export async function getStationsForCity(cityId: number, limit = 60): Promise<St
   return results ?? [];
 }
 
+/**
+ * The devices closest to a point, nearest first.
+ *
+ * Distinct from `getStationsForCity`, which orders by reading because a city page is asking "who
+ * is dirtiest". A station page's "nearest stations" panel is asking a different question, and was
+ * being answered with the dirtiest — a heading saying one thing over a list showing another.
+ *
+ * Squared degrees is a coarse pre-filter, not the answer: a degree of longitude is two thirds of a
+ * degree of latitude at 49°, so this ordering is distorted. It exists to let an index cut the city
+ * down to a handful of candidates — the caller then sorts those by real distance. Hence the
+ * `overFetch`: ask for more than you will show.
+ */
+export async function getNearestStations(
+  cityId: number,
+  lat: number,
+  lon: number,
+  limit = 4,
+  excludeId?: number,
+  overFetch = 4,
+): Promise<StationRow[]> {
+  const { results } = await DB()
+    .prepare(
+      `SELECT * FROM stations
+        WHERE city_id = ?1 AND id != ?5
+        ORDER BY (lat - ?2) * (lat - ?2) + (lon - ?3) * (lon - ?3)
+        LIMIT ?4`,
+    )
+    .bind(cityId, lat, lon, limit * overFetch, excludeId ?? -1)
+    .all<StationRow>();
+  return results ?? [];
+}
+
 export async function getStationHistory(
   stationId: number,
   days = 30,
@@ -343,26 +359,6 @@ export async function getStationHistory(
   return (results ?? []).reverse();
 }
 
-/**
- * The median a station page compares itself against. Computed in SQL over the city's devices so
- * the page does not have to fetch them all just to sort a list — SQLite has no MEDIAN, hence the
- * offset trick.
- */
-export async function getCityPmMedian(cityId: number): Promise<number | null> {
-  const row = await DB()
-    .prepare(
-      `SELECT AVG(pm25) AS median FROM (
-         SELECT pm25 FROM stations
-          WHERE city_id = ?1 AND pm25 IS NOT NULL
-          ORDER BY pm25
-          LIMIT 2 - (SELECT COUNT(*) FROM stations WHERE city_id = ?1 AND pm25 IS NOT NULL) % 2
-         OFFSET (SELECT (COUNT(*) - 1) / 2 FROM stations WHERE city_id = ?1 AND pm25 IS NOT NULL)
-       )`,
-    )
-    .bind(cityId)
-    .first<{ median: number | null }>();
-  return row?.median ?? null;
-}
 
 // ── map layers ──────────────────────────────────────────────────────────────
 
@@ -377,6 +373,23 @@ export async function getCityAggregates(): Promise<
          FROM cities c JOIN countries co ON co.id = c.country_id
         WHERE c.station_count > 0`,
     )
+    .all<any>();
+  return results ?? [];
+}
+
+/** The densest cities, for the map's rail. Sorted by the database, not by the page. */
+export async function getTopSensorCities(limit = 60): Promise<
+  { id: number; name: string; country_slug: string; slug: string; station_count: number; pm25_median: number | null; comfort: number | null }[]
+> {
+  const { results } = await DB()
+    .prepare(
+      `SELECT c.id, c.name, co.slug AS country_slug, c.slug, c.station_count, c.pm25_median, c.comfort
+         FROM cities c JOIN countries co ON co.id = c.country_id
+        WHERE c.station_count > 0
+        ORDER BY c.station_count DESC
+        LIMIT ?1`,
+    )
+    .bind(limit)
     .all<any>();
   return results ?? [];
 }

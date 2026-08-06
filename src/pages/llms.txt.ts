@@ -48,8 +48,9 @@ zero, so a place with no noise sensor is judged on what it actually knows.
 
 ${SIGNALS.map((s) => `- \`${s.key}\` — ${s.name}`).join("\n")}
 
-The maths is Rust (\`airq-core\`), compiled to WebAssembly, and the same binary runs at ingest time
-and in the browser. There is no second JavaScript implementation to drift from it.
+The maths is Rust (\`airq-core\`), compiled to WebAssembly. The same binary runs at ingest time and
+inside the edge worker that renders a page, so there is no second JavaScript implementation to
+drift from it. The browser does not compute anything — it asks \`/api/comfort\`.
 
 ## Sensors versus the model
 
@@ -62,8 +63,10 @@ resolves to 6.2, not to an average of the two. Every station page states its own
 
 - \`${abs("/")}\` — the argument, and today's extremes
 - \`${abs(paths.map())}\` — every sensor, cities at low zoom and devices at high
-- \`${abs("/<country>/<city>/")}\` — one city: verdict, fourteen readings, thirty days
-- \`${abs("/<country>/<city>/station-<id>/")}\` — one device: readings, hardware, divergence
+- \`${abs(paths.countries())}\` — every country, densest first
+- \`${abs(paths.country("<country>"))}\` — one country: its cities, ranked
+- \`${abs(paths.city("<country>", "<city>"))}\` — one city: verdict, fourteen readings, thirty days
+- \`${abs(paths.station("<country>", "<city>", 0)).replace("station-0", "station-<id>")}\` — one device: readings, hardware, divergence
 - \`${abs("/api/cities.geojson")}\` and \`${abs("/api/stations.geojson")}\` — the map layers
 - \`${abs("/sitemap.xml")}\` — sharded; cities first, then the stations past the bar
 

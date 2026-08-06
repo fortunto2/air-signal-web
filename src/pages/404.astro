@@ -14,7 +14,7 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import { getComfortExtremes } from "../lib/db";
-import { paths, comfortBand } from "../lib/site";
+import { paths } from "../lib/site";
 import { cityView } from "../lib/view";
 
 const path = Astro.url.pathname;
@@ -65,7 +65,7 @@ const { best } = await getComfortExtremes(5).catch(() => ({ best: [], worst: [] 
                     <span class="city">{v.name}</span> <span class="country">{v.country}</span>
                   </span>
                   <span />
-                  <span class:list={["n", v.comfort !== null && `fg-${comfortBand(v.comfort)}`]}>
+                  <span class:list={["n", v.band && `fg-${v.band}`]}>
                     {v.comfort}
                   </span>
                 </a>

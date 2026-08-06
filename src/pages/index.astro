@@ -11,13 +11,7 @@ import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
 import LiveCity from "../components/LiveCity.tsx";
-import {
-  getComfortExtremes,
-  getLastIngest,
-  getSitemapCounts,
-  parseSignals,
-  type CityRow,
-} from "../lib/db";
+import { getComfortExtremes, getLastIngest, getSitemapCounts } from "../lib/db";
 import { cityView, ago } from "../lib/view";
 import { SITE, paths } from "../lib/site";
 
@@ -29,9 +23,7 @@ const [{ best, worst }, counts, lastIngest] = await Promise.all([
 
 // The hero speaks for one real place. The most comfortable city with sensors is the honest pick:
 // it is the best thing the network measured today, not a city chosen for its name.
-const hero: CityRow | undefined = best[0];
-const heroView = hero ? cityView(hero) : null;
-const heroScores = hero ? parseSignals(hero.signals_json) : {};
+const heroView = best[0] ? cityView(best[0]) : null;
 
 const description =
   "Live air quality and outdoor comfort for any city: PM2.5 from community sensors combined with " +
@@ -50,7 +42,7 @@ const schema = [
   },
 ];
 
-const stamp = lastIngest ? ago(Math.round((Date.now() - lastIngest.getTime()) / 60000)) : "never";
+const stamp = ago(lastIngest);
 ---
 
 <Layout
@@ -62,7 +54,7 @@ const stamp = lastIngest ? ago(Math.round((Date.now() - lastIngest.getTime()) / 
 >
   <main class="wrap" style="padding-top:22px" id="main">
     <div class="app">
-      <Bar search={`Search ${counts.cities.toLocaleString("en-US")} cities`} searchHref="/map" />
+      <Bar search={`Search ${counts.cities.toLocaleString("en-US")} cities`} />
 
       {
         heroView ? (
@@ -101,7 +93,7 @@ const stamp = lastIngest ? ago(Math.round((Date.now() - lastIngest.getTime()) / 
                   Updated {stamp} · {heroView.stationCount} sensors
                 </div>
               </div>
-              <Spectrum scores={heroScores} size="hero" />
+              <Spectrum scores={heroView.scores} size="hero" />
               <div style="height:20px" />
             </div>
           </div>
@@ -132,52 +124,29 @@ const stamp = lastIngest ? ago(Math.round((Date.now() - lastIngest.getTime()) / 
       }
 
       {
-        best.length > 0 && (
-          <div class="rows">
-            <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
-              <div class="eyebrow">Most comfortable right now</div>
-              <div class="eyebrow">Comfort</div>
-            </div>
-            {best.map((c, i) => {
-              const v = cityView(c);
-              return (
-                <a class="row" href={v.path}>
-                  <span class="rank num">{i + 1}</span>
-                  <span>
-                    <span class="city">{v.name}</span>{" "}
-                    <span class="country">{v.country}</span>
-                  </span>
-                  <Spectrum scores={parseSignals(c.signals_json)} size="mini" />
-                  <span class:list={["n", v.band && `fg-${v.band}`]}>{v.comfort}</span>
-                </a>
-              );
-            })}
-          </div>
-        )
-      }
-
-      {
-        worst.length > 0 && (
-          <div class="rows">
-            <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
-              <div class="eyebrow">Worst right now</div>
-              <div class="eyebrow">Comfort</div>
-            </div>
-            {worst.map((c, i) => {
-              const v = cityView(c);
-              return (
-                <a class="row" href={v.path}>
-                  <span class="rank num">{i + 1}</span>
-                  <span>
-                    <span class="city">{v.name}</span>{" "}
-                    <span class="country">{v.country}</span>
-                  </span>
-                  <Spectrum scores={parseSignals(c.signals_json)} size="mini" />
-                  <span class:list={["n", v.band && `fg-${v.band}`]}>{v.comfort}</span>
-                </a>
-              );
-            })}
-          </div>
+        ([["Most comfortable right now", best], ["Worst right now", worst]] as const).map(
+          ([heading, rows]) =>
+            rows.length > 0 && (
+              <div class="rows">
+                <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
+                  <div class="eyebrow">{heading}</div>
+                  <div class="eyebrow">Comfort</div>
+                </div>
+                {rows.map((c, i) => {
+                  const v = cityView(c);
+                  return (
+                    <a class="row" href={v.path}>
+                      <span class="rank num">{i + 1}</span>
+                      <span>
+                        <span class="city">{v.name}</span> <span class="country">{v.country}</span>
+                      </span>
+                      <Spectrum scores={v.scores} size="mini" />
+                      <span class:list={["n", v.band && `fg-${v.band}`]}>{v.comfort}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            ),
         )
       }
 
@@ -221,6 +190,6 @@ const stamp = lastIngest ? ago(Math.round((Date.now() - lastIngest.getTime()) / 
       </div>
     </section>
 
-    {heroView && <LiveCity client:idle lat={heroView.lat} lon={heroView.lon} cityName={heroView.name} />}
+    {heroView && <LiveCity client:idle lat={heroView.lat} lon={heroView.lon} computedAt={heroView.updatedAt?.toISOString() ?? null} />}
   </main>
 </Layout>

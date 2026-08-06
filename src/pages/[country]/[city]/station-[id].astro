@@ -14,11 +14,11 @@ import Bar from "../../../components/Bar.astro";
 import Sparkline from "../../../components/Sparkline.astro";
 import {
   getCityById,
-  getCityPmMedian,
   getStation,
+  getNearestStations,
   getStationHistory,
-  getStationsForCity,
 } from "../../../lib/db";
+import { distanceKm } from "../../../lib/comfort-server";
 import { stationView, ago } from "../../../lib/view";
 import { SITE, abs, paths, pmBand } from "../../../lib/site";
 
@@ -38,14 +38,43 @@ if (city.country_slug !== country || city.slug !== citySlug) {
   return Astro.redirect(paths.station(city.country_slug, city.slug, stationId), 301);
 }
 
-const [median, history, siblings] = await Promise.all([
-  getCityPmMedian(city.id),
-  getStationHistory(stationId, 30),
-  getStationsForCity(city.id, 6),
+const [history, nearest] = await Promise.all([
+  getStationHistory(stationId),
+  getNearestStations(city.id, station.lat, station.lon, 4, stationId),
 ]);
 
+// Not a query. `cities.pm25_median` was computed by the ingest from these very rows, with the same
+// window function; asking D1 to redo it here is three more scans of the city's devices per page.
+const median = city.pm25_median;
+
+// Distance from *this* device, not from the city. The column on the row is the latter, and showing
+// it under a heading that says "nearest" was quietly answering a different question.
+const nearby = nearest
+  .map((s) => ({ station: s, km: distanceKm(station.lat, station.lon, s.lat, s.lon) }))
+  .sort((a, b) => a.km - b.km)
+  .slice(0, 4);
+
 const v = stationView(station, city, median);
-const nearest = siblings.filter((s) => s.id !== stationId).slice(0, 4);
+
+/** The device's own feed upstream. Written once — the page cites it twice. */
+const rawFeed = `https://data.sensor.community/airrohr/v1/sensor/${stationId}/`;
+
+// Decided once, rendered once. Both arms of what used to be a 32-line ternary drew the same four
+// elements and differed only in wording — and the "higher or lower" comparison was a third copy of
+// one `stationView` had already made.
+const agreement = v.divergenceText
+  ? {
+      tone: "fg-fair",
+      figure: `×${v.divergence!.toFixed(1)}`,
+      caption: `${(v.pm25 ?? 0) > (median ?? 0) ? "higher" : "lower"} than its neighbours`,
+      note: `Down-weighted in the ${v.cityName} aggregate. A sensor indoors, next to a road, or with a dying fan reads high — until it agrees again, the city score leans on the devices around it.`,
+    }
+  : {
+      tone: "fg-excellent",
+      figure: v.divergence !== null ? `×${v.divergence.toFixed(2)}` : "—",
+      caption: "in line with its neighbours",
+      note: `This device reads close to the other sensors around ${v.cityName} and to the atmospheric model, so it carries full weight in the city score.`,
+    };
 
 const schema = v.indexable
   ? [
@@ -68,7 +97,7 @@ const schema = v.indexable
         isBasedOn: {
           "@type": "Dataset",
           name: "Sensor.Community",
-          url: `https://data.sensor.community/airrohr/v1/sensor/${v.id}/`,
+          url: rawFeed,
         },
         creator: { "@type": "Organization", name: SITE.name, url: SITE.origin },
       },
@@ -172,53 +201,26 @@ const schema = v.indexable
       <div class="cols" style="gap:0;border-bottom:1px solid var(--line-soft)">
         <div style="padding:16px 20px;border-right:1px solid var(--line-soft)">
           <div class="eyebrow" style="margin-bottom:8px">Agreement with the model</div>
-          {
-            v.divergenceText ? (
-              <>
-                <div style="display:flex;align-items:baseline;gap:8px">
-                  <span class="num fg-fair" style="font-size:23px">
-                    ×{v.divergence!.toFixed(1)}
-                  </span>
-                  <span style="font-size:13px;color:var(--ink-2)">
-                    {(v.pm25 ?? 0) > (median ?? 0) ? "higher" : "lower"} than its neighbours
-                  </span>
-                </div>
-                <p style="font-size:12.5px;margin-top:8px">
-                  Down-weighted in the {v.cityName} aggregate. A sensor indoors, next to a road, or
-                  with a dying fan reads high — until it agrees again, the city score leans on the
-                  devices around it.
-                </p>
-              </>
-            ) : (
-              <>
-                <div style="display:flex;align-items:baseline;gap:8px">
-                  <span class="num fg-excellent" style="font-size:23px">
-                    {v.divergence !== null ? `×${v.divergence.toFixed(2)}` : "—"}
-                  </span>
-                  <span style="font-size:13px;color:var(--ink-2)">in line with its neighbours</span>
-                </div>
-                <p style="font-size:12.5px;margin-top:8px">
-                  This device reads close to the other sensors around {v.cityName} and to the
-                  atmospheric model, so it carries full weight in the city score.
-                </p>
-              </>
-            )
-          }
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span class:list={["num", agreement.tone]} style="font-size:23px">{agreement.figure}</span>
+            <span style="font-size:13px;color:var(--ink-2)">{agreement.caption}</span>
+          </div>
+          <p style="font-size:12.5px;margin-top:8px">{agreement.note}</p>
         </div>
 
         <div style="padding:16px 20px">
           <div class="eyebrow" style="margin-bottom:8px">Nearest stations</div>
           <div style="display:flex;flex-direction:column;gap:7px">
             {
-              nearest.length === 0 ? (
+              nearby.length === 0 ? (
                 <p style="font-size:12.5px">
                   Nothing else within reach — this is the only device covering {v.cityName}.
                 </p>
               ) : (
-                nearest.map((s) => (
+                nearby.map(({ station: s, km }) => (
                   <a class="near" href={paths.station(city.country_slug, city.slug, s.id)}>
                     <span class="nm">Station {s.id}</span>
-                    <span class="km">{s.distance_km !== null ? `${s.distance_km} km` : ""}</span>
+                    <span class="km">{km.toFixed(1)} km</span>
                     <span class:list={["pm", `fg-${pmBand(s.pm25)}`]}>
                       {s.pm25 !== null ? s.pm25.toFixed(1) : "—"}
                     </span>
@@ -233,7 +235,7 @@ const schema = v.indexable
       <div style="padding:14px 20px 18px;display:flex;gap:22px;flex-wrap:wrap">
         <span class="eyebrow">Sensor {v.id}{v.sensorType ? ` · ${v.sensorType.toUpperCase()}` : ""}</span>
         <span class="eyebrow num">{v.lat.toFixed(3)} N, {v.lon.toFixed(3)} E</span>
-        <a class="eyebrow" href={`https://data.sensor.community/airrohr/v1/sensor/${v.id}/`}>
+        <a class="eyebrow" href={rawFeed}>
           Raw feed ↗
         </a>
         <span class="eyebrow">Data · Sensor.Community, ODbL</span>

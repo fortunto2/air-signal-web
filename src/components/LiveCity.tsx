@@ -22,10 +22,18 @@ import { SIGNALS, comfortBand, type SignalKey } from "../lib/site";
 interface Props {
   lat: number;
   lon: number;
-  cityName: string;
+  /**
+   * When the server computed what is on screen. Inside the freshness window there is nothing to
+   * refresh — asking anyway meant every cold page view cost eight upstream calls instead of four,
+   * against a daily quota that has already emptied this site once.
+   */
+  computedAt: string | null;
 }
 
-type State = "loading" | "done" | "stale" | "failed";
+type State = "loading" | "done" | "fresh" | "stale" | "failed";
+
+/** Mirrors FRESH_FOR_MINUTES in comfort-server.ts — the same window, from the other side. */
+const FRESH_FOR_MS = 90 * 60_000;
 
 interface Answer {
   total: number;
@@ -34,11 +42,18 @@ interface Answer {
   readings: Record<string, number>;
 }
 
-export default function LiveCity({ lat, lon }: Props) {
+export default function LiveCity({ lat, lon, computedAt }: Props) {
   const [state, setState] = useState<State>("loading");
   const [at, setAt] = useState<Date | null>(null);
 
   useEffect(() => {
+    // The server just did this. Saying so is the whole optimisation.
+    const age = computedAt ? Date.now() - Date.parse(computedAt) : Infinity;
+    if (age < FRESH_FOR_MS) {
+      setState("fresh");
+      return;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -69,7 +84,7 @@ export default function LiveCity({ lat, lon }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [lat, lon]);
+  }, [lat, lon, computedAt]);
 
   // Always renders the line, even while loading. An island that returns `null` has no box, and a
   // component with no box never intersects the viewport — which is how this shipped once with
@@ -82,11 +97,13 @@ export default function LiveCity({ lat, lon }: Props) {
     >
       {state === "done"
         ? `Refreshed live at ${at?.toISOString().slice(11, 16)} UTC`
-        : state === "stale"
-          ? "Upstreams busy — showing the last computed values"
-          : state === "failed"
-            ? "Could not refresh — showing the last computed values"
-            : "Refreshing…"}
+        : state === "fresh"
+          ? ""
+          : state === "stale"
+            ? "Upstreams busy — showing the last computed values"
+            : state === "failed"
+              ? "Could not refresh — showing the last computed values"
+              : "Refreshing…"}
     </p>
   );
 }

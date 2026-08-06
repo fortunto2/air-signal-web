@@ -11,6 +11,7 @@ import { loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
 import { comfortFrom, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { execute, query, update, upsert } from "./d1.ts";
+import { storedReadings } from "../src/lib/live.ts";
 import { slug, type SignalKey } from "../src/lib/site.ts";
 
 export interface Opts {
@@ -32,12 +33,6 @@ export interface Opts {
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
-
-/** Undefined stays undefined — JSON.stringify drops the key, and absent must not become zero. */
-const round = (v: number | null | undefined, places: number): number | undefined =>
-  v === null || v === undefined || !Number.isFinite(v)
-    ? undefined
-    : Math.round(v * 10 ** places) / 10 ** places;
 
 // ── 1. cities ───────────────────────────────────────────────────────────────
 
@@ -449,25 +444,14 @@ export async function ingestComfort(
 
       const comfort = comfortFrom(scoresFrom(readings));
 
-      // Only the readings that exist. `undefined` disappears through JSON.stringify, which is the
-      // behaviour we want: the page can then ask "is this key present" and get the truth.
-      const stored = {
-        pm25: round(readings.pm25, 1),
-        pm10: round(a.pm10, 1),
-        temperature: round(w.temperatureC, 1),
-        humidity: round(w.humidityPct, 0),
-        wind: round(w.windKmh, 1),
-        pressure: round(w.pressureHpa, 0),
-        uv: round(w.uv, 1),
-        daylight: round(w.daylightHours, 1),
-        wave: round(m.waveHeightM, 2),
-        sea_temp: round(m.seaTempC, 1),
-        pollen: round(a.pollen, 0),
-        kp: round(kp, 2),
-        quake: round(readings.quakeMagnitude, 1),
-        fire_km: round(readings.fireDistanceKm, 0),
-        moon: round(phase, 2),
-      };
+      // Through `storedReadings`, not by hand. This table used to live here as well as in
+      // live.ts, and the two had already drifted: the ETL wrote kp/quake/fire/moon without
+      // wind_dir, the live path wrote wind_dir without the other four, and both fed the same
+      // renderer — so a city silently lost measure lines depending on which had touched it last.
+      const stored = storedReadings(readings, {
+        pm10: a.pm10,
+        seaTempC: m.seaTempC,
+      });
 
       cityRows.push([
         city.id,

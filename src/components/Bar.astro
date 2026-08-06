@@ -1,14 +1,13 @@
 ---
 /** The top bar. Logo, an optional middle (breadcrumb or search), then navigation. */
-import { SITE } from "../lib/site";
+import { SITE, paths } from "../lib/site";
 
 interface Props {
   /** Breadcrumb text or markup goes in the default slot. */
   search?: string;
-  searchHref?: string;
 }
 
-const { search, searchHref = "/map" } = Astro.props;
+const { search } = Astro.props;
 ---
 
 <div class="bar">
@@ -18,7 +17,7 @@ const { search, searchHref = "/map" } = Astro.props;
 
   {
     search && (
-      <a class="search" href={searchHref} role="search" aria-label="Search cities">
+      <a class="search" href={paths.map()} role="search" aria-label="Search cities">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5" />
           <path d="M11 11l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
@@ -31,9 +30,9 @@ const { search, searchHref = "/map" } = Astro.props;
   <slot />
 
   <nav>
-    <a href="/map">Map</a>
-    <a href="/countries">Countries</a>
-    <a href="/ranking">Ranking</a>
-    <a href="/how-it-works">How it works</a>
+    <a href={paths.map()}>Map</a>
+    <a href={paths.countries()}>Countries</a>
+    <a href={paths.ranking()}>Ranking</a>
+    <a href={paths.howItWorks()}>How it works</a>
   </nav>
 </div>
