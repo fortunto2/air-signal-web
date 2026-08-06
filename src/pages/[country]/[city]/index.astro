@@ -10,6 +10,7 @@ import Layout from "../../../layouts/Layout.astro";
 import Bar from "../../../components/Bar.astro";
 import Spectrum from "../../../components/Spectrum.astro";
 import Sparkline from "../../../components/Sparkline.astro";
+import AirIntel from "../../../components/AirIntel.astro";
 import LiveCity from "../../../components/LiveCity.tsx";
 import {
   getCity,
@@ -19,7 +20,7 @@ import {
   parseSignals,
   saveCityReadings,
 } from "../../../lib/db";
-import { computeComfort, isStale } from "../../../lib/comfort-server";
+import { aqi, classifySource, computeComfort, detectEvent, isStale, windDirection } from "../../../lib/comfort-server";
 import { cityView, ago } from "../../../lib/view";
 import { SITE, abs, paths, comfortBand, pmBand } from "../../../lib/site";
 
@@ -69,6 +70,24 @@ if (isStale(row.updated_at)) {
 
 const v = cityView(row, history);
 const scores = parseSignals(row.signals_json);
+
+// Everything below comes out of the Rust core, from data already on this page — no extra request.
+// The event baseline is the median of the city's own devices, which is what lets it run at all.
+const airEvent = detectEvent(
+  v.lat,
+  v.lon,
+  stations.map((s) => ({ id: s.id, lat: s.lat, lon: s.lon, pm25: s.pm25, pm10: s.pm10 })),
+);
+// The devices are the fallback for both, and often the better source: they are measurements, and
+// they keep working when the model upstream is rate-limited or down. `detect_event` has already
+// computed the medians, so this costs nothing.
+const pm25Now = v.readings.pm25 ?? airEvent?.median_pm25 ?? null;
+const pm10Now = v.readings.pm10 ?? airEvent?.median_pm10 ?? null;
+
+const airSource = classifySource(pm25Now, pm10Now);
+const airAqi = aqi(pm25Now, pm10Now);
+const compass = windDirection(v.readings.wind_dir);
+const wind = compass ? { ...compass, speed: v.readings.wind } : null;
 
 // Where today sits in its own month. A number is only meaningful next to the ones before it.
 const past = history.map((d) => d.comfort).filter((n): n is number => n !== null);
@@ -186,6 +205,8 @@ const schema = [
         </div>
       </div>
 
+      <AirIntel aqi={airAqi} source={airSource} event={airEvent} wind={wind} placeName={v.name} />
+
       <div class="grid-signals">
         {
           v.signals.map((s) => (
@@ -221,6 +242,7 @@ const schema = [
               points={history.map((d) => d.comfort)}
               labels={history.map((d) => d.day)}
               band={v.band ?? undefined}
+              floor={100}
               label={`Comfort in ${v.name} over the last ${history.length} days`}
             />
           </div>

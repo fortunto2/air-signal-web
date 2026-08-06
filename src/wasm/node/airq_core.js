@@ -19,9 +19,49 @@ function wasm_aqi_category(aqi) {
 exports.wasm_aqi_category = wasm_aqi_category;
 
 /**
+ * Which neighbour is making the air bad — the conditional probability function.
+ *
+ * Given a month of hourly PM2.5 alongside the wind that blew during each of those hours, and
+ * a list of nearby sources, this scores each source by *the fraction of hours with wind from
+ * its direction that landed in the worst quarter of readings*. A works that only matters on a
+ * northerly scores high; a motorway that is always there scores flat.
+ *
+ * The reportable number is not the score, though — it is `avg_pm25_in_sector` against
+ * `avg_pm25_other`: "when the wind is off the port you breathe 31 µg/m³, otherwise 12".
+ *
+ * Input JSON:
+ * ```json
+ * { "lat": 48.78, "lon": 9.18, "percentile": 0.75,
+ *   "sources": [{ "name": "Cement works", "lat": 48.9, "lon": 9.3,
+ *                 "source_type": "factory", "distance_km": 14.2 }],
+ *   "pm25": [12.0, 31.0, ...], "wind_dirs": [210.0, ...], "wind_speeds": [8.0, ...] }
+ * ```
+ * The three arrays are parallel and hourly; hours with wind under 5 km/h are ignored, because
+ * calm air carries nothing from anywhere.
+ * @param {string} json
+ * @returns {string}
+ */
+function wasm_calculate_cpf(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_calculate_cpf(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+exports.wasm_calculate_cpf = wasm_calculate_cpf;
+
+/**
  * Classify what a PM10/PM2.5 ratio is telling you — dust, combustion, mixed traffic.
  *
- * Returns `{"category","label","confidence"}`. Cheap enough to run on every station page,
+ * Returns the full `SourceClassification`: category, label, confidence, a reason with the
+ * numbers in it, the typical sources, and advice. Cheap enough to run on every station page,
  * and it turns two numbers into the sentence a reader actually wanted.
  * @param {number} pm25
  * @param {number} pm10
@@ -60,6 +100,46 @@ function wasm_comfort_score(json) {
     }
 }
 exports.wasm_comfort_score = wasm_comfort_score;
+
+/**
+ * Is this a real event, or one sensor having a bad day?
+ *
+ * The question every air map gets wrong. A single device reading high is noise; seven devices
+ * reading high *on the same side of town* is something arriving, and the difference is the
+ * whole value of having a network rather than a sensor.
+ *
+ * Input JSON:
+ * ```json
+ * { "lat": 48.78, "lon": 9.18, "k": 2.0,
+ *   "readings": [{ "sensor_id": 1, "lat": 48.8, "lon": 9.2, "pm25": 31.0, "pm10": 44.0 }],
+ *   "baseline": { "pm25": 8.0, "pm25_var": 9.0, "pm10": 14.0, "pm10_var": 20.0 } }
+ * ```
+ *
+ * `baseline` is supplied rather than accumulated, which is what lets this run without a
+ * database: hand it the median and variance of the readings themselves and the comparison
+ * becomes spatial — this sensor against its neighbours right now — instead of temporal.
+ *
+ * Returns the whole `EventAnalysis`: concordance and event type, the direction the anomaly
+ * sits in with its angular spread, medians, the PM ratio and its source classification,
+ * a confidence, and a composed summary sentence.
+ * @param {string} json
+ * @returns {string}
+ */
+function wasm_detect_event(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_detect_event(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+exports.wasm_detect_event = wasm_detect_event;
 
 /**
  * Feature names from matrix macro (single source of truth).

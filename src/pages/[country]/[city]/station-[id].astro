@@ -161,6 +161,8 @@ const schema = v.indexable
               labels={history.map((d) => d.day)}
               band={v.band === "quiet" ? undefined : v.band}
               height={96}
+              floor={50}
+              guide={{ value: 15, label: "WHO 15" }}
               label={`PM2.5 at station ${v.id} over ${history.length} days`}
             />
           </div>

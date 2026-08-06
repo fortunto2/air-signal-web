@@ -23,7 +23,19 @@ async function json(url: string): Promise<any> {
   return res.json();
 }
 
-export async function fetchReadings(lat: number, lon: number): Promise<Readings> {
+/** Everything the page shows that is not one of the fourteen scores. */
+export interface Extras {
+  pm10?: number;
+  seaTempC?: number;
+  /** Degrees the wind is coming *from*. Rust turns it into a compass label and an arrow. */
+  windDirection?: number;
+}
+
+export async function fetchReadings(
+  lat: number,
+  lon: number,
+  extras?: { out: Extras },
+): Promise<Readings> {
   const q = `latitude=${lat}&longitude=${lon}`;
 
   // Settled, not all-or-nothing: a marine model that has nothing to say about an inland city must
@@ -31,7 +43,7 @@ export async function fetchReadings(lat: number, lon: number): Promise<Readings>
   const [weather, air, marine, sensors] = await Promise.allSettled([
     json(
       `https://api.open-meteo.com/v1/forecast?${q}` +
-        "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,pressure_msl" +
+        "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl" +
         "&hourly=uv_index&daily=sunrise,sunset&forecast_days=1&timezone=UTC&wind_speed_unit=kmh",
     ),
     json(
@@ -58,6 +70,14 @@ export async function fetchReadings(lat: number, lon: number): Promise<Readings>
     .map(Number)
     .filter((n) => Number.isFinite(n));
 
+  if (extras) {
+    extras.out = {
+      pm10: num(a.pm10),
+      seaTempC: num(m.sea_surface_temperature),
+      windDirection: num(w.wind_direction_10m),
+    };
+  }
+
   return {
     pm25: sensorPm25 ?? num(a.pm2_5),
     temperatureC: num(w.temperature_2m),
@@ -75,10 +95,7 @@ export async function fetchReadings(lat: number, lon: number): Promise<Readings>
 }
 
 /** The raw values a page prints, in their own units — the shape stored as `readings_json`. */
-export function storedReadings(
-  r: Readings,
-  extra: { pm10?: number; seaTempC?: number } = {},
-): Record<string, number> {
+export function storedReadings(r: Readings, extra: Extras = {}): Record<string, number> {
   const out: Record<string, number> = {};
   const put = (k: string, v: number | undefined, places: number) => {
     if (v === undefined || !Number.isFinite(v)) return;
@@ -94,6 +111,7 @@ export function storedReadings(
   put("daylight", r.daylightHours, 1);
   put("wave", r.waveHeightM, 2);
   put("sea_temp", extra.seaTempC, 1);
+  put("wind_dir", extra.windDirection, 0);
   put("pollen", r.pollen, 0);
   return out;
 }

@@ -32,6 +32,8 @@ export interface Readings {
   daylight?: number;
   wave?: number;
   sea_temp?: number;
+  /** Degrees the wind comes *from*. Rust turns it into a compass label and an arrow. */
+  wind_dir?: number;
   pollen?: number;
   kp?: number;
   quake?: number;
@@ -83,7 +85,10 @@ export function signalLines(
   const measures: Record<SignalKey, string | null> = {
     air: r.pm25 !== undefined ? `${r.pm25} µg/m³` : null,
     temperature: r.temperature !== undefined ? `${r.temperature} °C` : null,
-    wind: r.wind !== undefined ? `${r.wind} km/h` : null,
+    wind:
+      r.wind !== undefined
+        ? `${r.wind} km/h${r.wind_dir !== undefined ? ` from ${Math.round(r.wind_dir)}°` : ""}`
+        : null,
     sea:
       r.sea_temp !== undefined
         ? `${r.sea_temp} °C${r.wave !== undefined ? ` · ${r.wave} m` : ""}`

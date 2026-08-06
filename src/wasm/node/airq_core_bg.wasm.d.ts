@@ -2,8 +2,10 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const wasm_aqi_category: (a: number) => [number, number];
+export const wasm_calculate_cpf: (a: number, b: number) => [number, number];
 export const wasm_classify_source: (a: number, b: number) => [number, number];
 export const wasm_comfort_score: (a: number, b: number) => [number, number];
+export const wasm_detect_event: (a: number, b: number) => [number, number];
 export const wasm_feature_names: () => [number, number];
 export const wasm_geomagnetic: (a: number) => [number, number];
 export const wasm_list_countries: () => [number, number];

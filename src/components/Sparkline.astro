@@ -15,17 +15,28 @@ interface Props {
   band?: Band;
   height?: number;
   label: string;
+  /**
+   * Never scale the axis tighter than this. Without it the chart auto-fits its own data, so a city
+   * that spent the month between 3 and 6 µg/m³ draws the same dramatic mountain range as one that
+   * swung between 20 and 90. The shape is honest; the *intonation* is a lie. Borrowed from the Rust
+   * dashboard, which floors its y-axis at 50 for exactly this reason.
+   */
+  floor?: number;
+  /** A horizontal reference with a label — the WHO guideline on a PM chart. */
+  guide?: { value: number; label: string };
 }
 
-const { points, labels = [], band, height = 78, label } = Astro.props;
+const { points, labels = [], band, height = 78, label, floor, guide } = Astro.props;
 
 const W = 600;
 const H = height;
 const PAD = 6;
 
 const known = points.filter((p): p is number => p !== null);
-const min = known.length ? Math.min(...known) : 0;
-const max = known.length ? Math.max(...known) : 1;
+// The floor and the guide both have to fit, or the reference line lands outside the chart.
+const ceiling = Math.max(floor ?? 0, guide ? guide.value * 1.15 : 0);
+const min = known.length ? Math.min(...known, 0) : 0;
+const max = Math.max(known.length ? Math.max(...known) : 1, ceiling);
 const span = max - min || 1;
 
 const x = (i: number) => (points.length < 2 ? W / 2 : (i / (points.length - 1)) * W);
@@ -58,6 +69,11 @@ const area =
       ` L${x(lastIndex).toFixed(1)} ${H} Z`
     : "";
 
+// Computed here, not in the template: Astro's parser treats a `<` inside a JSX expression as the
+// start of a tag, so `guide.value <= max` in a conditional breaks the whole component.
+const showGuide = guide !== undefined && guide.value >= min && guide.value <= max;
+const guideY = guide ? y(guide.value) : 0;
+
 const stroke = band ? `var(--s-${band})` : "var(--accent)";
 const id = `spark-${Math.abs(label.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7))}`;
 
@@ -84,6 +100,34 @@ const summary =
   </defs>
 
   <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="var(--line-soft)" stroke-width="1"></line>
+
+  {
+    showGuide && (
+      <line
+        x1="0"
+        y1={guideY}
+        x2={W}
+        y2={guideY}
+        stroke="var(--ink-3)"
+        stroke-width="1"
+        stroke-dasharray="4 4"
+        opacity="0.8"
+      />
+    )
+  }
+  {
+    showGuide && (
+      <text
+        x="6"
+        y={guideY - 4}
+        font-family="var(--font-mono)"
+        font-size="10"
+        fill="var(--ink-3)"
+      >
+        {guide!.label}
+      </text>
+    )
+  }
 
   {area && <path d={area} fill={`url(#${id})`} />}
   {

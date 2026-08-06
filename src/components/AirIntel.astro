@@ -1,0 +1,135 @@
+---
+/**
+ * What the air is, beyond a score.
+ *
+ * Three questions a number cannot answer, all of them computed by the Rust core rather than
+ * re-derived here:
+ *
+ *  - **What is this made of?** `classify_source` reads the PM10/PM2.5 ratio. Coarse particles
+ *    dominating means dust; a ratio near one means combustion. Two figures the page already has
+ *    become a named category, the reasoning with the numbers in it, and something to do about it.
+ *  - **Is something happening?** `detect_event` asks whether the devices agree. One sensor reading
+ *    high is noise; seven reading high on the same side of town is something arriving — and saying
+ *    which is the entire point of having a network rather than a sensor. The baseline is the median
+ *    of the city's own devices, so this costs no request at all.
+ *  - **How bad is it in the units people search for?** The comfort score is ours; AQI is the one
+ *    everyone else prints, and refusing to show it is a way of losing an argument nobody made.
+ */
+import type { AqiReading, EventAnalysis, SourceHint } from "../lib/comfort-server";
+
+interface Props {
+  aqi: AqiReading | null;
+  source: SourceHint | null;
+  event: EventAnalysis | null;
+  wind: { label: string; arrow: string; speed?: number } | null;
+  placeName: string;
+}
+
+const { aqi, source, event, wind, placeName } = Astro.props;
+
+// A "widespread" or directional event is news; "normal" and "noise" are not, and printing them
+// would train a reader to ignore this block on the days it matters.
+const newsworthy =
+  event &&
+  (event.concordance.event_type === "Widespread" ||
+    (event.concordance.event_type === "Event" && event.directional?.is_directional));
+
+// Nothing to say is a valid outcome — the guard below renders nothing rather than an empty box.
+---
+
+{
+  (aqi || source || newsworthy || wind) && (
+    <div style="border-bottom:1px solid var(--line-soft)">
+      <div style="padding:16px 20px 4px" class="eyebrow">
+        What this air is
+      </div>
+
+      <div class="statrow" style="border-top:0">
+        {aqi && (
+          <div class="stat">
+            <span class="eyebrow">US AQI</span>
+            <span class="num" style={`font-size:27px;color:${aqi.color}`}>
+              {aqi.aqi}
+            </span>
+            <span class="unit">
+              {aqi.emoji} {aqi.label}
+            </span>
+          </div>
+        )}
+
+        {wind && (
+          <div class="stat">
+            <span class="eyebrow">Wind from</span>
+            <span class="num" style="font-size:27px">
+              <span aria-hidden="true">{wind.arrow}</span> {wind.label}
+            </span>
+            <span class="unit">
+              {wind.speed !== undefined
+                ? wind.speed < 5
+                  ? `${wind.speed} km/h · calm, pollutants accumulate`
+                  : wind.speed < 15
+                    ? `${wind.speed} km/h · disperses gradually`
+                    : `${wind.speed} km/h · good ventilation`
+                : "direction only"}
+            </span>
+          </div>
+        )}
+
+        {source && (
+          <div class="stat" style="flex:2">
+            <span class="eyebrow">Likely character</span>
+            <span class="num" style="font-size:19px;line-height:1.2">
+              {source.label}
+            </span>
+            <span class="unit">{Math.round(source.confidence * 100)} % confidence</span>
+          </div>
+        )}
+      </div>
+
+      {source && (
+        <div style="padding:14px 20px 4px">
+          <p style="font-size:13.5px;max-width:74ch">{source.reason}.</p>
+          <p style="font-size:13px;margin-top:6px;color:var(--ink-2);max-width:74ch">
+            {source.advice}
+          </p>
+          {source.typical_sources.length > 0 && (
+            <p class="eyebrow" style="margin-top:8px">
+              Typically: {source.typical_sources.join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
+
+      {newsworthy && event && (
+        <div style="padding:14px 20px 18px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span
+              class:list={[
+                "chip",
+                event.concordance.event_type === "Widespread" ? "fg-poor" : "fg-fair",
+              ]}
+            >
+              <span class="dot" />
+              {event.concordance.event_type === "Widespread" ? "widespread" : "localised event"}
+            </span>
+            {event.directional?.is_directional && (
+              <span class="eyebrow num">
+                from the {event.directional.bearing_label} · spread{" "}
+                {Math.round(event.directional.spread_deg)}°
+              </span>
+            )}
+            <span class="eyebrow num">{Math.round(event.confidence * 100)} % confidence</span>
+          </div>
+          <p style="font-size:13.5px;margin-top:8px;max-width:74ch">
+            {event.concordance.anomaly_count} of {event.concordance.total_sensors} devices around{" "}
+            {placeName} are reading well above their neighbours
+            {event.directional?.is_directional
+              ? `, and they are all on the ${event.directional.bearing_label} side — which is what a
+                 plume arriving looks like rather than a sensor misbehaving.`
+              : ", but they are scattered across the city rather than clustered on one side."}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
