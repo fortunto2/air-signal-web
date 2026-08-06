@@ -33,5 +33,15 @@
   // The domain is the product name; workers.dev stays off so there is exactly one indexable host
   // and nothing competes with it in search.
   "workers_dev": false,
-  "routes": [{ "pattern": "airsignal.app", "custom_domain": true }]
+  "routes": [
+    { "pattern": "airsignal.app", "custom_domain": true },
+    // Both answer, neither ranks: src/middleware.ts 301s them to the canonical host. `www` is the
+    // habit everyone has, and `air.miralinka.com` is where the Next version lived — pointing it
+    // here rather than leaving it on Vercel is what transfers its history instead of competing
+    // with it as a duplicate.
+    { "pattern": "www.airsignal.app", "custom_domain": true }
+    // `air.miralinka.com` belongs here too — the middleware already 301s it — but Cloudflare
+    // refuses to attach a custom domain over an existing DNS record, and that hostname still has
+    // the A records pointing at Vercel. Delete those in the dashboard, then add the route back.
+  ]
 }

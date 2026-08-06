@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from "astro";
+import { SITE } from "./lib/site";
 
 /**
  * Three jobs, all of which exist because the site is server-rendered.
@@ -23,6 +24,11 @@ const PAGE_CACHE = "public, max-age=0, s-maxage=600, stale-while-revalidate=8640
 
 /** Never cache an error as though it were the answer. */
 const NO_CACHE = "no-store";
+
+const CANONICAL_HOST = new URL(SITE.origin).hostname;
+
+/** Hosts that answer but must not rank. `air.miralinka.com` is where the Next version lived. */
+const ALIAS_HOSTS = new Set(["air.miralinka.com", `www.${CANONICAL_HOST}`]);
 
 /**
  * The q-value this Accept header gives a media type, or -1 if it does not name it.
@@ -81,6 +87,22 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   if (path.startsWith("/_astro/") || path.startsWith("/_image")) return next();
 
   if (context.request.method !== "GET" && context.request.method !== "HEAD") return next();
+
+  // One indexable host. `air.miralinka.com` is where the Next version lived, and `www` is the
+  // habit everyone has; both answer here so no link breaks, and both hand their authority to the
+  // canonical origin rather than competing with it as a duplicate.
+  //
+  // Deliberately an allow-list rather than "anything that is not airsignal.app": localhost and
+  // the preview host have to keep working, and a blanket rule would redirect them into production
+  // the first time someone ran `wrangler dev`.
+  const host = context.url.hostname;
+  if (ALIAS_HOSTS.has(host)) {
+    const to = new URL(context.url);
+    to.protocol = "https:";
+    to.hostname = CANONICAL_HOST;
+    to.port = "";
+    return new Response(null, { status: 301, headers: { location: to.href } });
+  }
 
   // Note: a trailing slash never reaches here. The router rejects it before middleware runs, so
   // the forgiving redirect lives in src/pages/404.astro, which *is* reached.
