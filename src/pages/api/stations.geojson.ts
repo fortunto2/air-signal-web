@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { getStationPoints } from "../../lib/db";
+import { getLastIngest, getStationPoints } from "../../lib/db";
 import { QUIET_AFTER_MINUTES } from "../../lib/view";
 import { paths } from "../../lib/site";
 
@@ -17,8 +17,23 @@ export const GET: APIRoute = async ({ url }) => {
     ? (bboxParam.split(",").map(Number) as [number, number, number, number])
     : undefined;
 
-  const rows = await getStationPoints(bbox && bbox.every(Number.isFinite) ? bbox : undefined);
-  const now = Date.now();
+  const [rows, lastIngest] = await Promise.all([
+    getStationPoints(bbox && bbox.every(Number.isFinite) ? bbox : undefined),
+    getLastIngest(),
+  ]);
+
+  /**
+   * Age is measured from the ingest, not from now.
+   *
+   * `last_seen` only moves when the ETL runs, so measuring against the wall clock meant every
+   * device on Earth turned hollow a couple of hours after each pass and stayed that way until the
+   * next one — a map of 9 288 grey rings for most of the day, announcing an outage that was ours.
+   *
+   * Against the ingest it says what it was always meant to say: this device was not reporting when
+   * we last looked. `Math.min` keeps it honest if the ETL somehow ran in the future, and a missing
+   * ingest timestamp falls back to now.
+   */
+  const asOf = Math.min(lastIngest?.getTime() ?? Date.now(), Date.now());
 
   // Four decimal places is about eleven metres. Sensor.Community publishes coordinates rounded to
   // roughly a street anyway (deliberately, so a reading is not a home address), so the extra digits
@@ -30,7 +45,7 @@ export const GET: APIRoute = async ({ url }) => {
     features: rows.map((s) => {
       // Sensor.Community timestamps are "YYYY-MM-DD HH:MM:SS" in UTC without a zone marker.
       const seen = s.last_seen ? Date.parse(s.last_seen.replace(" ", "T") + "Z") : NaN;
-      const ageMin = Number.isFinite(seen) ? Math.round((now - seen) / 60_000) : 99_999;
+      const ageMin = Number.isFinite(seen) ? Math.max(0, Math.round((asOf - seen) / 60_000)) : 99_999;
       return {
         type: "Feature",
         geometry: { type: "Point", coordinates: [r4(s.lon), r4(s.lat)] },

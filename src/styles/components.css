@@ -126,9 +126,104 @@ a {
   text-decoration: none;
 }
 .search:hover,
-.search:focus-visible {
+.search:focus-visible,
+.searchbox:focus-within .search {
   color: var(--ink-2);
   border-color: var(--ink-3);
+}
+
+/* ── search box and its results ─────────────────────────────────────────── */
+
+/* Pushed right, so a breadcrumb stays beside the logo where it belongs and the box sits next to
+   the nav. Both this and `.bar nav` claim the free space; the first one wins, which is this. */
+.searchbox {
+  position: relative;
+  margin-left: auto;
+  min-width: 210px;
+}
+.search input {
+  border: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  color: var(--ink);
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+.search input::placeholder {
+  color: var(--ink-3);
+}
+/* Safari draws its own clear button inside type="search" and it does not match anything here. */
+.search input::-webkit-search-decoration,
+.search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+
+.hit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 9px 12px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--line-soft);
+}
+.hit:last-child {
+  border-bottom: 0;
+}
+.hit.is-on {
+  background: var(--ground);
+}
+.hit-name {
+  font-size: 14px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* A device id and a place name look nothing alike until they are in the same list. */
+.hit-kind {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  padding: 1px 6px;
+}
+.hit-detail {
+  grid-column: 1;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.hit .num {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  font-size: 17px;
+}
+.hit-empty {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--ink-3);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -450,6 +545,13 @@ a {
   overflow: hidden;
   background: var(--ground);
 }
+/* A map inside a page, not as the page: shorter, and bounded above and below by the sections it
+   sits between rather than by the frame. */
+.mapview.is-inset {
+  height: 400px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
 
 .legend {
   position: absolute;
@@ -484,6 +586,22 @@ a {
   background: none;
   border: 1.5px solid var(--ink-3);
   border-radius: 50%;
+}
+/* The two overlay keys are drawn as what they are on the map: a line and a wedge. */
+.lg i.wind-key {
+  width: 14px;
+  height: 0;
+  border-top: 2px solid var(--accent);
+  border-radius: 0;
+}
+.lg i.plume-key {
+  width: 0;
+  height: 0;
+  border-radius: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid var(--s-poor);
+  opacity: 0.55;
 }
 
 .peek {
@@ -601,6 +719,9 @@ a {
   .mapview {
     height: 380px;
   }
+  .mapview.is-inset {
+    height: 320px;
+  }
   .peek {
     left: 12px;
     width: auto;
@@ -636,6 +757,15 @@ a {
     gap: 16px;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+  /* The box keeps its own row rather than fighting the logo for 375 px. */
+  .searchbox {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+  .bar nav {
+    order: 4;
   }
   .bar nav::-webkit-scrollbar {
     display: none;

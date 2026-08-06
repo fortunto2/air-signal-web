@@ -13,6 +13,7 @@ import Sparkline from "../../../components/Sparkline.astro";
 import AirIntel from "../../../components/AirIntel.astro";
 import SetPlace from "../../../components/SetPlace.tsx";
 import LiveCity from "../../../components/LiveCity.tsx";
+import StationMap from "../../../components/StationMap.tsx";
 import {
   getCity,
   getCityHistory,
@@ -97,6 +98,44 @@ const better =
     : null;
 
 const live = stations.filter((s) => s.pm25 !== null).length;
+
+/**
+ * The map's window, sized to the devices rather than to a fixed radius.
+ *
+ * Sofia's 283 sensors sit inside 12 km; a town with three has them 30 km apart. A constant box
+ * would either crop the first or lose the second in an empty field, so the frame follows the data
+ * and is only clamped at the ends to stop one stray device 200 km away from zooming the whole city
+ * out to a dot.
+ */
+const spread = stations.reduce((max, s) => Math.max(max, s.distance_km ?? 0), 0);
+const spanKm = Math.min(45, Math.max(9, spread * 1.25));
+// A degree of longitude shrinks with latitude; without the cosine the box is far too wide in
+// Scandinavia and too narrow near the equator.
+const dLat = spanKm / 111;
+const dLon = dLat / Math.max(0.2, Math.cos((v.lat * Math.PI) / 180));
+const bbox: [number, number, number, number] = [
+  v.lon - dLon,
+  v.lat - dLat,
+  v.lon + dLon,
+  v.lat + dLat,
+];
+
+// The arrow only means something with a direction; speed may be absent and the arrow still reads.
+const windArrow =
+  v.readings.wind_dir !== undefined && compass
+    ? { fromDeg: v.readings.wind_dir, kmh: v.readings.wind ?? 0, label: compass.label }
+    : null;
+
+// Only when the devices genuinely cluster on one side. A scattered anomaly drawn as a wedge would
+// be the site asserting a direction it does not have — the exact false confidence `detect_event`
+// exists to prevent.
+const plume = airEvent?.directional?.is_directional
+  ? {
+      bearingDeg: airEvent.directional.bearing_deg,
+      spreadDeg: airEvent.directional.spread_deg,
+      label: `to the ${airEvent.directional.bearing_label}`,
+    }
+  : null;
 
 const schema = [
   {
@@ -275,6 +314,41 @@ const schema = [
               beside a road reads several times high, and plotting that at face value is what every
               other air map does.
             </p>
+          </div>
+        )
+      }
+
+      {
+        stations.length > 0 && (
+          <div style="border-bottom:1px solid var(--line-soft)">
+            <div style="padding:16px 20px 10px">
+              <div class="eyebrow">Where the sensors are</div>
+              <p style="font-size:13px;margin-top:6px;max-width:74ch">
+                Each dot is a device, coloured by what it is reading right now and hollow if it has
+                gone quiet.
+                {windArrow &&
+                  ` The line is the wind — it comes from the ${windArrow.label} and crosses the city
+                    towards the arrow.`}
+                {plume &&
+                  ` The shaded wedge is where the high readings are clustered, which is the side
+                    something is arriving from.`}
+              </p>
+            </div>
+            {/*
+              `client:only` for the same reason as the main map: MapLibre reads `window` at module
+              scope, so there is nothing for the server to render. The list below is the answer for
+              anyone who never runs it — the map is the picture, not the data.
+            */}
+            <StationMap
+              client:only="react"
+              centre={[v.lon, v.lat]}
+              zoom={11}
+              bbox={bbox}
+              spanKm={spanKm}
+              wind={windArrow}
+              plume={plume}
+              inset
+            />
           </div>
         )
       }

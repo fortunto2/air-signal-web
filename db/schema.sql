@@ -75,6 +75,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS cities_path ON cities (country_id, slug);
 CREATE INDEX IF NOT EXISTS cities_geo         ON cities (lat, lon);
 CREATE INDEX IF NOT EXISTS cities_sitemap     ON cities (indexable, rank);
 CREATE INDEX IF NOT EXISTS cities_ranked      ON cities (comfort);
+-- The search box fires per keystroke. NOCASE because a reader types "sofia" and the row says
+-- "Sofia"; without the collation LIKE cannot use this index and it is decoration.
+CREATE INDEX IF NOT EXISTS cities_name        ON cities (name COLLATE NOCASE);
 
 -- ---------------------------------------------------------------------------
 -- stations — one Sensor.Community device. Upsert only.

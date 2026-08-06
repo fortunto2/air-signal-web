@@ -133,7 +133,132 @@ function graticule(): GeoJSON.FeatureCollection {
 const CENTER: [number, number] = [10.5, 50.5];
 const ZOOM = 4;
 
-export default function StationMap() {
+/**
+ * Where you end up travelling `km` from a point on the given bearing. The inverse of the haversine
+ * the core already does — needed here because the wind and the plume are drawn as geometry on the
+ * globe, not as an icon pinned to a corner, and a fixed pixel offset would point somewhere else at
+ * every latitude.
+ */
+function destination(lat: number, lon: number, bearingDeg: number, km: number): [number, number] {
+  const R = 6371;
+  const d = km / R;
+  const b = (bearingDeg * Math.PI) / 180;
+  const φ1 = (lat * Math.PI) / 180;
+  const λ1 = (lon * Math.PI) / 180;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(d) + Math.cos(φ1) * Math.sin(d) * Math.cos(b));
+  const λ2 =
+    λ1 +
+    Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(φ1), Math.cos(d) - Math.sin(φ1) * Math.sin(φ2));
+  return [(λ2 * 180) / Math.PI, (φ2 * 180) / Math.PI];
+}
+
+export interface WindArrow {
+  /** Degrees the wind comes *from*, the meteorological convention. 0 is north. */
+  fromDeg: number;
+  kmh: number;
+  label: string;
+}
+
+export interface PlumeWedge {
+  /** Bearing from the city centre to the cluster of anomalous devices. */
+  bearingDeg: number;
+  spreadDeg: number;
+  label: string;
+}
+
+/**
+ * The wind and the plume, as geometry.
+ *
+ * This is the one thing a list of readings cannot say. `detect_event` in the Rust core already
+ * works out that seven devices are reading high *and that they are all on one side of town* — the
+ * page prints that as a sentence, and a sentence about a direction is a poor substitute for the
+ * direction. Drawn here: the wind as an arrow through the centre, the anomaly as a wedge pointing
+ * at where it is coming from. When the two line up, the reader can see the argument rather than
+ * take it on faith.
+ */
+function overlay(
+  centre: [number, number],
+  spanKm: number,
+  wind: WindArrow | null,
+  plume: PlumeWedge | null,
+): GeoJSON.FeatureCollection {
+  const [lon, lat] = centre;
+  const features: GeoJSON.Feature[] = [];
+
+  if (plume) {
+    // Clamped: a two-sensor event can report a spread of 4°, and a needle is not a direction.
+    // Widened to at least 30° so the wedge reads as "that way, roughly" — which is the claim.
+    const half = Math.max(15, Math.min(60, plume.spreadDeg / 2));
+    const r = spanKm * 0.92;
+    const arc: [number, number][] = [[lon, lat]];
+    for (let a = -half; a <= half; a += 3) {
+      arc.push(destination(lat, lon, plume.bearingDeg + a, r));
+    }
+    arc.push([lon, lat]);
+    features.push({
+      type: "Feature",
+      properties: { kind: "plume" },
+      geometry: { type: "Polygon", coordinates: [arc] },
+    });
+  }
+
+  if (wind) {
+    // The shaft runs upwind to downwind through the centre, so it reads as air crossing the city
+    // rather than as a pin stuck in it. Length carries speed, but within a third of the view at
+    // most: drawn at full span the line left the frame at both ends, taking the arrowhead with it,
+    // and a direction indicator whose point is off-screen indicates nothing.
+    // A floor under the length: at 4 km/h a purely proportional arrow is ninety pixels of hairline
+    // lost among three hundred dots, and "nearly calm" is a fact better carried by the legend's
+    // number than by an indicator too small to find. Speed still stretches it, from a quarter of
+    // the view to a half.
+    const reach = spanKm * (0.26 + (Math.min(wind.kmh, 40) / 40) * 0.22);
+    const tail = destination(lat, lon, wind.fromDeg, reach);
+    const head = destination(lat, lon, wind.fromDeg + 180, reach);
+    features.push({
+      type: "Feature",
+      properties: { kind: "wind" },
+      geometry: { type: "LineString", coordinates: [tail, head] },
+    });
+    // A head, because a line has two ends and the reader cannot tell which way the air is going.
+    const barb = reach * 0.22;
+    for (const side of [140, -140]) {
+      features.push({
+        type: "Feature",
+        properties: { kind: "wind" },
+        geometry: {
+          type: "LineString",
+          coordinates: [head, destination(head[1], head[0], wind.fromDeg + 180 + side, barb)],
+        },
+      });
+    }
+  }
+
+  return { type: "FeatureCollection", features };
+}
+
+export interface Props {
+  /** Opens here rather than on Europe — a city page shows its own devices. */
+  centre?: [number, number];
+  zoom?: number;
+  /** Only fetch devices inside this box: `minLon,minLat,maxLon,maxLat`. */
+  bbox?: [number, number, number, number];
+  wind?: WindArrow | null;
+  plume?: PlumeWedge | null;
+  /** Roughly how far across the view is, in km — sets the length of the arrow and the wedge. */
+  spanKm?: number;
+  /** Shorter, for a map sitting inside a page rather than being the page. */
+  inset?: boolean;
+}
+
+export default function StationMap({
+  centre = CENTER,
+  zoom = ZOOM,
+  bbox,
+  wind = null,
+  plume = null,
+  spanKm = 18,
+  inset = false,
+}: Props = {}) {
   const holder = useRef<HTMLDivElement>(null);
   const map = useRef<InstanceType<typeof MlMap> | null>(null);
   const [selected, setSelected] = useState<Selected | null>(null);
@@ -147,8 +272,12 @@ export default function StationMap() {
     const m = new MlMap({
       container: holder.current,
       style: style(c),
-      center: CENTER,
-      zoom: ZOOM,
+      center: centre,
+      zoom,
+      // The window follows the devices. A fixed zoom is right for the world map, which opens on a
+      // continent; on a city it is a guess that crops Sofia's 289 sensors or strands a village's
+      // three in an empty field.
+      ...(bbox ? { bounds: bbox, fitBoundsOptions: { padding: 28 } } : {}),
       attributionControl: false,
       // The graticule has no labels, so there is nothing to rotate out of legibility — but a map
       // that tilts under a stray gesture is a map the reader has to fix. Keep it flat.
@@ -194,33 +323,62 @@ export default function StationMap() {
           55, c.bad,
         ] as ExpressionSpecification;
 
+      // ── the wind and the plume, under the pins ──
+      // Added first so a device never disappears behind a wedge. The overlay is context; the
+      // readings are the subject, and a wedge that hides one has inverted the page's whole rule.
+      if (wind || plume) {
+        m.addSource("overlay", { type: "geojson", data: overlay(centre, spanKm, wind, plume) });
+        m.addLayer({
+          id: "plume",
+          type: "fill",
+          source: "overlay",
+          filter: ["==", ["get", "kind"], "plume"],
+          paint: { "fill-color": c.poor, "fill-opacity": 0.13 },
+        });
+        m.addLayer({
+          id: "plume-edge",
+          type: "line",
+          source: "overlay",
+          filter: ["==", ["get", "kind"], "plume"],
+          paint: { "line-color": c.poor, "line-width": 1, "line-opacity": 0.45 },
+        });
+      }
+
       // ── cities, low zoom ──
-      m.addSource("cities", { type: "geojson", data: "/api/cities.geojson" });
-      m.addLayer({
-        id: "cities",
-        type: "circle",
-        source: "cities",
-        maxzoom: CITY_ZOOM_MAX,
-        paint: {
-          "circle-radius": [
-            "interpolate", ["linear"], ["get", "n"],
-            1, 4,
-            10, 8,
-            50, 13,
-            300, 20,
-          ],
-          "circle-color": ["case", ["<", ["get", "pm25"], 0], c.quiet, step("pm25")],
-          "circle-opacity": 0.82,
-          "circle-stroke-width": 1,
-          "circle-stroke-color": c.surface,
-        },
-      });
+      // Skipped when the map is showing one city: at zoom 11 the layer is invisible anyway, and
+      // fetching ten thousand aggregates to not draw them is the most expensive nothing on the site.
+      if (!bbox) {
+        m.addSource("cities", { type: "geojson", data: "/api/cities.geojson" });
+        m.addLayer({
+          id: "cities",
+          type: "circle",
+          source: "cities",
+          maxzoom: CITY_ZOOM_MAX,
+          paint: {
+            "circle-radius": [
+              "interpolate", ["linear"], ["get", "n"],
+              1, 4,
+              10, 8,
+              50, 13,
+              300, 20,
+            ],
+            "circle-color": ["case", ["<", ["get", "pm25"], 0], c.quiet, step("pm25")],
+            "circle-opacity": 0.82,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": c.surface,
+          },
+        });
+      }
 
       // ── stations, high zoom, clustered ──
       m.addSource("stations", {
         type: "geojson",
-        data: "/api/stations.geojson",
-        cluster: true,
+        data: bbox ? `/api/stations.geojson?bbox=${bbox.join(",")}` : "/api/stations.geojson",
+        // Not clustered on a city map. Clustering exists to make 9 288 points across a continent
+        // legible; inside one city it hides the thing the reader came for — Sofia's 317 devices
+        // collapsed into twenty grey blobs, which is a worse picture than the list underneath.
+        // Three hundred circles is nothing for MapLibre.
+        cluster: !bbox,
         clusterRadius: 45,
         clusterMaxZoom: 12,
         // The sum travels; the mean is computed from it at paint time. MapLibre has no average
@@ -242,7 +400,7 @@ export default function StationMap() {
         id: "clusters",
         type: "circle",
         source: "stations",
-        minzoom: CITY_ZOOM_MAX,
+        minzoom: bbox ? 0 : CITY_ZOOM_MAX,
         filter: ["has", "point_count"],
         paint: {
           "circle-radius": [
@@ -272,7 +430,7 @@ export default function StationMap() {
         id: "cluster-ring",
         type: "circle",
         source: "stations",
-        minzoom: CITY_ZOOM_MAX,
+        minzoom: bbox ? 0 : CITY_ZOOM_MAX,
         filter: ["has", "point_count"],
         paint: {
           "circle-radius": [
@@ -292,7 +450,7 @@ export default function StationMap() {
         id: "stations",
         type: "circle",
         source: "stations",
-        minzoom: CITY_ZOOM_MAX,
+        minzoom: bbox ? 0 : CITY_ZOOM_MAX,
         filter: ["!", ["has", "point_count"]],
         paint: {
           // Radius is recency: a device that reported a minute ago is a solid dot, one that has
@@ -312,6 +470,34 @@ export default function StationMap() {
           "circle-opacity": 0.95,
         },
       });
+
+      if (wind) {
+        // A casing under the stroke, in the page's own background. Without it the arrow is an
+        // accent-coloured line crossing three hundred accent-adjacent dots, and the eye cannot
+        // separate them; with it the arrow reads as being on top of the map rather than in it.
+        m.addLayer({
+          id: "wind-casing",
+          type: "line",
+          source: "overlay",
+          filter: ["==", ["get", "kind"], "wind"],
+          paint: {
+            "line-color": c.surface,
+            "line-width": 6,
+            "line-opacity": 0.85,
+          },
+        });
+        m.addLayer({
+          id: "wind",
+          type: "line",
+          source: "overlay",
+          filter: ["==", ["get", "kind"], "wind"],
+          paint: {
+            "line-color": c.accent,
+            "line-width": 2.6,
+            "line-opacity": 1,
+          },
+        });
+      }
 
       setReady(true);
     });
@@ -363,14 +549,17 @@ export default function StationMap() {
       for (const id of ["cities", "clusters", "cluster-ring", "stations"]) {
         if (m.getLayer(id)) m.setPaintProperty(id, "circle-stroke-color", c.surface);
       }
-      if (m.getLayer("cluster-ring")) m.setPaintProperty("cluster-ring", "circle-stroke-color", c.surface);
+      if (m.getLayer("wind")) m.setPaintProperty("wind", "line-color", c.accent);
+      if (m.getLayer("wind-casing")) m.setPaintProperty("wind-casing", "line-color", c.surface);
+      if (m.getLayer("plume")) m.setPaintProperty("plume", "fill-color", c.poor);
+      if (m.getLayer("plume-edge")) m.setPaintProperty("plume-edge", "line-color", c.poor);
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     return () => observer.disconnect();
   }, []);
 
   return (
-    <div className="mapview">
+    <div className={inset ? "mapview is-inset" : "mapview"}>
       <div ref={holder} style={{ position: "absolute", inset: 0 }} />
 
       <div className="legend">
@@ -381,6 +570,19 @@ export default function StationMap() {
         <span className="lg"><i className="scale-poor" />35–55</span>
         <span className="lg"><i className="scale-bad" />55+</span>
         <span className="lg" style={{ marginLeft: 6 }}><i className="ring" />quiet 2 h</span>
+        {wind && (
+          <span className="lg" style={{ marginLeft: 6 }}>
+            <i className="wind-key" />
+            wind from {wind.label}
+            {wind.kmh > 0 && ` · ${Math.round(wind.kmh)} km/h`}
+          </span>
+        )}
+        {plume && (
+          <span className="lg">
+            <i className="plume-key" />
+            high readings {plume.label}
+          </span>
+        )}
       </div>
 
       {selected && (

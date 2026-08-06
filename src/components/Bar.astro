@@ -1,13 +1,23 @@
 ---
-/** The top bar. Logo, an optional middle (breadcrumb or search), then navigation. */
+/**
+ * The top bar. Logo, an optional breadcrumb, search, navigation.
+ *
+ * Search is on by default now, on every page rather than only the home page. Ten thousand city
+ * pages and nine thousand device pages are not reachable by browsing — the nav offers four
+ * destinations and the map offers the rest by eye. A reader who knows the name of the place they
+ * want had, before this, no way to type it in except from the front door.
+ */
 import { SITE, paths } from "../lib/site";
+import Search from "./Search.tsx";
 
 interface Props {
-  /** Breadcrumb text or markup goes in the default slot. */
+  /** Placeholder text for the search box. */
   search?: string;
+  /** Opt out entirely — for pages that are themselves a search surface. */
+  noSearch?: boolean;
 }
 
-const { search } = Astro.props;
+const { search = "Search a city or sensor", noSearch = false } = Astro.props;
 ---
 
 <div class="bar">
@@ -15,19 +25,26 @@ const { search } = Astro.props;
     <span>{SITE.brand.head}</span><span>{SITE.brand.tail}</span>
   </a>
 
+  <slot />
+
   {
-    search && (
-      <a class="search" href={paths.map()} role="search" aria-label="Search cities">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5" />
-          <path d="M11 11l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
-        {search}
-      </a>
+    !noSearch && (
+      <>
+        {/*
+          `client:idle`, not `client:visible`: the bar is above the fold on every page, so a
+          visibility check would hydrate it immediately anyway and cost an observer to decide that.
+          The fallback below is what a crawler and a reader without JavaScript get — the map, which
+          is the browsable route to the same places.
+        */}
+        <Search client:idle placeholder={search} />
+        <noscript>
+          <a class="search" href={paths.map()}>
+            {search}
+          </a>
+        </noscript>
+      </>
     )
   }
-
-  <slot />
 
   <nav>
     <a href={paths.map()}>Map</a>
