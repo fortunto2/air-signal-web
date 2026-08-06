@@ -1,0 +1,192 @@
+---
+/**
+ * A country.
+ *
+ * This page exists for two reasons and one of them is an apology: the city page's breadcrumb has
+ * been pointing at `/{country}` since the first deploy, and that URL was a 404. The other reason is
+ * better — "air quality in germany" is a real query, and ten thousand city pages reachable only
+ * from a sitemap and a map are ten thousand orphans. This is the hub that links them.
+ *
+ * Note the route shape: `[country].astro` is a single segment, so it also catches `/nonsense`.
+ * Static routes win over it, and an unknown slug 404s, which is the correct answer.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import Spectrum from "../components/Spectrum.astro";
+import { getCitiesInCountry, getCountry, getCityById, parseSignals } from "../lib/db";
+import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
+
+const country = await getCountry(Astro.params.country!);
+if (!country) return new Response(null, { status: 404 });
+
+const cities = await getCitiesInCountry(country.id, 200);
+const [best, worst] = await Promise.all([
+  country.best_city_id ? getCityById(country.best_city_id) : null,
+  country.worst_city_id ? getCityById(country.worst_city_id) : null,
+]);
+
+const withSensors = cities.filter((c) => c.station_count > 0);
+const band = country.comfort === null ? null : comfortBand(country.comfort);
+
+// The sentence, with real numbers in it. Same job as the city page's verdict: a search result is
+// made of a title, a line containing figures, and structured data.
+const verdict = [
+  `${country.city_count} cities in ${country.name}`,
+  country.station_count > 0
+    ? `and ${country.station_count} community sensors across ${withSensors.length} of them.`
+    : "— none of them has a community sensor yet, so the readings are modelled.",
+  country.pm25_median !== null
+    ? `The typical city reads ${country.pm25_median.toFixed(1)} µg/m³ PM2.5.`
+    : "",
+  best && worst && best.id !== worst.id && best.comfort !== null && worst.comfort !== null
+    ? `Today ${best.name} is the most comfortable at ${best.comfort}/100 and ${worst.name} the least at ${worst.comfort}/100.`
+    : "",
+]
+  .filter(Boolean)
+  .join(" ");
+
+const description =
+  `Air quality and outdoor comfort across ${country.city_count} cities in ${country.name}` +
+  (country.station_count > 0 ? `, from ${country.station_count} community sensors` : "") +
+  ". Live PM2.5, temperature, UV, sea and ten more signals.";
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Place",
+    name: country.name,
+    url: abs(paths.country(country.slug)),
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: `Air quality in ${country.name}`,
+    description,
+    url: abs(paths.country(country.slug)),
+    isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.origin },
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: cities.length,
+      itemListElement: cities.slice(0, 50).map((c, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        name: c.name,
+        url: abs(paths.city(c.country_slug, c.slug)),
+      })),
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Countries", item: abs(paths.countries()) },
+      { "@type": "ListItem", position: 2, name: country.name, item: abs(paths.country(country.slug)) },
+    ],
+  },
+];
+---
+
+<Layout
+  title={`Air Quality in ${country.name} — ${country.city_count} cities, live PM2.5`}
+  description={description}
+  path={paths.country(country.slug)}
+  schema={schema}
+  updatedAt={country.updated_at ? new Date(country.updated_at) : null}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div style="font-size:13.5px;color:var(--ink-3)">
+          <a href={paths.countries()} style="color:var(--accent);text-decoration:none">Countries</a> ·
+          {country.name}
+        </div>
+      </Bar>
+
+      <div style="padding:24px 20px 10px">
+        <div class="eyebrow">Air &amp; comfort in</div>
+        <h1 style="font-size:27px;margin:5px 0 0">{country.name}</h1>
+        <p style="margin-top:9px;max-width:64ch;font-size:14.5px">{verdict}</p>
+      </div>
+
+      <div class="statrow">
+        <div class="stat">
+          <span class="eyebrow">Cities</span>
+          <span class="num" style="font-size:27px">{country.city_count}</span>
+          <span class="unit">{withSensors.length} with sensors</span>
+        </div>
+        <div class="stat">
+          <span class="eyebrow">Community sensors</span>
+          <span class="num" style="font-size:27px">{country.station_count}</span>
+          <span class="unit">Sensor.Community</span>
+        </div>
+        <div class="stat">
+          <span class="eyebrow">Typical PM2.5</span>
+          <span class:list={["num", `fg-${pmBand(country.pm25_median)}`]} style="font-size:27px">
+            {country.pm25_median !== null ? country.pm25_median.toFixed(1) : "—"}
+          </span>
+          <span class="unit">µg/m³ · median city</span>
+        </div>
+        <div class="stat">
+          <span class="eyebrow">Comfort</span>
+          <span class:list={["num", band && `fg-${band}`]} style="font-size:27px">
+            {country.comfort ?? "—"}
+          </span>
+          <span class="unit">median of its cities</span>
+        </div>
+      </div>
+
+      <div class="rows">
+        <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
+          <div class="eyebrow">
+            {withSensors.length > 0 ? "Cities with sensors first" : "Cities"}
+          </div>
+          <div class="eyebrow">Comfort</div>
+        </div>
+
+        {
+          cities.map((c, i) => (
+            <a class="row" href={paths.city(c.country_slug, c.slug)}>
+              <span class="rank num">{i + 1}</span>
+              <span>
+                <span class="city">{c.name}</span>{" "}
+                <span class="country">
+                  {c.station_count > 0
+                    ? `${c.station_count} sensor${c.station_count === 1 ? "" : "s"}`
+                    : "modelled"}
+                  {c.pm25_median !== null && (
+                    <span class={`fg-${pmBand(c.pm25_median)}`}>
+                      {" "}
+                      · {c.pm25_median.toFixed(1)} µg/m³
+                    </span>
+                  )}
+                </span>
+              </span>
+              <Spectrum
+                scores={parseSignals(c.signals_json)}
+                size="mini"
+                caption={`${c.name}: comfort ${c.comfort ?? "unknown"} out of 100`}
+              />
+              <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>
+                {c.comfort ?? "—"}
+              </span>
+            </a>
+          ))
+        }
+      </div>
+
+      {
+        country.city_count > cities.length && (
+          <div style="padding:14px 20px 18px">
+            <p class="eyebrow">
+              Showing {cities.length} of {country.city_count}. The rest are on{" "}
+              <a href={paths.map()} style="color:var(--accent)">
+                the map
+              </a>
+              .
+            </p>
+          </div>
+        )
+      }
+    </div>
+  </main>
+</Layout>

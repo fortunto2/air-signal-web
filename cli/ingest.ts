@@ -7,7 +7,7 @@
  * rerun just that one.
  */
 
-import { loadCities, CityIndex, type City } from "./places.ts";
+import { loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
 import { comfortFrom, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { execute, query, update, upsert } from "./d1.ts";
@@ -40,18 +40,21 @@ const round = (v: number | null | undefined, places: number): number | undefined
 // ── 1. cities ───────────────────────────────────────────────────────────────
 
 export async function seedCities(opts: Opts = {}): Promise<City[]> {
-  const cities = loadCities();
-  console.log(`cities: ${cities.length} from the embedded database`);
+  const { countries, cities } = loadPlaces();
+  console.log(`places: ${countries.length} countries, ${cities.length} cities`);
 
-  const rows = cities.map((c) => [
-    c.id, c.country, c.countrySlug, c.slug, c.name, c.lat, c.lon, c.rank,
-  ]);
+  await execute(
+    upsert("countries", ["id", "slug", "name"], countries.map((c) => [c.id, c.slug, c.name]), {
+      conflict: ["id"],
+    }),
+    { ...opts, label: "countries" },
+  );
 
   await execute(
     upsert(
       "cities",
-      ["id", "country", "country_slug", "slug", "name", "lat", "lon", "rank"],
-      rows,
+      ["id", "country_id", "slug", "name", "lat", "lon", "rank"],
+      cities.map((c) => [c.id, c.countryId, c.slug, c.name, c.lat, c.lon, c.rank]),
       { conflict: ["id"] },
     ),
     { ...opts, label: "cities" },
@@ -65,7 +68,6 @@ export interface StationFacts {
   id: number;
   lat: number;
   lon: number;
-  country: string;
   cityId: number | null;
   distanceKm: number | null;
   pm25: number | null;
@@ -111,7 +113,6 @@ export async function ingestStations(cities: City[], opts: Opts = {}): Promise<S
       id: s.id,
       lat: s.lat,
       lon: s.lon,
-      country: s.country,
       cityId: near?.city.id ?? null,
       distanceKm: near ? Math.round(near.km * 10) / 10 : null,
       pm25: s.pm25,
@@ -132,11 +133,11 @@ export async function ingestStations(cities: City[], opts: Opts = {}): Promise<S
     upsert(
       "stations",
       [
-        "id", "lat", "lon", "country", "city_id", "distance_km",
+        "id", "lat", "lon", "city_id", "distance_km",
         "sensor_type", "first_seen", "last_seen", "pm25", "pm10", "pm25_24h", "history_days",
       ],
       facts.map((f) => [
-        f.id, f.lat, f.lon, f.country, f.cityId, f.distanceKm,
+        f.id, f.lat, f.lon, f.cityId, f.distanceKm,
         f.sensorType, f.seenAt, f.seenAt, f.pm25, f.pm10, f.pm25_24h, f.historyDays,
       ]),
       // first_seen is the one column a re-ingest must not touch: it is the oldest thing we know,
@@ -193,7 +194,80 @@ export async function ingestStations(cities: City[], opts: Opts = {}): Promise<S
     { ...opts, label: "city station counts" },
   );
 
+  await rollUpCountries(opts);
+
   return facts;
+}
+
+/**
+ * Country totals, rolled up from the cities.
+ *
+ * Stored rather than computed per request. A country page wants "how many cities, how many
+ * devices, what is the median, which city is best and which is worst", and answering that with a
+ * GROUP BY over ten thousand rows on every hit is the same mistake as querying in a loop — it just
+ * hides better. Five statements once per ingest replaces it.
+ *
+ * Run after the city counts and again after the comfort pass, because the first fills the device
+ * numbers and the second fills the scores.
+ */
+export async function rollUpCountries(opts: Opts = {}): Promise<void> {
+  await execute(
+    [
+      `UPDATE countries SET
+         city_count = (SELECT COUNT(*) FROM cities WHERE cities.country_id = countries.id),
+         station_count = COALESCE(
+           (SELECT SUM(station_count) FROM cities WHERE cities.country_id = countries.id), 0
+         ),
+         updated_at = ${JSON.stringify(new Date().toISOString())};`,
+
+      // Median of the medians: the country's typical city, not its typical device. Weighting by
+      // device count would make Germany a report on Stuttgart, which has more sensors than most
+      // countries have cities.
+      `WITH ranked AS (
+         SELECT c.country_id, c.pm25_median AS v,
+                ROW_NUMBER() OVER (PARTITION BY c.country_id ORDER BY c.pm25_median) AS rn,
+                COUNT(*)     OVER (PARTITION BY c.country_id)                         AS n
+           FROM cities c
+          WHERE c.pm25_median IS NOT NULL
+       ),
+       med AS (
+         SELECT country_id, AVG(v) AS m FROM ranked
+          WHERE rn IN ((n + 1) / 2, (n + 2) / 2) GROUP BY country_id
+       )
+       UPDATE countries SET pm25_median = (SELECT m FROM med WHERE med.country_id = countries.id);`,
+
+      `WITH ranked AS (
+         SELECT c.country_id, c.comfort AS v,
+                ROW_NUMBER() OVER (PARTITION BY c.country_id ORDER BY c.comfort) AS rn,
+                COUNT(*)     OVER (PARTITION BY c.country_id)                     AS n
+           FROM cities c
+          WHERE c.comfort IS NOT NULL AND c.station_count > 0
+       ),
+       med AS (
+         SELECT country_id, CAST(AVG(v) AS INTEGER) AS m FROM ranked
+          WHERE rn IN ((n + 1) / 2, (n + 2) / 2) GROUP BY country_id
+       )
+       UPDATE countries SET comfort = (SELECT m FROM med WHERE med.country_id = countries.id);`,
+
+      `UPDATE countries SET best_city_id = (
+         SELECT id FROM cities
+          WHERE country_id = countries.id AND comfort IS NOT NULL AND station_count > 0
+          ORDER BY comfort DESC LIMIT 1
+       );`,
+      `UPDATE countries SET worst_city_id = (
+         SELECT id FROM cities
+          WHERE country_id = countries.id AND comfort IS NOT NULL AND station_count > 0
+          ORDER BY comfort ASC LIMIT 1
+       );`,
+    ],
+    { ...opts, label: "country roll-up" },
+  );
+
+  const [n] = await query<{ withSensors: number; total: number }>(
+    `SELECT COUNT(*) AS total, SUM(station_count > 0) AS withSensors FROM countries`,
+    opts,
+  );
+  if (n) console.log(`countries: ${n.total}, of which ${n.withSensors} have devices`);
 }
 
 // ── 3. the fourteen signals, per city ───────────────────────────────────────
@@ -438,6 +512,8 @@ export async function ingestComfort(
     }
   }
   await flushDaily();
+  // Again: the first roll-up ran before any city had a score.
+  await rollUpCountries(opts);
 
   console.log(`comfort: ${done} cities scored, ${withHistory.length} with a stored history series`);
 }

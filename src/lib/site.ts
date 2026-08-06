@@ -77,6 +77,8 @@ export function pmBand(pm: number | null): Band | "quiet" {
  * link still lands.
  */
 export const paths = {
+  countries: () => `/countries`,
+  country: (country: string) => `/${slug(country)}`,
   city: (country: string, city: string) => `/${slug(country)}/${slug(city)}`,
   station: (country: string, city: string, id: number) =>
     `/${slug(country)}/${slug(city)}/station-${id}`,

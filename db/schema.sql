@@ -11,6 +11,34 @@
 --    exist.
 
 -- ---------------------------------------------------------------------------
+-- countries — the place list's top level. Seeded with the cities.
+-- ---------------------------------------------------------------------------
+--
+-- A country is an entity, not a string repeated ten thousand times. It exists because the country
+-- page needs aggregates that are far cheaper stored than recomputed per request, and because
+-- having one country record kills the two-vocabulary problem outright: there is nowhere for a
+-- second spelling to live.
+
+CREATE TABLE IF NOT EXISTS countries (
+  id            INTEGER PRIMARY KEY,
+  slug          TEXT    NOT NULL,          -- 'turkey' — the URL segment
+  name          TEXT    NOT NULL,          -- 'Turkey'
+  iso           TEXT,                      -- 'TR', when known. Unused today; here so it never
+                                           -- becomes a join table later
+  city_count    INTEGER NOT NULL DEFAULT 0,
+  station_count INTEGER NOT NULL DEFAULT 0,
+  comfort       INTEGER,
+  pm25_median   REAL,
+  best_city_id  INTEGER,
+  worst_city_id INTEGER,
+  updated_at    TEXT,
+  indexable     INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS countries_slug ON countries (slug);
+CREATE INDEX IF NOT EXISTS countries_size ON countries (station_count DESC);
+
+-- ---------------------------------------------------------------------------
 -- cities — the place list. Seeded once from airq-core's embedded database.
 -- ---------------------------------------------------------------------------
 --
@@ -20,8 +48,7 @@
 
 CREATE TABLE IF NOT EXISTS cities (
   id            INTEGER PRIMARY KEY,
-  country       TEXT    NOT NULL,          -- 'Turkey' — the source's own spelling
-  country_slug  TEXT    NOT NULL,          -- 'turkey'
+  country_id    INTEGER NOT NULL REFERENCES countries (id),
   slug          TEXT    NOT NULL,          -- 'alanya'
   name          TEXT    NOT NULL,          -- 'Alanya'
   lat           REAL    NOT NULL,
@@ -44,7 +71,7 @@ CREATE TABLE IF NOT EXISTS cities (
   indexable     INTEGER NOT NULL DEFAULT 1
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS cities_path ON cities (country_slug, slug);
+CREATE UNIQUE INDEX IF NOT EXISTS cities_path ON cities (country_id, slug);
 CREATE INDEX IF NOT EXISTS cities_geo         ON cities (lat, lon);
 CREATE INDEX IF NOT EXISTS cities_sitemap     ON cities (indexable, rank);
 CREATE INDEX IF NOT EXISTS cities_ranked      ON cities (comfort);
@@ -57,7 +84,8 @@ CREATE TABLE IF NOT EXISTS stations (
   id            INTEGER PRIMARY KEY,       -- the sensor id upstream, so it is stable across runs
   lat           REAL    NOT NULL,
   lon           REAL    NOT NULL,
-  country       TEXT,
+  -- No `country` column. A station's country is its city's country; carrying Sensor.Community's
+  -- ISO code here as well meant two authorities for one fact and no way to join them.
   city_id       INTEGER REFERENCES cities (id),
   distance_km   REAL,                      -- to that city; part of the indexing gate
   sensor_type   TEXT,                      -- 'sds011' — from the archive filename, not guessed

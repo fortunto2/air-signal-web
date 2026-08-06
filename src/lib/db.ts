@@ -21,6 +21,8 @@ const DB = () => env.DB;
 
 export interface CityRow {
   id: number;
+  country_id: number;
+  /** Joined in from `countries`, so a page still reads `row.country` and nothing downstream moved. */
   country: string;
   country_slug: string;
   slug: string;
@@ -44,7 +46,6 @@ export interface StationRow {
   id: number;
   lat: number;
   lon: number;
-  country: string | null;
   city_id: number | null;
   distance_km: number | null;
   sensor_type: string | null;
@@ -86,17 +87,82 @@ export function parseSignals(json: string | null): Signals {
   }
 }
 
+// ── countries ───────────────────────────────────────────────────────────────
+
+export interface CountryRow {
+  id: number;
+  slug: string;
+  name: string;
+  iso: string | null;
+  city_count: number;
+  station_count: number;
+  comfort: number | null;
+  pm25_median: number | null;
+  best_city_id: number | null;
+  worst_city_id: number | null;
+  updated_at: string | null;
+  indexable: number;
+}
+
+export async function getCountry(countrySlug: string): Promise<CountryRow | null> {
+  return await DB()
+    .prepare("SELECT * FROM countries WHERE slug = ?1")
+    .bind(slug(countrySlug))
+    .first<CountryRow>();
+}
+
+/**
+ * Every country, densest first.
+ *
+ * 156 rows with their totals already rolled up — the reason the countries table exists. Computing
+ * these with a GROUP BY over ten thousand cities on every request would work at this size and be
+ * the same mistake as querying in a loop, just better hidden.
+ */
+export async function listCountries(): Promise<CountryRow[]> {
+  const { results } = await DB()
+    .prepare("SELECT * FROM countries ORDER BY station_count DESC, city_count DESC, name")
+    .all<CountryRow>();
+  return results ?? [];
+}
+
+/** A country's cities. Ordered by comfort where it is known, then by population rank. */
+export async function getCitiesInCountry(countryId: number, limit = 200): Promise<CityRow[]> {
+  const { results } = await DB()
+    .prepare(
+      `SELECT c.*, co.slug AS country_slug, co.name AS country
+         FROM cities c JOIN countries co ON co.id = c.country_id
+        WHERE c.country_id = ?1
+        ORDER BY (c.station_count = 0), (c.comfort IS NULL), c.comfort DESC, c.rank
+        LIMIT ?2`,
+    )
+    .bind(countryId, limit)
+    .all<CityRow>();
+  return results ?? [];
+}
+
 // ── cities ──────────────────────────────────────────────────────────────────
+
+/**
+ * Every city query selects through this.
+ *
+ * `country` and `country_slug` are joined in rather than stored on the row, which is the whole
+ * point of the countries table: there is one spelling of "Turkey" in the database and one place
+ * that owns it. The join is an indexed integer key and adds no query — the city page still costs
+ * the same four round trips it always did.
+ */
+const CITY_SELECT = `
+  SELECT c.*, co.slug AS country_slug, co.name AS country
+    FROM cities c JOIN countries co ON co.id = c.country_id`;
 
 export async function getCity(countrySlug: string, citySlug: string): Promise<CityRow | null> {
   return await DB()
-    .prepare("SELECT * FROM cities WHERE country_slug = ?1 AND slug = ?2")
+    .prepare(`${CITY_SELECT} WHERE co.slug = ?1 AND c.slug = ?2`)
     .bind(slug(countrySlug), slug(citySlug))
     .first<CityRow>();
 }
 
 export async function getCityById(id: number): Promise<CityRow | null> {
-  return await DB().prepare("SELECT * FROM cities WHERE id = ?1").bind(id).first<CityRow>();
+  return await DB().prepare(`${CITY_SELECT} WHERE c.id = ?1`).bind(id).first<CityRow>();
 }
 
 /** Thirty days of daily aggregates, oldest first — the shape the chart wants. */
@@ -127,11 +193,11 @@ export async function getNearbyCities(
 ): Promise<CityRow[]> {
   const { results } = await DB()
     .prepare(
-      `SELECT * FROM cities
-        WHERE lat BETWEEN ?1 - ?3 AND ?1 + ?3
-          AND lon BETWEEN ?2 - ?3 AND ?2 + ?3
-          AND id != ?5
-        ORDER BY (lat - ?1) * (lat - ?1) + (lon - ?2) * (lon - ?2)
+      `${CITY_SELECT}
+        WHERE c.lat BETWEEN ?1 - ?3 AND ?1 + ?3
+          AND c.lon BETWEEN ?2 - ?3 AND ?2 + ?3
+          AND c.id != ?5
+        ORDER BY (c.lat - ?1) * (c.lat - ?1) + (c.lon - ?2) * (c.lon - ?2)
         LIMIT ?4`,
     )
     .bind(lat, lon, degrees, limit, excludeId ?? -1)
@@ -145,9 +211,9 @@ export async function searchCities(query: string, limit = 8): Promise<CityRow[]>
   if (q.length < 2) return [];
   const { results } = await DB()
     .prepare(
-      `SELECT * FROM cities
-        WHERE name LIKE ?1 ESCAPE '\\'
-        ORDER BY rank
+      `${CITY_SELECT}
+        WHERE c.name LIKE ?1 ESCAPE '\\'
+        ORDER BY c.rank
         LIMIT ?2`,
     )
     .bind(`${q.replace(/[%_\\]/g, "\\$&")}%`, limit)
@@ -165,9 +231,9 @@ export async function searchCities(query: string, limit = 8): Promise<CityRow[]>
 export async function getRankedCities(limit = 200): Promise<CityRow[]> {
   const { results } = await DB()
     .prepare(
-      `SELECT * FROM cities
-        WHERE comfort IS NOT NULL AND station_count > 0
-        ORDER BY comfort DESC, station_count DESC
+      `${CITY_SELECT}
+        WHERE c.comfort IS NOT NULL AND c.station_count > 0
+        ORDER BY c.comfort DESC, c.station_count DESC
         LIMIT ?1`,
     )
     .bind(limit)
@@ -188,16 +254,16 @@ export async function getComfortExtremes(limit = 6): Promise<{ best: CityRow[]; 
   const [best, worst] = await DB().batch<CityRow>([
     DB()
       .prepare(
-        `SELECT * FROM cities
-          WHERE comfort IS NOT NULL AND station_count > 0
-          ORDER BY comfort DESC LIMIT ?1`,
+        `${CITY_SELECT}
+          WHERE c.comfort IS NOT NULL AND c.station_count > 0
+          ORDER BY c.comfort DESC LIMIT ?1`,
       )
       .bind(limit),
     DB()
       .prepare(
-        `SELECT * FROM cities
-          WHERE comfort IS NOT NULL AND station_count > 0
-          ORDER BY comfort ASC LIMIT ?1`,
+        `${CITY_SELECT}
+          WHERE c.comfort IS NOT NULL AND c.station_count > 0
+          ORDER BY c.comfort ASC LIMIT ?1`,
       )
       .bind(limit),
   ]);
@@ -268,8 +334,10 @@ export async function getCityAggregates(): Promise<
 > {
   const { results } = await DB()
     .prepare(
-      `SELECT id, name, country_slug, slug, lat, lon, station_count, pm25_median, comfort
-         FROM cities WHERE station_count > 0`,
+      `SELECT c.id, c.name, co.slug AS country_slug, c.slug, c.lat, c.lon,
+              c.station_count, c.pm25_median, c.comfort
+         FROM cities c JOIN countries co ON co.id = c.country_id
+        WHERE c.station_count > 0`,
     )
     .all<any>();
   return results ?? [];
@@ -321,8 +389,9 @@ export async function listIndexableCities(
 ): Promise<{ country_slug: string; slug: string; updated_at: string | null }[]> {
   const { results } = await DB()
     .prepare(
-      `SELECT country_slug, slug, updated_at FROM cities
-        WHERE indexable = 1 ORDER BY id LIMIT ?1 OFFSET ?2`,
+      `SELECT co.slug AS country_slug, c.slug, c.updated_at
+         FROM cities c JOIN countries co ON co.id = c.country_id
+        WHERE c.indexable = 1 ORDER BY c.id LIMIT ?1 OFFSET ?2`,
     )
     .bind(limit, offset)
     .all<any>();
@@ -335,8 +404,10 @@ export async function listIndexableStations(
 ): Promise<{ id: number; country_slug: string; slug: string; last_seen: string | null }[]> {
   const { results } = await DB()
     .prepare(
-      `SELECT s.id, c.country_slug, c.slug, s.last_seen
-         FROM stations s JOIN cities c ON c.id = s.city_id
+      `SELECT s.id, co.slug AS country_slug, c.slug, s.last_seen
+         FROM stations s
+         JOIN cities c    ON c.id  = s.city_id
+         JOIN countries co ON co.id = c.country_id
         WHERE s.indexable = 1 ORDER BY s.id LIMIT ?1 OFFSET ?2`,
     )
     .bind(limit, offset)

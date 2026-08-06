@@ -22,7 +22,7 @@ import {
   seedCities,
   type Opts,
 } from "./ingest.ts";
-import { loadCities } from "./places.ts";
+import { loadCities, loadPlaces } from "./places.ts";
 import { comfortFrom, scoresFrom, moonPhase, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { query } from "./d1.ts";
@@ -164,18 +164,27 @@ async function integration(): Promise<void> {
   await check("noaa planetary Kp", async () => `Kp ${(await up.fetchKp()) ?? "unavailable"}`);
 
   console.log("\ncore");
-  await check("cities database", async () => {
-    const cities = loadCities();
-    if (cities.length < 10_000) throw new Error(`only ${cities.length}`);
-    const dupes = new Set<string>();
+  await check("places database", async () => {
+    const { countries, cities } = loadPlaces();
+    if (cities.length < 10_000) throw new Error(`only ${cities.length} cities`);
+    if (countries.length < 100) throw new Error(`only ${countries.length} countries`);
+
+    // The unique index on (country_id, slug) only holds if this does. A collision here would be
+    // an ingest that silently drops a city, not an error anyone would see on a page.
+    const byCountry = new Map(countries.map((c) => [c.id, c.slug]));
     const seen = new Set<string>();
+    const dupes = new Set<string>();
     for (const c of cities) {
-      const key = `${c.countrySlug}/${c.slug}`;
+      const key = `${byCountry.get(c.countryId)}/${c.slug}`;
       if (seen.has(key)) dupes.add(key);
       seen.add(key);
     }
     if (dupes.size) throw new Error(`${dupes.size} duplicate paths, e.g. ${[...dupes][0]}`);
-    return `${cities.length} cities, every path unique`;
+
+    const orphans = cities.filter((c) => !byCountry.has(c.countryId)).length;
+    if (orphans) throw new Error(`${orphans} cities point at a country that does not exist`);
+
+    return `${countries.length} countries, ${cities.length} cities, every path unique`;
   });
 
   await check("moscow divergence correction", async () => {

@@ -1,0 +1,123 @@
+---
+/**
+ * Every country, densest first.
+ *
+ * The hub. Without it the site's ten thousand city pages are reachable only from a sitemap and a
+ * WebGL map — which is to say, not reachable at all by anything that follows links. This is three
+ * clicks from the home page to any city on Earth, and it costs one query because the totals are
+ * already rolled up in the countries table.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import { listCountries, getLastIngest } from "../lib/db";
+import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
+
+const [countries, lastIngest] = await Promise.all([listCountries(), getLastIngest()]);
+
+const withSensors = countries.filter((c) => c.station_count > 0);
+const rest = countries.filter((c) => c.station_count === 0);
+const totalCities = countries.reduce((n, c) => n + c.city_count, 0);
+const totalStations = countries.reduce((n, c) => n + c.station_count, 0);
+
+const description =
+  `Air quality and outdoor comfort in ${countries.length} countries — ${totalCities} cities and ` +
+  `${totalStations} community sensors, scored on fourteen environmental signals.`;
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "Air quality by country",
+    description,
+    url: abs(paths.countries()),
+    isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.origin },
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: countries.length,
+      itemListElement: withSensors.slice(0, 50).map((c, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        name: c.name,
+        url: abs(paths.country(c.slug)),
+      })),
+    },
+  },
+];
+---
+
+<Layout
+  title={`Air quality by country — ${countries.length} countries`}
+  description={description}
+  path={paths.countries()}
+  schema={schema}
+  updatedAt={lastIngest}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div class="eyebrow">
+          {countries.length} countries · {totalCities.toLocaleString("en-US")} cities ·{" "}
+          {totalStations.toLocaleString("en-US")} sensors
+        </div>
+      </Bar>
+
+      <div style="padding:24px 20px 10px">
+        <h1 style="font-size:27px;margin:0">Every country</h1>
+        <p style="margin-top:9px;max-width:64ch;font-size:14.5px">
+          Sensor-dense countries first, because that is where a reading is a measurement rather
+          than a model. Everywhere else still has real numbers — Open-Meteo covers every coordinate
+          on Earth — they are just computed rather than measured.
+        </p>
+      </div>
+
+      <div class="rows">
+        <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
+          <div class="eyebrow">With community sensors</div>
+          <div class="eyebrow">Comfort</div>
+        </div>
+
+        {
+          withSensors.map((c, i) => (
+            <a class="row" href={paths.country(c.slug)}>
+              <span class="rank num">{i + 1}</span>
+              <span>
+                <span class="city">{c.name}</span>{" "}
+                <span class="country">
+                  {c.station_count} sensor{c.station_count === 1 ? "" : "s"} · {c.city_count} cities
+                  {c.pm25_median !== null && (
+                    <span class={`fg-${pmBand(c.pm25_median)}`}>
+                      {" "}
+                      · {c.pm25_median.toFixed(1)} µg/m³
+                    </span>
+                  )}
+                </span>
+              </span>
+              <span />
+              <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>
+                {c.comfort ?? "—"}
+              </span>
+            </a>
+          ))
+        }
+      </div>
+
+      {
+        rest.length > 0 && (
+          <div style="padding:18px 20px 22px;border-top:1px solid var(--line-soft)">
+            <div class="eyebrow" style="margin-bottom:10px">
+              Modelled only — {rest.length} countries, no community sensor yet
+            </div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              {rest.map((c) => (
+                <a class="seg" style="text-decoration:none" href={paths.country(c.slug)}>
+                  {c.name}
+                  <span style="color:var(--ink-3)"> {c.city_count}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )
+      }
+    </div>
+  </main>
+</Layout>

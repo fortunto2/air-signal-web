@@ -13,10 +13,15 @@
 import { core, haversine } from "./wasm.ts";
 import { slug } from "../src/lib/site.ts";
 
+export interface Country {
+  id: number;
+  slug: string;
+  name: string;
+}
+
 export interface City {
   id: number;
-  country: string;
-  countrySlug: string;
+  countryId: number;
   slug: string;
   name: string;
   lat: number;
@@ -30,14 +35,30 @@ export interface City {
  * Ids are assigned by position, and the source is a compiled-in constant table, so they are stable
  * across runs — which matters, because `stations.city_id` points at them.
  */
-export function loadCities(): City[] {
-  const countries = JSON.parse(core.wasm_list_countries()) as string[];
+export function loadPlaces(): { countries: Country[]; cities: City[] } {
+  const names = JSON.parse(core.wasm_list_countries()) as string[];
+  const countries: Country[] = names.map((name, i) => ({
+    id: i + 1,
+    slug: slug(name),
+    name,
+  }));
+
+  return { countries, cities: loadCities(countries) };
+}
+
+/** Kept for callers that only need the city list; the country ids must match `loadPlaces`. */
+export function loadCities(
+  countries: Country[] = (JSON.parse(core.wasm_list_countries()) as string[]).map((name, i) => ({
+    id: i + 1,
+    slug: slug(name),
+    name,
+  })),
+): City[] {
   const out: City[] = [];
   let id = 1;
 
   for (const country of countries) {
-    const countrySlug = slug(country);
-    const rows = JSON.parse(core.wasm_major_cities(country, 100_000)) as {
+    const rows = JSON.parse(core.wasm_major_cities(country.name, 100_000)) as {
       name: string;
       country: string;
       lat: number;
@@ -48,7 +69,7 @@ export function loadCities(): City[] {
     // der Oder both want `frankfurt` once punctuation is stripped). The larger one — the earlier
     // one, since the source is population-ordered — keeps the clean URL, and the rest get a
     // numeric suffix. Deciding this here rather than at render time is what lets the unique index
-    // on (country_slug, slug) exist at all.
+    // on (country_id, slug) exist at all.
     const taken = new Set<string>();
 
     rows.forEach((c, rank) => {
@@ -59,8 +80,7 @@ export function loadCities(): City[] {
 
       out.push({
         id: id++,
-        country,
-        countrySlug,
+        countryId: country.id,
         slug: s,
         name: c.name,
         lat: c.lat,
