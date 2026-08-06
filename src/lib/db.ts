@@ -270,6 +270,44 @@ export async function getComfortExtremes(limit = 6): Promise<{ best: CityRow[]; 
   return { best: best.results ?? [], worst: worst.results ?? [] };
 }
 
+/**
+ * Store what a page just computed, so the next visitor does not compute it again.
+ *
+ * This is the one place the Worker writes, and the boundary is deliberate: it may fill the *cache*
+ * columns of a row that already exists — the readings, the scores, the timestamp — and nothing
+ * else. Cities and stations are created only by the ETL, so a bad request cannot invent a page or
+ * change what the site is about. `ARCHITECTURE.md` states the rule; this function is its whole
+ * surface.
+ *
+ * Called from `ctx.waitUntil`, so it never delays the response that produced the data.
+ */
+export async function saveCityReadings(
+  cityId: number,
+  data: {
+    comfort: number;
+    worstSignal: string | null;
+    signals: Record<string, number>;
+    readings: Record<string, number>;
+  },
+): Promise<void> {
+  await DB()
+    .prepare(
+      `UPDATE cities
+          SET comfort = ?2, worst_signal = ?3, signals_json = ?4, readings_json = ?5,
+              updated_at = ?6
+        WHERE id = ?1`,
+    )
+    .bind(
+      cityId,
+      data.comfort,
+      data.worstSignal,
+      JSON.stringify(data.signals),
+      JSON.stringify(data.readings),
+      new Date().toISOString(),
+    )
+    .run();
+}
+
 // ── stations ────────────────────────────────────────────────────────────────
 
 export async function getStation(id: number): Promise<StationRow | null> {
@@ -349,11 +387,30 @@ export async function getCityAggregates(): Promise<
  */
 export async function getStationPoints(
   bbox?: [number, number, number, number],
-): Promise<{ id: number; lat: number; lon: number; pm25: number | null; last_seen: string | null; city_id: number | null }[]> {
-  const base = `SELECT id, lat, lon, pm25, last_seen, city_id FROM stations`;
+): Promise<
+  {
+    id: number;
+    lat: number;
+    lon: number;
+    pm25: number | null;
+    last_seen: string | null;
+    sensor_type: string | null;
+    city_name: string | null;
+    country_slug: string | null;
+    city_slug: string | null;
+  }[]
+> {
+  // Joined so a pin can carry its own URL. A marker you can click but not open is a marker that
+  // does nothing, and building the path in the browser would need a second lookup per pin.
+  const base = `
+    SELECT s.id, s.lat, s.lon, s.pm25, s.last_seen, s.sensor_type,
+           c.name AS city_name, co.slug AS country_slug, c.slug AS city_slug
+      FROM stations s
+      LEFT JOIN cities c     ON c.id  = s.city_id
+      LEFT JOIN countries co ON co.id = c.country_id`;
   const stmt = bbox
     ? DB()
-        .prepare(`${base} WHERE lat BETWEEN ?1 AND ?3 AND lon BETWEEN ?2 AND ?4`)
+        .prepare(`${base} WHERE s.lat BETWEEN ?1 AND ?3 AND s.lon BETWEEN ?2 AND ?4`)
         .bind(bbox[1], bbox[0], bbox[3], bbox[2])
     : DB().prepare(base);
   const { results } = await stmt.all<any>();

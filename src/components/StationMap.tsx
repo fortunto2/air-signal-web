@@ -45,6 +45,7 @@ const CITY_ZOOM_MAX = 8;
 interface Selected {
   id: number;
   name?: string;
+  hw?: string;
   path?: string;
   pm25: number;
   quiet: boolean;
@@ -403,13 +404,22 @@ export default function StationMap({ lat = 50.5, lon = 10.5, zoom = 4 }: Props) 
             </span>
             <span style={{ fontSize: 12, color: "var(--ink-3)" }}>µg/m³ PM2.5</span>
           </div>
-          {selected.path && (
+          {(selected.name || selected.hw) && (
+            <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4 }}>
+              {[selected.name, selected.hw].filter(Boolean).join(" · ")}
+            </div>
+          )}
+          {selected.path ? (
             <a
               href={selected.path}
               style={{ fontSize: 12.5, color: "var(--accent)", marginTop: 8, display: "inline-block" }}
             >
               Open {selected.kind === "city" ? selected.name : "station"} →
             </a>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8 }}>
+              No city within reach — this device has no page
+            </div>
           )}
         </div>
       )}
@@ -428,9 +438,11 @@ function fromStation(f: MapGeoJSONFeature): Selected {
   return {
     kind: "station",
     id: Number(p.id),
+    name: p.place ? String(p.place) : undefined,
+    hw: p.hw ? String(p.hw).toUpperCase() : undefined,
     pm25: Number(p.pm25),
     quiet: Number(p.quiet) === 1,
-    path: undefined,
+    path: p.path ? String(p.path) : undefined,
   };
 }
 

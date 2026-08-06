@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getStationPoints } from "../../lib/db";
 import { QUIET_AFTER_MINUTES } from "../../lib/view";
+import { paths } from "../../lib/site";
 
 /**
  * The high-zoom layer: the devices themselves.
@@ -35,6 +36,14 @@ export const GET: APIRoute = async ({ url }) => {
         geometry: { type: "Point", coordinates: [r4(s.lon), r4(s.lat)] },
         properties: {
           id: s.id,
+          // The pin's own page. Null for the handful of devices with no city — they stay on the
+          // map because a reading is a reading, but they have no page to open.
+          path:
+            s.country_slug && s.city_slug
+              ? paths.station(s.country_slug, s.city_slug, s.id)
+              : null,
+          place: s.city_name,
+          hw: s.sensor_type,
           pm25: s.pm25 === null ? -1 : Math.round(s.pm25 * 10) / 10,
           // Capped: the radius ramp flattens past two hours, so a device silent for three weeks
           // and one silent for three hours are drawn identically and may as well travel that way.

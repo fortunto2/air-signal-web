@@ -3,19 +3,20 @@
  *
  * This island renders almost nothing. Its job is to take what the server already wrote into the
  * HTML and make it current — the score, the spectrum, the per-signal grid, the timestamp. If it
- * never runs, the page is complete and correct as of the last ingest; if it runs, the page is
+ * never runs, the page is complete and correct as of the last computation; if it runs, the page is
  * correct as of a minute ago. Those are the only two states allowed.
  *
  * That is also why it patches the DOM instead of rendering its own copy of the readout. A second
  * React-owned score sitting next to the server's would be two sources of truth on one screen, and
  * the one a crawler reads would be the one nobody maintains.
  *
- * The WASM it loads is the slim build — 216 KB, no cities database — behind `client:visible`, so
- * it is off the critical path entirely.
+ * It asks `/api/comfort` rather than computing anything. The earlier version loaded 91 KB of
+ * WebAssembly and called four upstreams from the browser, which worked but made every visitor pay
+ * for a calculation the Worker already does — and forced the binary to be imported two ways, which
+ * is what stopped it working in the Worker at all. One place computes comfort now.
  */
 
 import { useEffect, useState } from "react";
-import { comfortFrom, scoresFrom, type Readings, type SignalCore } from "../lib/signals";
 import { SIGNALS, comfortBand, type SignalKey } from "../lib/site";
 
 interface Props {
@@ -24,23 +25,38 @@ interface Props {
   cityName: string;
 }
 
-type State = "idle" | "loading" | "done" | "failed";
+type State = "loading" | "done" | "stale" | "failed";
+
+interface Answer {
+  total: number;
+  worst: SignalKey | null;
+  scores: Partial<Record<SignalKey, number>>;
+  readings: Record<string, number>;
+}
 
 export default function LiveCity({ lat, lon }: Props) {
-  const [state, setState] = useState<State>("idle");
+  const [state, setState] = useState<State>("loading");
   const [at, setAt] = useState<Date | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      setState("loading");
       try {
-        const [core, readings] = await Promise.all([loadCore(), fetchReadings(lat, lon)]);
+        const res = await fetch(`/api/comfort?lat=${lat}&lon=${lon}`, {
+          signal: AbortSignal.timeout(12_000),
+        });
         if (cancelled) return;
 
-        const comfort = comfortFrom(core, scoresFrom(core, readings));
-        paint(comfort.total, comfort.scores);
+        // 503 is the upstreams being unavailable, not a bug. The server's numbers stay on screen
+        // and the line below says they are the last ones we could get.
+        if (res.status === 503) return setState("stale");
+        if (!res.ok) return setState("failed");
+
+        const data = (await res.json()) as Answer;
+        if (cancelled) return;
+
+        paint(data.total, data.scores);
         setAt(new Date());
         setState("done");
       } catch {
@@ -55,10 +71,9 @@ export default function LiveCity({ lat, lon }: Props) {
     };
   }, [lat, lon]);
 
-  // Always renders the line, even while idle. An island that returns `null` has no box, and a
+  // Always renders the line, even while loading. An island that returns `null` has no box, and a
   // component with no box never intersects the viewport — which is how this shipped once with
-  // `client:visible` and simply never ran. It is `client:idle` now, and the line reserves its row
-  // either way so nothing shifts when the state changes.
+  // `client:visible` and simply never ran. The row is reserved either way so nothing shifts.
   return (
     <p
       className="eyebrow"
@@ -67,16 +82,14 @@ export default function LiveCity({ lat, lon }: Props) {
     >
       {state === "done"
         ? `Refreshed live at ${at?.toISOString().slice(11, 16)} UTC`
-        : state === "failed"
-          ? "Could not refresh — showing the last computed values"
-          : state === "loading"
-            ? "Refreshing…"
-            : ""}
+        : state === "stale"
+          ? "Upstreams busy — showing the last computed values"
+          : state === "failed"
+            ? "Could not refresh — showing the last computed values"
+            : "Refreshing…"}
     </p>
   );
 }
-
-// ── the update ──────────────────────────────────────────────────────────────
 
 /**
  * Patch what the server rendered.
@@ -129,113 +142,4 @@ function paint(total: number, scores: Partial<Record<SignalKey, number>>) {
       track.style.width = `${v}%`;
     }
   });
-}
-
-// ── inputs ──────────────────────────────────────────────────────────────────
-
-let corePromise: Promise<SignalCore> | null = null;
-
-/** Loaded once per page, lazily. The `?url` import keeps the binary out of the JS bundle. */
-function loadCore(): Promise<SignalCore> {
-  corePromise ??= (async () => {
-    const [mod, wasmUrl] = await Promise.all([
-      import("../wasm/web/airq_core.js"),
-      import("../wasm/web/airq_core_bg.wasm?url").then((m) => m.default),
-    ]);
-    await (mod as unknown as { default: (o: unknown) => Promise<unknown> }).default({
-      module_or_path: wasmUrl,
-    });
-    return mod as unknown as SignalCore;
-  })();
-  return corePromise;
-}
-
-/**
- * Straight from the upstreams, no server in between.
- *
- * Every one of these sends `access-control-allow-origin: *`, which is the whole reason this site
- * has no API routes. NASA FIRMS does not, so fire is left to the server-side value already on the
- * page rather than being dropped — refreshing a page must never remove a reading from it.
- */
-async function fetchReadings(lat: number, lon: number): Promise<Readings> {
-  const q = `latitude=${lat}&longitude=${lon}`;
-
-  const [weather, air, marine, sensors] = await Promise.all([
-    json(
-      `https://api.open-meteo.com/v1/forecast?${q}` +
-        "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,pressure_msl" +
-        "&hourly=uv_index&daily=sunrise,sunset&forecast_days=1&timezone=UTC&wind_speed_unit=kmh",
-    ),
-    json(
-      `https://air-quality-api.open-meteo.com/v1/air-quality?${q}` +
-        "&current=pm2_5,pm10,alder_pollen,birch_pollen,grass_pollen,olive_pollen,ragweed_pollen",
-    ),
-    json(
-      `https://marine-api.open-meteo.com/v1/marine?${q}&current=wave_height,sea_surface_temperature`,
-    ).catch(() => null),
-    json(
-      `https://data.sensor.community/airrohr/v1/filter/area=${lat},${lon},15`,
-    ).catch(() => null),
-  ]);
-
-  // Community sensors are ground truth where they exist; the model is the fallback. Same ordering
-  // as the ETL, so hydration cannot flip a page from sensor-backed to modelled and back.
-  const sensorPm25 = medianPm25(sensors);
-  const cur = weather?.current ?? {};
-  const acur = air?.current ?? {};
-
-  const sunrise = weather?.daily?.sunrise?.[0];
-  const sunset = weather?.daily?.sunset?.[0];
-
-  const pollens = [
-    acur.alder_pollen,
-    acur.birch_pollen,
-    acur.grass_pollen,
-    acur.olive_pollen,
-    acur.ragweed_pollen,
-  ]
-    .map(Number)
-    .filter((n) => Number.isFinite(n));
-
-  return {
-    pm25: sensorPm25 ?? numOr(acur.pm2_5),
-    temperatureC: numOr(cur.temperature_2m),
-    humidityPct: numOr(cur.relative_humidity_2m),
-    windKmh: numOr(cur.wind_speed_10m),
-    pressureHpa: numOr(cur.pressure_msl),
-    uv: numOr(weather?.hourly?.uv_index?.[new Date().getUTCHours()]),
-    daylightHours:
-      sunrise && sunset ? (Date.parse(sunset) - Date.parse(sunrise)) / 3_600_000 : undefined,
-    waveHeightM: numOr(marine?.current?.wave_height),
-    pollen: pollens.length ? Math.max(...pollens) : undefined,
-  };
-}
-
-async function json(url: string): Promise<any> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status}`);
-  return res.json();
-}
-
-function numOr(v: unknown): number | undefined {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/** Median, not mean — one broken device beside a road must not move the city's number. */
-function medianPm25(rows: any): number | undefined {
-  if (!Array.isArray(rows)) return undefined;
-  const values: number[] = [];
-  for (const row of rows) {
-    if (Number(row?.location?.indoor) === 1) continue;
-    for (const v of row?.sensordatavalues ?? []) {
-      const n = Number.parseFloat(v?.value);
-      // Outside this window is a broken sensor, not clean or catastrophic air.
-      if (v?.value_type === "P2" && Number.isFinite(n) && n > 0 && n <= 500) values.push(n);
-    }
-  }
-  if (values.length === 0) return undefined;
-  values.sort((a, b) => a - b);
-  const mid = values.length >> 1;
-  return values.length % 2 ? values[mid]! : (values[mid - 1]! + values[mid]!) / 2;
 }

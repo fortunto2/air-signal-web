@@ -11,7 +11,15 @@ import Bar from "../../../components/Bar.astro";
 import Spectrum from "../../../components/Spectrum.astro";
 import Sparkline from "../../../components/Sparkline.astro";
 import LiveCity from "../../../components/LiveCity.tsx";
-import { getCity, getCityHistory, getStationsForCity, getNearbyCities, parseSignals } from "../../../lib/db";
+import {
+  getCity,
+  getCityHistory,
+  getStationsForCity,
+  getNearbyCities,
+  parseSignals,
+  saveCityReadings,
+} from "../../../lib/db";
+import { computeComfort, isStale } from "../../../lib/comfort-server";
 import { cityView, ago } from "../../../lib/view";
 import { SITE, abs, paths, comfortBand, pmBand } from "../../../lib/site";
 
@@ -24,6 +32,40 @@ const [history, stations, nearby] = await Promise.all([
   getStationsForCity(row.id, 24),
   getNearbyCities(row.lat, row.lon, 2, 5, row.id),
 ]);
+
+/**
+ * On demand, not in a nightly batch over ten thousand cities.
+ *
+ * The first visitor to a cold page — usually a crawler — pays about half a second for four
+ * upstream calls, gets a complete page, and warms it for everyone after. `waitUntil` writes the
+ * result back without holding up the response, and the edge cache in src/middleware.ts means most
+ * requests never reach this code at all.
+ *
+ * When the upstreams say no, `computeComfort` returns null and the page renders whatever the
+ * database has. Yesterday's real numbers beat an error, and beat a blank page by more.
+ */
+let fresh = null;
+if (isStale(row.updated_at)) {
+  fresh = await computeComfort(row.lat, row.lon);
+  if (fresh) {
+    row.comfort = fresh.total;
+    row.worst_signal = (fresh.worst ?? null) as typeof row.worst_signal;
+    row.signals_json = JSON.stringify(fresh.scores);
+    row.readings_json = JSON.stringify(fresh.readings);
+    row.updated_at = new Date().toISOString();
+
+    Astro.locals.cfContext?.waitUntil(
+      saveCityReadings(row.id, {
+        comfort: fresh.total,
+        worstSignal: fresh.worst ?? null,
+        signals: fresh.scores as Record<string, number>,
+        readings: fresh.readings,
+      }).catch(() => {
+        // A failed write costs the next visitor one recomputation. It is not worth a 500.
+      }),
+    );
+  }
+}
 
 const v = cityView(row, history);
 const scores = parseSignals(row.signals_json);
