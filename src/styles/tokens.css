@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+/**
+ * Design tokens — from the approved mockup.
+ *
+ * The rule the whole palette follows: colour belongs to the data. The chrome is near-neutral so
+ * that the only saturated pixels on a page are measurements. Neutrals carry a slight blue cast
+ * (the subject is atmosphere); a pure grey would read as unconsidered.
+ *
+ * Components style through these variables only. Never hardcode a hex, and never style inside the
+ * dark media query — redefine the token instead, so the viewer's theme toggle keeps working.
+ */
+
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "DejaVu Sans Mono", monospace;
+}
+
+:root {
+  --ground: #f1f3f5;
+  --surface: #fbfcfd;
+  --surface-2: #e7eaee;
+  --line: #d3d9df;
+  --line-soft: #e3e7eb;
+  --ink: #12171c;
+  --ink-2: #454f59;
+  --ink-3: #6c7883;
+
+  /** The single chrome colour — instrument ink. */
+  --accent: #17415f;
+
+  /**
+   * Comfort ramp. Not a traffic light: a printed meteorological scale, cold and clean at the good
+   * end, warm and heavy at the bad end. Used for both comfort bands and PM thresholds so a colour
+   * never means two different things on one screen.
+   */
+  --s-excellent: #0e7a73;
+  --s-good: #6b9a4c;
+  --s-fair: #c08d2a;
+  --s-poor: #bd5c33;
+  --s-bad: #8b3a4d;
+
+  --radius: 3px;
+  --shadow: 0 1px 2px rgb(18 23 28 / 0.05), 0 8px 24px -12px rgb(18 23 28 / 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0d1114;
+    --surface: #141a1f;
+    --surface-2: #1d252b;
+    --line: #2a343c;
+    --line-soft: #212a31;
+    --ink: #edf1f4;
+    --ink-2: #a9b4be;
+    --ink-3: #77848f;
+    --accent: #7fb6dc;
+    --s-excellent: #2ba79d;
+    --s-good: #8fbf62;
+    --s-fair: #dca83c;
+    --s-poor: #de7647;
+    --s-bad: #c15570;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  }
+}
+
+/* The explicit toggle must win over the OS preference in both directions. */
+:root[data-theme="dark"] {
+  --ground: #0d1114;
+  --surface: #141a1f;
+  --surface-2: #1d252b;
+  --line: #2a343c;
+  --line-soft: #212a31;
+  --ink: #edf1f4;
+  --ink-2: #a9b4be;
+  --ink-3: #77848f;
+  --accent: #7fb6dc;
+  --s-excellent: #2ba79d;
+  --s-good: #8fbf62;
+  --s-fair: #dca83c;
+  --s-poor: #de7647;
+  --s-bad: #c15570;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+
+:root[data-theme="light"] {
+  --ground: #f1f3f5;
+  --surface: #fbfcfd;
+  --surface-2: #e7eaee;
+  --line: #d3d9df;
+  --line-soft: #e3e7eb;
+  --ink: #12171c;
+  --ink-2: #454f59;
+  --ink-3: #6c7883;
+  --accent: #17415f;
+  --s-excellent: #0e7a73;
+  --s-good: #6b9a4c;
+  --s-fair: #c08d2a;
+  --s-poor: #bd5c33;
+  --s-bad: #8b3a4d;
+  --shadow: 0 1px 2px rgb(18 23 28 / 0.05), 0 8px 24px -12px rgb(18 23 28 / 0.14);
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every figure on this site sits in a column with other figures. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

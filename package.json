@@ -1,0 +1,39 @@
+{
+  "name": "air-signal-web",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "check": "astro check",
+    "prebuild": "pnpm stations:check && pnpm check",
+    "build": "astro build",
+    "preview": "astro preview",
+    "stations": "tsx cli/main.ts stations",
+    "stations:check": "tsx cli/main.ts stations --verify",
+    "comfort": "tsx cli/main.ts comfort",
+    "integration": "tsx cli/main.ts integration",
+    "deploy": "pnpm build && wrangler pages deploy dist --project-name air-signal-web",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/react": "^5.0.1",
+    "@tailwindcss/vite": "^4.2.2",
+    "astro": "^6.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwindcss": "^4.2.2"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.117.0"
+  }
+}

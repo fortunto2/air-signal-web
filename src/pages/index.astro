@@ -1,0 +1,51 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { SITE, SIGNALS } from "../lib/site";
+
+const title = `${SITE.name} — ${SITE.tagline}`;
+const description =
+  "Live air quality and outdoor comfort for any city: PM2.5 from community sensors combined with " +
+  "temperature, wind, sea, UV, pollen and ten more signals into one score.";
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE.name,
+  url: SITE.origin,
+  description,
+};
+---
+
+<Layout title={title} description={description} path="/" jsonLd={jsonLd}>
+  <main style="max-width:1080px;margin:0 auto;padding:64px 24px">
+    <p
+      style="font-family:var(--font-mono);font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)"
+    >
+      Scaffold — see docs/prd.md
+    </p>
+
+    <h1 style="font-size:clamp(30px,5vw,46px);font-weight:640;letter-spacing:-.022em;margin:12px 0 0">
+      {SITE.brand.head}<span style="color:var(--accent)">{SITE.brand.tail}</span>
+    </h1>
+
+    <p style="color:var(--ink-2);max-width:62ch;margin-top:14px;font-size:17px">
+      {description}
+    </p>
+
+    <!-- Proof the token layer and the signal vocabulary are wired. Replaced by the real
+         spectrum island in the first build task. -->
+    <div
+      style="display:grid;grid-template-columns:repeat(14,1fr);gap:3px;align-items:end;height:74px;margin-top:40px"
+    >
+      {
+        SIGNALS.map((s, i) => (
+          <div title={s.name} style={`height:${40 + ((i * 37) % 60)}%;background:var(--s-good);border-radius:1px 1px 0 0`} />
+        ))
+      }
+    </div>
+
+    <p style="color:var(--ink-3);font-size:13px;margin-top:28px">
+      Next: <code>pnpm stations</code> to build the station index, then the map and city pages.
+    </p>
+  </main>
+</Layout>
