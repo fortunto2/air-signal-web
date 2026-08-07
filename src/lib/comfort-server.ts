@@ -175,7 +175,10 @@ export interface FreshComfort extends Comfort {
 export async function computeComfort(lat: number, lon: number): Promise<FreshComfort | null> {
   try {
     const extras: { out: Extras } = { out: {} };
-    const readings = await fetchReadings(lat, lon, extras);
+    // Instantiated before the fetch, because the gathering needs the moon phase and a haversine
+    // from it — see LiveCore in live.ts for why it is passed rather than imported there.
+    const c = core();
+    const readings = await fetchReadings(lat, lon, extras, c);
 
     // Temperature is the marker for the main weather upstream. Without it the forecast API failed
     // — no temperature, wind, pressure, humidity, UV or daylight — and what is left is three
@@ -187,7 +190,6 @@ export async function computeComfort(lat: number, lon: number): Promise<FreshCom
       return null;
     }
 
-    const c = core();
     const comfort = comfortFrom(c, scoresFrom(c, readings));
     return { ...comfort, readings: storedReadings(readings, extras.out) };
   } catch (err) {

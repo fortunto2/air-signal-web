@@ -38,6 +38,8 @@ export interface CityRow {
   /** The readings the scores came from, in their own units. A page prints these, not the scores. */
   readings_json: string | null;
   divergence: number | null;
+  /** 0-100 against every other city that has sensors. NULL for a modelled city. */
+  percentile: number | null;
   updated_at: string | null;
   indexable: number;
 }

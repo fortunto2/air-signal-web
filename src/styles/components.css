@@ -1114,3 +1114,12 @@ a {
 .thin-sensors {
   color: var(--s-fair);
 }
+
+/* The absolute reading beside the relative score. */
+.hero-aqi {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}

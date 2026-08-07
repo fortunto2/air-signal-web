@@ -208,6 +208,36 @@ export async function ingestStations(cities: City[], opts: Opts = {}): Promise<S
  * Run after the city counts and again after the comfort pass, because the first fills the device
  * numbers and the second fills the scores.
  */
+/**
+ * Where each measured city sits against the others.
+ *
+ * Recomputed whenever the scores move, because a percentile is only meaningful against the set it
+ * was taken from. Only cities with devices are in the set — a modelled city has no measurement to
+ * rank, and mixing the two would rank ten thousand model outputs against nine hundred measurements
+ * and call the result a comparison.
+ *
+ * 100 is the best. Ties share a position, so a hundred cities on 91 do not fan out across a hundred
+ * percentiles and imply an order that is not there.
+ */
+export async function rankPercentiles(opts: Opts = {}): Promise<void> {
+  await execute(
+    [
+      `WITH ranked AS (
+         SELECT id,
+                PERCENT_RANK() OVER (ORDER BY comfort) AS p
+           FROM cities
+          WHERE comfort IS NOT NULL AND station_count > 0
+       )
+       UPDATE cities
+          SET percentile = (SELECT CAST(ROUND(p * 100) AS INTEGER) FROM ranked WHERE ranked.id = cities.id)
+        WHERE comfort IS NOT NULL AND station_count > 0;`,
+      // A city that lost its devices or its score keeps a percentile that no longer means anything.
+      `UPDATE cities SET percentile = NULL WHERE comfort IS NULL OR station_count = 0;`,
+    ],
+    { ...opts, label: "percentiles" },
+  );
+}
+
 export async function rollUpCountries(opts: Opts = {}): Promise<void> {
   await execute(
     [
@@ -563,6 +593,7 @@ export async function ingestComfort(
   await runHistory(cold, historyDays, up.BATCH_HISTORY);
 
   // Again: the first roll-up ran before any city had a score.
+  await rankPercentiles(opts);
   await rollUpCountries(opts);
 
   console.log(

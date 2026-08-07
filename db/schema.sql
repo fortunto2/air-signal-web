@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS cities (
   -- and only one of those belongs in a sentence Google will show.
   readings_json TEXT,
   divergence    REAL,                      -- how far the sensors sit from the model here
+  -- 0-100, position against every other city that has sensors. The absolute score compresses —
+  -- a European summer puts nearly everything in one band — and a rank does not.
+  percentile    INTEGER,
   updated_at    TEXT,
 
   indexable     INTEGER NOT NULL DEFAULT 1

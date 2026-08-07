@@ -12,8 +12,7 @@
  * remove a reading from it.
  */
 
-import type { Readings } from "./signals";
-import { core } from "./core";
+import type { Readings, SignalCore } from "./signals";
 
 /** Long enough for a slow model server, short enough that a page never hangs on one. */
 const TIMEOUT_MS = 6_000;
@@ -36,16 +35,16 @@ export interface Extras {
 }
 
 /**
- * Phase 0..1, full moon at 0.5. Delegated to the core rather than reimplemented, because the site
- * already scores it there and two implementations of an astronomical formula is one too many.
+ * The two core functions this file needs, handed in rather than imported.
+ *
+ * Importing the core here would be a static import of the *web* WASM build, and this module is
+ * also read by the Node CLI — which loads the node build. Naming the import was enough to crash
+ * the ETL with "cannot find airq_core_bg.js", because ESM imports are hoisted whether the code
+ * path runs or not. So the caller, which already holds the right build for its runtime, passes it.
  */
-function moonPhaseFor(d: Date): number {
-  return core().wasm_moon_phase(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
-}
-
-/** Kilometres between two points, from the same haversine the ETL and the map use. */
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  return core().wasm_haversine(lat1, lon1, lat2, lon2);
+export interface LiveCore {
+  wasm_moon_phase(year: number, month: number, day: number): number;
+  wasm_haversine(lat1: number, lon1: number, lat2: number, lon2: number): number;
 }
 
 /**
@@ -103,6 +102,7 @@ export async function fetchReadings(
   lat: number,
   lon: number,
   extras?: { out: Extras },
+  core?: LiveCore,
 ): Promise<Readings> {
   const q = `latitude=${lat}&longitude=${lon}`;
 
@@ -150,24 +150,28 @@ export async function fetchReadings(
   // The moon costs nothing: it is arithmetic on today's date, and it was absent from every
   // on-demand city purely because the code that computed it lived in the nightly pass.
   const now = new Date();
-  const moon = moonPhaseFor(now);
+  const moon = core?.wasm_moon_phase(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate());
 
   const g = shared.status === "fulfilled" ? shared.value : null;
   if (extras) {
-    extras.out.moonPhase = moon;
+    if (moon !== undefined) extras.out.moonPhase = moon;
     if (g?.kp !== undefined) extras.out.kp = g.kp;
   }
 
-  // The largest quake within reach. -1 rather than undefined when the feed loaded and found
-  // nothing: a quiet day is a reading worth a hundred points, and an outage is not.
+  // The largest quake within reach, or nothing. See `quakeNear` in cli/upstreams.ts for why "no
+  // event" is absent rather than a hundred: a signal that is maximal for every place on Earth
+  // cannot separate any two of them, it only lifts them all.
   let quake: number | undefined;
   if (g) {
     let worst = -1;
     for (const q of g.quakes) {
-      if (haversineKm(lat, lon, q.lat, q.lon) <= 300 && q.magnitude > worst) worst = q.magnitude;
+      const km = core ? core.wasm_haversine(lat, lon, q.lat, q.lon) : Infinity;
+      if (km <= 300 && q.magnitude > worst) worst = q.magnitude;
     }
-    quake = worst;
-    if (extras) extras.out.quakeMagnitude = worst;
+    if (worst >= 0) {
+      quake = worst;
+      if (extras) extras.out.quakeMagnitude = worst;
+    }
   }
 
   return {

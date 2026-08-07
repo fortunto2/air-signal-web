@@ -1,0 +1,12 @@
+-- Where a city sits against the rest of the measured network, 0-100.
+--
+-- The absolute score stopped discriminating: 786 of 904 scored cities came out "Excellent" and the
+-- top 150 of the ranking spanned four points. Part of that is real — this network is European and
+-- it is summer — and part was signals scoring maximum for nothing happening, fixed separately.
+--
+-- A percentile survives either way. It is the same numbers, ranked, so it spreads whatever the
+-- absolute scale compresses, and it answers the question a reader actually has: is this better or
+-- worse than the places I could compare it to.
+--
+-- Only cities with sensors get one. A modelled city has no measurement to rank.
+ALTER TABLE cities ADD COLUMN percentile INTEGER;

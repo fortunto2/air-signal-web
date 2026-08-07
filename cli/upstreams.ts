@@ -389,6 +389,23 @@ export async function fetchQuakes(): Promise<Quake[]> {
  * Distance is folded in here rather than in Rust: an M6 five hundred kilometres away is not an M6
  * where you are standing, and the normalizer only ever sees a magnitude.
  */
+/**
+ * An event signal reports when there is an event, and stays quiet otherwise.
+ *
+ * This reverses an earlier decision in this file, and the reversal is the point. It used to return
+ * -1 for "the feed loaded and found nothing", which `normalize_earthquake` scores as 100 — on the
+ * argument that a quiet week is information rather than an absence. That argument is true about the
+ * world and false about a comparison.
+ *
+ * Measured across the 904 scored cities: earthquake averaged **exactly 100**. It is eight per cent
+ * of the weight, pinned to the maximum for essentially every place on Earth, so it could not
+ * separate any two of them — it only lifted everyone. Together with fire that is thirteen per cent
+ * of every score handed out for nothing happening, which is most of why 786 of 904 cities came out
+ * "Excellent" and the top 150 of the ranking spanned four points.
+ *
+ * So: an event within reach is scored, and no event is absent. A city with a fire twenty kilometres
+ * away still says so loudly; a city with nothing is judged on the twelve signals that vary.
+ */
 export function quakeNear(
   quakes: Quake[] | null,
   lat: number,
@@ -406,7 +423,7 @@ export function quakeNear(
     const effective = q.magnitude * (1 - d / (radiusKm * 1.4));
     if (effective > felt) felt = effective;
   }
-  return felt;
+  return felt < 0 ? undefined : felt;
 }
 
 /**
@@ -488,7 +505,9 @@ export function fireDistance(fires: Fire[], lat: number, lon: number, capKm = 20
     const d = haversine(lat, lon, f.lat, f.lon);
     if (d < best) best = d;
   }
-  return Number.isFinite(best) ? Math.min(best, capKm) : capKm;
+  // Beyond the horizon is not a reading. Returning the cap scored it 100 and made "no fire within
+  // 200 km" — which is nearly everywhere, nearly always — worth five per cent of a perfect score.
+  return Number.isFinite(best) ? Math.min(best, capKm) : undefined;
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

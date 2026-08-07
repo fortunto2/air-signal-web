@@ -20,6 +20,7 @@ import {
   ingestDivergence,
   expandCities,
   ingestSources,
+  rankPercentiles,
   ingestStations,
   seedCities,
   type Opts,
@@ -238,7 +239,7 @@ const usage = `usage: tsx cli/main.ts <command> [flags]
 
   seed-cities                 load the cities database into D1
   expand-cities               add every city GeoNames knows that we do not (~70 k)
-  ingest [--only <stage>]     stations | comfort | sources | divergence | gate
+  ingest [--only <stage>]     stations | comfort | sources | divergence | gate | percentiles
   backfill [--month YYYY-MM]  device history from the Sensor.Community monthly archive
   cpf [--month YYYY-MM]       which direction the dirty hours blow from (needs backfill archives)
   comfort <lat> <lon>         the fourteen signals for a point
@@ -289,6 +290,7 @@ try {
       else if (only === "sources") await ingestSources({ ...opts, limit: Number(flag("cities") ?? 200) });
       else if (only === "divergence") await ingestDivergence(opts);
       else if (only === "gate") await applyGate(opts);
+      else if (only === "percentiles") await rankPercentiles(opts);
       else throw new Error(`unknown stage "${only}"`);
       break;
     }
