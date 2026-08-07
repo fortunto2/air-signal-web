@@ -50,6 +50,29 @@ export function loadPlaces(): { countries: Country[]; cities: City[] } {
 }
 
 /** Kept for callers that only need the city list; the country ids must match `loadPlaces`. */
+/**
+ * What the embedded database calls a country, against what it is called.
+ *
+ * `Nepa` is a typo in the source. The rest are simply out of date — Swaziland became Eswatini in
+ * 2018, Macedonia became North Macedonia in 2019, and "Korea, South" is a sort key rather than a
+ * name. They were printing on the country pages as-is.
+ *
+ * Names only, and applied at the point of writing rather than here. The lookup that follows asks
+ * the embedded database for a country's cities *by name*, so replacing it upstream of that would
+ * ask for the cities of "Nepal" and get none. The slugs are URLs, some already indexed, so `/nepa`
+ * stays `/nepa` while the page it serves says Nepal.
+ */
+export const COUNTRY_DISPLAY: Record<string, string> = {
+  Nepa: "Nepal",
+  Macedonia: "North Macedonia",
+  Swaziland: "Eswatini",
+  "Cape Verde": "Cabo Verde",
+  "Gambia, The": "Gambia",
+  "Korea, North": "North Korea",
+  "Korea, South": "South Korea",
+  "Bahamas, The": "Bahamas",
+};
+
 export function loadCities(
   countries: Country[] = (JSON.parse(core.wasm_list_countries()) as string[]).map((name, i) => ({
     id: i + 1,

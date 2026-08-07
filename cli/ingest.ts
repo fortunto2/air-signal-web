@@ -7,7 +7,7 @@
  * rerun just that one.
  */
 
-import { citiesFromDb, loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
+import { COUNTRY_DISPLAY, citiesFromDb, loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
 import { loadGeoNames } from "./geonames.ts";
 import { bearing, comfortFrom, haversine, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
@@ -42,9 +42,14 @@ export async function seedCities(opts: Opts = {}): Promise<City[]> {
   console.log(`places: ${countries.length} countries, ${cities.length} cities`);
 
   await execute(
-    upsert("countries", ["id", "slug", "name"], countries.map((c) => [c.id, c.slug, c.name]), {
-      conflict: ["id"],
-    }),
+    // The display name is corrected on the way in; the slug, built from the source spelling, is
+    // left alone because it is a URL. See COUNTRY_DISPLAY.
+    upsert(
+      "countries",
+      ["id", "slug", "name"],
+      countries.map((c) => [c.id, c.slug, COUNTRY_DISPLAY[c.name] ?? c.name]),
+      { conflict: ["id"] },
+    ),
     { ...opts, label: "countries" },
   );
 
@@ -178,6 +183,16 @@ export async function ingestStations(cities: City[], opts: Opts = {}): Promise<S
                 COUNT(*)     OVER (PARTITION BY city_id)               AS n
            FROM stations
           WHERE city_id IS NOT NULL AND pm25 IS NOT NULL
+            -- Only devices that spoke recently.
+            --
+            -- The ETL upserts and never deletes, so a device that goes silent keeps its last
+            -- reading for ever. That is right for the device's own page — gone quiet is
+            -- information — and wrong for a median, which is supposed to describe now.
+            --
+            -- Pfullingen is the case: four devices, one of them stuck at 487.8 µg/m³ from a day it
+            -- no longer reports on, dragging the median of four to 107 and putting a quiet German
+            -- town at the bottom of the ranking. Excluded, the median is 2.7.
+            AND last_seen >= datetime('now', '-3 hours')
        ),
        med AS (
          SELECT city_id, AVG(pm25) AS m

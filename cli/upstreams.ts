@@ -130,6 +130,25 @@ export async function fetchSensorSnapshot(url = SC_NOW): Promise<SensorReading[]
       if (v.value_type === "P2") pm25 = n;
       if (v.value_type === "P1") pm10 = n;
     }
+    /**
+     * Two impossible readings, dropped here rather than left for a median to survive.
+     *
+     * PM2.5 is a subset of PM10 — every particle under 2.5 micrometres is also under ten — so a
+     * device reporting more fine than coarse is reporting a fault, not weather. Sixteen do.
+     *
+     * The second is the same fault wearing a different face. An SDS011 publishes both channels in
+     * 8 359 of 8 376 readings; among the seventeen that publish only PM2.5 the average is
+     * **372 µg/m³**. The coarse channel has died and the fine one is producing noise. Below 50 an
+     * uncorroborated reading changes nothing, so the rule only fires where it would matter.
+     *
+     * This is not a rounding error at the edges. Pfullingen has four devices: two reading 487.8
+     * and 392.4 with no PM10 at all, and two more six hundred metres away reading 2.6 and 1.9. The
+     * median of four came out at 197.5 µg/m³ and put a quiet German town at the bottom of the
+     * ranking on a number that was never in the air.
+     */
+    if (pm25 !== null && pm10 !== null && pm25 > pm10) pm25 = null;
+    if (pm25 !== null && pm10 === null && pm25 > 50) pm25 = null;
+
     if (pm25 === null && pm10 === null) continue;
 
     byId.set(id, {
