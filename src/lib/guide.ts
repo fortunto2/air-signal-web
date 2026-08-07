@@ -308,6 +308,109 @@ const SENSORS: Article = {
   related: ["pm25", "how-comfort-is-scored"],
 };
 
+
+/**
+ * The honest gap.
+ *
+ * Every number on this site comes from a particle counter or a weather model, and neither sees a
+ * gas. Saying so plainly is worth more than the article would be if it pretended otherwise, and it
+ * is the question people from industrial towns actually arrive with.
+ */
+const CHEMICALS: Article = {
+  slug: "chemical-emissions",
+  title: "What an air quality map does not measure",
+  h1: "The gases nobody is counting",
+  description:
+    "PM sensors and air quality indices miss industrial gases entirely: hydrogen sulphide, " +
+    "ammonia, formaldehyde, benzene. What the gap is, and the indirect signs that something is " +
+    "in the air anyway.",
+  lede:
+    "If you live near a refinery, a chemical works or a landfill, the thing you smell is almost " +
+    "certainly not what this site is measuring. That is worth saying at the top rather than " +
+    "further down.",
+  sections: [
+    {
+      heading: "What the sensors actually see",
+      body: [
+        "The community devices behind most readings here are optical particle counters. A laser " +
+          "shines through moving air and a photodiode counts the flashes as particles cross the " +
+          "beam. That mechanism detects solids and droplets. A gas molecule is far too small to " +
+          "scatter light this way, so it is not that the reading is low: the instrument is not " +
+          "measuring it at all.",
+        "The atmospheric model has the same blind spot for a different reason. It carries ozone, " +
+          "nitrogen dioxide, sulphur dioxide and carbon monoxide as regional fields, which is " +
+          "useful for a city and useless for a street. Industrial emissions are point sources, and " +
+          "a grid cell of tens of kilometres cannot represent one chimney.",
+      ],
+    },
+    {
+      heading: "The substances that fall through",
+      body: [
+        "Hydrogen sulphide, the rotten-egg smell around refineries, sewage works and paper mills. " +
+          "Ammonia, from fertiliser plants and intensive livestock. Formaldehyde and other volatile " +
+          "organic compounds from resin, plastics and coatings. Benzene, toluene and xylene from " +
+          "petrochemicals and fuel handling. Mercaptans, added to natural gas precisely so a leak " +
+          "can be smelled.",
+        "Several of these are detectable by nose at concentrations far below anything that shows " +
+          "on a monitor. Hydrogen sulphide is the clearest case: people notice it at a few parts " +
+          "per billion, which is orders of magnitude under the level at which it becomes a health " +
+          "concern. That gap is why complaints about smell and official readings so often " +
+          "contradict each other, and why residents are usually right that something happened even " +
+          "when the paperwork says nothing did.",
+        "It also runs the other way. A smell is not proof of harm, and the substances with the " +
+          "strongest odour are not always the ones that matter most. Carbon monoxide has no smell " +
+          "at all.",
+      ],
+    },
+    {
+      heading: "The indirect signs that are here",
+      body: [
+        "Two things on this site do carry information about industrial air, and both are indirect.",
+        "The first is the PM10 to PM2.5 ratio. It does not identify a gas, but it separates dust " +
+          "from combustion, and a plant that is emitting gases is usually emitting particles as " +
+          "well. A ratio sitting near 1 with a raised absolute level is a combustion signature.",
+        "The second is agreement between neighbouring devices. When several sensors on one side of " +
+          "town rise together while the rest stay flat, something arrived from that direction. The " +
+          "map draws that as a wedge, and the wind arrow beside it says whether the two line up. " +
+          "It cannot name the substance. It can tell you the difference between a plume and a " +
+          "faulty box, which is the question most people are really asking.",
+        "Mapped industrial sites and major roads are drawn on the city map for the same reason. " +
+          "Nothing is measured at those points. They are there so the direction a reading came " +
+          "from can be compared against what is actually upwind.",
+      ],
+    },
+    {
+      heading: "What to do if the gap matters where you live",
+      body: [
+        "Keep a record with times. A complaint saying “it smells” is dismissible; one saying " +
+          "“14 March, 21:00 to 23:00, rotten eggs, wind from the north-west” is not, and it is the " +
+          "kind of thing that becomes evidence when enough of them line up.",
+        "Electrochemical sensors for specific gases exist and start around a few hundred euros per " +
+          "substance. They drift, need periodic calibration, and measure one compound each, which " +
+          "is why no citizen network has done for gases what Sensor.Community did for particles.",
+        "Where a regulator publishes measurements, those are the ones with legal standing. This " +
+          "site is not a substitute for them and does not claim to be.",
+      ],
+    },
+  ],
+  faq: [
+    {
+      q: "Why does my air quality app show green when I can smell chemicals?",
+      a:
+        "Because it is almost certainly reporting particulate matter and ozone, and neither is " +
+        "what you are smelling. Most industrial gases do not appear in any consumer air quality " +
+        "index, and the nose detects several of them far below the levels an instrument would.",
+    },
+    {
+      q: "Can a cheap sensor detect gas leaks?",
+      a:
+        "Not a PM sensor. It counts particles by scattering light, and gas molecules are too small " +
+        "to scatter it. Detecting a specific gas needs a sensor built for that gas.",
+    },
+  ],
+  related: ["pm25-vs-pm10", "sensor-accuracy", "pm25"],
+};
+
 const SCORING: Article = {
   slug: "how-comfort-is-scored",
   title: "How the comfort score is calculated",
@@ -611,7 +714,7 @@ const SIGNAL_ARTICLES: Article[] = (Object.keys(SIGNAL_EXTRA) as SignalKey[])
     };
   });
 
-export const ARTICLES: Article[] = [PM25, RATIO, AQI, SENSORS, SCORING, ...SIGNAL_ARTICLES];
+export const ARTICLES: Article[] = [PM25, RATIO, AQI, SENSORS, CHEMICALS, SCORING, ...SIGNAL_ARTICLES];
 
 export const BY_SLUG = new Map(ARTICLES.map((a) => [a.slug, a]));
 

@@ -15,7 +15,14 @@ import { SITE, SIGNALS, abs, paths } from "../../lib/site";
 
 // The topics come first because they are what people search; the signals are the reference
 // section underneath, in the order they appear on a city page so the two can be read side by side.
-const TOPICS = ["pm25", "aqi", "sensor-accuracy", "pm25-vs-pm10", "how-comfort-is-scored"];
+const TOPICS = [
+  "pm25",
+  "aqi",
+  "sensor-accuracy",
+  "pm25-vs-pm10",
+  "chemical-emissions",
+  "how-comfort-is-scored",
+];
 const topics = TOPICS.map((s) => BY_SLUG.get(s)!).filter(Boolean);
 
 const description =
