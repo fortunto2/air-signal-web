@@ -65,8 +65,12 @@ function quality(accept: string, type: string): number {
 function markdownPath(pathname: string): string | null {
   if (pathname.includes(".")) return null;
   const segments = pathname.split("/").filter(Boolean);
-  if (segments.length !== 2) return null;
-  return paths.cityMarkdown(segments[0]!, segments[1]!);
+  // The root twins too. An agent checking one URL checks that one, and it was the reason an
+  // agent-readiness audit reported this site as HTML-only while every city page had a twin.
+  if (segments.length === 0) return "/index.md";
+  if (segments.length === 1) return paths.countryMarkdown(segments[0]!);
+  if (segments.length === 2) return paths.cityMarkdown(segments[0]!, segments[1]!);
+  return null;
 }
 
 function withHeaders(response: Response, cacheControl?: string): Response {

@@ -37,33 +37,33 @@ const sparse = total < 20;
 const SORT_COPY: Record<typeof sort, { h1: string; lede: string; title: string }> = {
   best: {
     h1: "Ranked by comfort, right now",
-    title: `Cities ranked by outdoor comfort — ${SITE.name}`,
+    title: `Air Quality Ranking — Cities Compared Today`,
     lede: "One score from fourteen signals, for every city where community sensors are reporting.",
   },
   worst: {
     h1: "The least comfortable, right now",
-    title: `Least comfortable cities right now — ${SITE.name}`,
+    title: `Worst Air Quality Today — Cities Ranked`,
     lede:
       "The same fourteen signals, from the bottom. A low score is usually one signal doing the " +
       "damage rather than everything being bad at once — the spectrum beside each row shows which.",
   },
   cleanest: {
     h1: "Cleanest air, right now",
-    title: `Cities with the cleanest air right now — ${SITE.name}`,
+    title: `Cleanest Air in the World Right Now — Cities Ranked`,
     lede:
       "Ordered by the median PM2.5 across each city's community sensors — measured, not modelled, " +
       "which is why only cities with devices appear.",
   },
   dirtiest: {
     h1: "Dirtiest air, right now",
-    title: `Cities with the dirtiest air right now — ${SITE.name}`,
+    title: `Most Polluted Cities Right Now — Live PM2.5`,
     lede:
       "Ordered by the median PM2.5 across each city's community sensors. These are the places " +
       "where the fine particulate reading is highest at this moment, not on annual average.",
   },
   sensors: {
     h1: "Best measured, right now",
-    title: `Cities with the most air sensors — ${SITE.name}`,
+    title: `Cities With the Most Air Quality Sensors`,
     lede:
       "Where the community network is densest. More devices means the city median is a " +
       "measurement rather than an estimate from one box on one street.",

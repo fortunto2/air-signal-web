@@ -125,6 +125,33 @@ export function signalLines(
 
 // ── city ────────────────────────────────────────────────────────────────────
 
+
+/**
+ * A title built for the query, not for us.
+ *
+ * The old one was `Air Quality & Comfort in Berlin — live PM2.5, sea, UV`. Everything after the
+ * dash is the product's argument and none of it is what anyone types. Google Autocomplete on this
+ * subject returns, in order: "air quality berlin", "air quality berlin today", "air quality berlin
+ * germany", "air quality berlin map" — so the exact phrase goes first, the country follows because
+ * a third of the suggestions carry it, and "today" is in because two of the top four are.
+ *
+ * The differentiator moves to the description, which is where a reason to click belongs once the
+ * title has won the match.
+ *
+ * Sixty characters is the practical ceiling before a desktop result truncates, and a long place
+ * name eats it: "Air Quality in Petropavlovsk-Kamchatskiy, Russia — Live PM2.5 Today" is 67. The
+ * country is dropped first, then the tail, because the place name is the one part that cannot go.
+ */
+export function seoTitle(city: string, country: string): string {
+  const full = `Air Quality in ${city}, ${country} — Live PM2.5 Today`;
+  if (full.length <= 60) return full;
+
+  const noCountry = `Air Quality in ${city} — Live PM2.5 Today`;
+  if (noCountry.length <= 60) return noCountry;
+
+  return `Air Quality in ${city} — Live PM2.5`;
+}
+
 export interface CityView {
   id: number;
   name: string;
@@ -188,7 +215,7 @@ export function cityView(row: CityRow, history: DayPoint[] = []): CityView {
     stationCount: row.station_count,
     divergence: row.divergence,
     verdict: cityVerdict(row, readings, worst),
-    title: `Air Quality & Comfort in ${row.name} — live PM2.5, sea, UV`,
+    title: seoTitle(row.name, row.country),
     description: cityDescription(row, readings),
     updatedAt: row.updated_at ? new Date(row.updated_at) : null,
     history,
@@ -331,7 +358,8 @@ export function stationView(s: StationRow, city: CityRow, cityMedian: number | n
     divergence: s.divergence,
     divergenceText,
     indexable: s.indexable === 1,
-    title: `${city.name} — station ${s.id} live PM2.5`,
+    // The device id is what an owner searches for; the city is what everyone else does.
+    title: `Air Quality Sensor ${s.id} in ${city.name} — Live PM2.5`,
     description:
       (s.pm25 !== null ? `PM2.5 ${s.pm25} µg/m³` : "No current reading") +
       ` at Sensor.Community station ${s.id}, ${city.name}` +

@@ -96,6 +96,7 @@ export const paths = {
   guide: () => `/guide`,
   guideEntry: (topic: string) => `/guide/${slug(topic)}`,
   cityMarkdown: (country: string, city: string) => `/${slug(country)}/${slug(city)}.md`,
+  countryMarkdown: (country: string) => `/${slug(country)}.md`,
 };
 
 /**

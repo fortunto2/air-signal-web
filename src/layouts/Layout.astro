@@ -24,6 +24,17 @@ interface Props {
 const { title, description, path, schema = [], canonicalTo, noindex, updatedAt } = Astro.props;
 const canonical = abs(canonicalTo ?? path);
 
+/**
+ * The share card for this page.
+ *
+ * A city and a country get one drawn from their own numbers; everything else falls back to the
+ * static file, because a guide article has no reading to put on a card and inventing one would be
+ * the wrong kind of consistency.
+ */
+const ogSegments = path.split("/").filter(Boolean);
+const ogPath =
+  ogSegments.length === 1 || ogSegments.length === 2 ? `/og/${ogSegments.join("/")}.svg` : "/og.png";
+
 const graph = [
   {
     "@context": "https://schema.org",
@@ -58,8 +69,22 @@ const graph = [
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={abs("/og.png")} />
+    {/*
+      The card is drawn for the page rather than shared across the site. A link to Berlin and a
+      link to Sofia used to look identical in a message — on a site whose whole value is the
+      reading, that is the one place it has to show. `/og/<path>.svg` mirrors the page's own URL,
+      so nothing has to be passed here but the path we already have.
+
+      Dimensions are declared because several crawlers refuse to render an image they cannot size,
+      and an SVG has no intrinsic pixel size to read.
+    */}
+    <meta property="og:image" content={abs(ogPath)} />
+    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={title} />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={abs(ogPath)} />
 
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="sitemap" href="/sitemap.xml" />
