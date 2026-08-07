@@ -70,7 +70,22 @@ resolves to 6.2, not to an average of the two. Every station page states its own
 - \`${abs("/api/cities.geojson")}\` and \`${abs("/api/stations.geojson")}\` — the map layers
 - \`${abs("/sitemap.xml")}\` — sharded; cities first, then the stations past the bar
 
-Any page also answers with Markdown if you send \`Accept: text/markdown\`.
+The home page, every country and every city also answer with Markdown if you send
+\`Accept: text/markdown\`, or if you append \`.md\`.
+
+## If you would rather call than read
+
+- \`${abs("/openapi.json")}\` — the HTTP API, described. No key, no rate limit beyond politeness.
+- \`${abs("/a2a")}\` — A2A over JSON-RPC 2.0. One method, \`message/send\`. Ask it for a city by
+  name, a device by id, or a coordinate pair, and it answers with the sentence and the same numbers
+  as structured data.
+- \`${abs("/.well-known/agent-card.json")}\` — what that endpoint can do
+- \`${abs("/.well-known/api-catalog")}\` — everything above, as one link set
+
+There is no authentication anywhere here and nothing to sign up for. That is also why there is no
+\`/.well-known/oauth-protected-resource\`: the data is open, and a document explaining how to
+authenticate against a resource that asks for nothing would describe a protection this site does
+not have.
 
 ## Which station pages are indexed
 
