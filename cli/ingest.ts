@@ -8,6 +8,7 @@
  */
 
 import { loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
+import { loadGeoNames } from "./geonames.ts";
 import { bearing, comfortFrom, haversine, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { execute, query, update, upsert } from "./d1.ts";
@@ -774,4 +775,207 @@ export async function ingestSources(opts: Opts & { limit?: number }): Promise<vo
   console.log(
     `sources: ${found} across ${targets.length - empty} cities; ${empty} had nothing mapped nearby`,
   );
+}
+
+/**
+ * Add every city GeoNames knows that we do not.
+ *
+ * The embedded crate caps at ~100 per country and that ceiling is the site's biggest limit: a
+ * country page listed a hundred places and stopped, which reads as a bug and is a data boundary.
+ *
+ * Additive on purpose. A city we already have keeps its id, its slug and therefore its URL — it
+ * only gains a population figure from whichever GeoNames row it matched. Replacing the source
+ * outright would have renamed a few thousand indexed pages (GeoNames writes Munchen where the crate
+ * writes Muenchen) to gain some new ones, which is a bad trade in both directions.
+ *
+ * Matching is by name, with distance as the sanity check, and that order matters. Six kilometres of
+ * pure proximity looked reasonable and was wrong: Berlin has dozens of settlements inside that
+ * radius, every one of them matched the city, the last one won the population update, and Berlin
+ * ended up with 5 629 residents. Each of those villages was then treated as already-present and
+ * never added at all.
+ *
+ * So: the same slug within fifty kilometres is the same place, which covers the ordinary case.
+ * Failing that, anything within two kilometres is the same place too, which catches a city under a
+ * different spelling — GeoNames writes Munchen where the crate writes Muenchen. Everything else is
+ * new. Where several rows still land on one city, the most populous wins, because that one is the
+ * city and the others are districts of it.
+ */
+export async function expandCities(opts: Opts & { dir?: string; file?: string }): Promise<void> {
+  const geo = await loadGeoNames(opts.dir ?? ".cache", opts.file ?? "cities5000");
+  console.log(`geonames: ${geo.cities.length} cities in the source file`);
+
+  const ourCountries = await query<{ id: number; name: string }>(
+    "SELECT id, name FROM countries",
+    opts,
+  );
+  const ourCities = await query<{
+    id: number;
+    country_id: number;
+    slug: string;
+    lat: number;
+    lon: number;
+  }>("SELECT id, country_id, slug, lat, lon FROM cities", opts);
+
+  // ISO → our country id. A country GeoNames has and we do not is skipped rather than created:
+  // countries are the hub every city page links up to, and inventing one from a city file would
+  // give it no name we chose and no aggregates.
+  const countryByIso = new Map<string, number>();
+  const missing: string[] = [];
+  for (const c of ourCountries) {
+    const iso = geo.isoFor(c.name);
+    if (iso) countryByIso.set(iso, c.id);
+    else missing.push(c.name);
+  }
+  if (missing.length) {
+    console.warn(`geonames: no ISO match for ${missing.length} countries — ${missing.join(", ")}`);
+  }
+
+  // Existing cities, bucketed by whole degree, so the distance search is over a handful of rows
+  // rather than ten thousand. Same trick as CityIndex; not reusing it because that one is typed
+  // for the seed's City and carries fields this does not have.
+  const cells = new Map<string, typeof ourCities>();
+  const key = (lat: number, lon: number) => `${Math.floor(lat)}:${Math.floor(lon)}`;
+  for (const c of ourCities) {
+    const k = key(c.lat, c.lon);
+    const bucket = cells.get(k);
+    if (bucket) bucket.push(c);
+    else cells.set(k, [c]);
+  }
+  const slugsByCountry = new Map<number, Set<string>>();
+  for (const c of ourCities) {
+    let set = slugsByCountry.get(c.country_id);
+    if (!set) slugsByCountry.set(c.country_id, (set = new Set()));
+    set.add(c.slug);
+  }
+
+  let nextId = Math.max(0, ...ourCities.map((c) => c.id)) + 1;
+  const additions: (string | number | null)[][] = [];
+  /** Our city id → the best GeoNames row seen for it, so a suburb cannot overwrite its city. */
+  const best = new Map<number, { population: number; geonameId: number }>();
+  let skippedCountry = 0;
+
+  for (const g of geo.cities) {
+    const countryId = countryByIso.get(g.cc);
+    if (countryId === undefined) {
+      skippedCountry++;
+      continue;
+    }
+
+    const s = slug(g.ascii) || slug(g.name);
+
+    // Candidates in the same country: the nearest by distance, and the nearest sharing the slug.
+    let nearest: (typeof ourCities)[number] | null = null;
+    let nearestKm = Infinity;
+    let sameSlug: (typeof ourCities)[number] | null = null;
+    let sameSlugKm = Infinity;
+
+    for (let dLat = -1; dLat <= 1; dLat++) {
+      for (let dLon = -1; dLon <= 1; dLon++) {
+        for (const c of cells.get(key(g.lat + dLat, g.lon + dLon)) ?? []) {
+          if (c.country_id !== countryId) continue;
+          const km = haversine(g.lat, g.lon, c.lat, c.lon);
+          if (km < nearestKm) {
+            nearestKm = km;
+            nearest = c;
+          }
+          if (c.slug === s && km < sameSlugKm) {
+            sameSlugKm = km;
+            sameSlug = c;
+          }
+        }
+      }
+    }
+
+    const match =
+      sameSlug && sameSlugKm <= 50 ? sameSlug : nearest && nearestKm <= 2 ? nearest : null;
+
+    if (match) {
+      const held = best.get(match.id);
+      if (!held || g.population > held.population) {
+        best.set(match.id, { population: g.population, geonameId: g.geonameId });
+      }
+      continue;
+    }
+
+    if (!s) continue;
+    const taken = slugsByCountry.get(countryId) ?? new Set<string>();
+    let unique = s;
+    for (let n = 2; taken.has(unique); n++) unique = `${s}-${n}`;
+    taken.add(unique);
+    slugsByCountry.set(countryId, taken);
+
+    const id = nextId++;
+    additions.push([
+      id,
+      countryId,
+      unique,
+      g.name.slice(0, 90),
+      Math.round(g.lat * 1e5) / 1e5,
+      Math.round(g.lon * 1e5) / 1e5,
+      // Provisional; the rank pass below replaces it with the real ordering.
+      9_999,
+      g.population || null,
+      g.geonameId,
+    ]);
+    // A new city joins the index, so the next GeoNames row two kilometres away matches it rather
+    // than being added a second time under a suffixed slug.
+    const row = { id, country_id: countryId, slug: unique, lat: g.lat, lon: g.lon };
+    ourCities.push(row);
+    const k = key(g.lat, g.lon);
+    const bucket = cells.get(k);
+    if (bucket) bucket.push(row);
+    else cells.set(k, [row]);
+  }
+
+  console.log(
+    `geonames: ${additions.length} new, ${best.size} matched to cities we already had` +
+      (skippedCountry ? `, ${skippedCountry} in countries we do not carry` : ""),
+  );
+
+  const matches: (string | number | null)[][] = [...best.entries()].map(([id, m]) => [
+    id,
+    m.population || null,
+    m.geonameId,
+  ]);
+  for (let i = 0; i < matches.length; i += 4_000) {
+    await execute(
+      update("cities", "id", ["population", "geoname_id"], matches.slice(i, i + 4_000)),
+      { ...opts, label: `population (${Math.min(4_000, matches.length - i)})` },
+    );
+  }
+
+  for (let i = 0; i < additions.length; i += 4_000) {
+    await execute(
+      upsert(
+        "cities",
+        ["id", "country_id", "slug", "name", "lat", "lon", "rank", "population", "geoname_id"],
+        additions.slice(i, i + 4_000),
+        { conflict: ["id"] },
+      ),
+      { ...opts, label: `new cities (${Math.min(4_000, additions.length - i)})` },
+    );
+  }
+
+  // `rank` is what the sitemap and the search order use, and it now means what it always claimed
+  // to: position by population within the country. Cities with no population figure sort last
+  // rather than first, which is where SQLite would otherwise put a NULL.
+  await execute(
+    [
+      `WITH ranked AS (
+         SELECT id, ROW_NUMBER() OVER (
+                  PARTITION BY country_id
+                  ORDER BY (population IS NULL), population DESC, rank
+                ) - 1 AS r
+           FROM cities
+       )
+       UPDATE cities SET rank = (SELECT r FROM ranked WHERE ranked.id = cities.id);`,
+      `UPDATE countries SET city_count = COALESCE((
+         SELECT COUNT(*) FROM cities WHERE cities.country_id = countries.id
+       ), 0);`,
+    ],
+    { ...opts, label: "rank and city counts" },
+  );
+
+  const [after] = await query<{ n: number }>("SELECT COUNT(*) n FROM cities", opts);
+  console.log(`geonames: ${after?.n ?? "?"} cities now`);
 }

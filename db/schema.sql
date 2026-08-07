@@ -42,9 +42,15 @@ CREATE INDEX IF NOT EXISTS countries_size ON countries (station_count DESC);
 -- cities — the place list. Seeded once from airq-core's embedded database.
 -- ---------------------------------------------------------------------------
 --
--- 10 596 cities across 156 countries, capped at 100 per country and ordered by population
--- descending. There is no population column in the source, so `rank` (position within the
--- country) is the population proxy the PRD's "top-N by population" gate actually gets.
+-- Two sources, merged. The embedded crate in airq-core gives 10 596 cities across 156 countries and
+-- caps at ~100 per country, which was the ceiling on the whole site: Germany has thousands of towns
+-- worth a page and we listed a hundred. GeoNames `cities5000` adds every settlement above five
+-- thousand people on top of that.
+--
+-- The merge is additive. A city from the crate keeps its id and its slug — a slug is a URL, and
+-- GeoNames spells places differently (Munchen against Muenchen), so replacing the source outright
+-- would have 404'd indexed pages to gain new ones. `rank` is now derived from real population
+-- rather than being a position with no number behind it.
 
 CREATE TABLE IF NOT EXISTS cities (
   id            INTEGER PRIMARY KEY,
@@ -54,6 +60,8 @@ CREATE TABLE IF NOT EXISTS cities (
   lat           REAL    NOT NULL,
   lon           REAL    NOT NULL,
   rank          INTEGER NOT NULL,          -- 0 = largest city in its country
+  population    INTEGER,                   -- from GeoNames; NULL for a city it does not carry
+  geoname_id    INTEGER,                   -- the GeoNames row this was matched to, if any
 
   -- Filled by the comfort pass. NULL until the first ingest touches this city.
   station_count INTEGER NOT NULL DEFAULT 0,
@@ -75,6 +83,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS cities_path ON cities (country_id, slug);
 CREATE INDEX IF NOT EXISTS cities_geo         ON cities (lat, lon);
 CREATE INDEX IF NOT EXISTS cities_sitemap     ON cities (indexable, rank);
 CREATE INDEX IF NOT EXISTS cities_ranked      ON cities (comfort);
+CREATE INDEX IF NOT EXISTS cities_pop         ON cities (population DESC);
 -- The search box fires per keystroke. NOCASE because a reader types "sofia" and the row says
 -- "Sofia"; without the collation LIKE cannot use this index and it is decoration.
 CREATE INDEX IF NOT EXISTS cities_name        ON cities (name COLLATE NOCASE);

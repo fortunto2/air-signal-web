@@ -18,6 +18,7 @@ import {
   ingestAll,
   ingestComfort,
   ingestDivergence,
+  expandCities,
   ingestSources,
   ingestStations,
   seedCities,
@@ -235,6 +236,7 @@ async function integration(): Promise<void> {
 const usage = `usage: tsx cli/main.ts <command> [flags]
 
   seed-cities                 load the cities database into D1
+  expand-cities               add every city GeoNames knows that we do not (~70 k)
   ingest [--only <stage>]     stations | comfort | sources | divergence | gate
   backfill [--month YYYY-MM]  device history from the Sensor.Community monthly archive
   comfort <lat> <lon>         the fourteen signals for a point
@@ -288,6 +290,10 @@ try {
       else throw new Error(`unknown stage "${only}"`);
       break;
     }
+
+    case "expand-cities":
+      await expandCities({ ...opts, dir: flag("dir") ?? ".cache", file: flag("file") ?? "cities5000" });
+      break;
 
     case "backfill":
       await backfill({

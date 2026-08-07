@@ -31,6 +31,7 @@ data.** The chrome is near-neutral so the only saturated pixels on a page are me
 make dev           # :4321, against the local D1
 make db-init       # apply db/schema.sql locally
 make seed          # load the cities database into D1 (once)
+make expand-cities # merge GeoNames on top — ~70k places, additive, keeps every existing slug
 make ingest        # the full ETL pass against live upstreams
 make integration   # upstream shapes + the no-shrink guarantee
 make build         # SSR build

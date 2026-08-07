@@ -23,10 +23,11 @@
  */
 
 import { createReadStream } from "node:fs";
-import { open, readdir } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { createInflateRaw } from "node:zlib";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
+import { entryExtent } from "./zip.ts";
 import { execute, query, upsert } from "./d1.ts";
 
 export interface BackfillOpts {
@@ -35,58 +36,6 @@ export interface BackfillOpts {
   dir: string;
   /** Only these months, e.g. `2026-07`. Defaults to every month found in `dir`. */
   months?: string[];
-}
-
-/**
- * Where the single entry's deflate stream starts and ends.
- *
- * Node has no zip reader, and the alternatives are a dependency or a subprocess. Neither is worth
- * it here: the archive's zips hold exactly one entry, and its local header says everything needed.
- *
- * The end matters as much as the start. Reading to EOF feeds inflate the ~90 trailing bytes of
- * central directory that follow the compressed data, and it rejects them — `unexpected end of file`,
- * thrown after the whole file has been read correctly, which looks like a truncated download and is
- * not one.
- *
- * Both sizes are zip64 here: a month of SDS011 is 28 GB open, which does not fit the 32-bit field,
- * so the header stores 0xFFFFFFFF and the real numbers move into an extra record. That happens for
- * the compressed size too even though 3.3 GB would have fitted — zip64 is all or nothing per entry.
- */
-async function entryExtent(path: string): Promise<{ start: number; end: number }> {
-  const fh = await open(path, "r");
-  try {
-    const head = Buffer.alloc(30);
-    await fh.read(head, 0, 30, 0);
-    if (head.readUInt32LE(0) !== 0x04034b50) throw new Error(`${path}: not a zip`);
-    if (head.readUInt16LE(8) !== 8) throw new Error(`${path}: entry is not deflated`);
-
-    const nameLen = head.readUInt16LE(26);
-    const extraLen = head.readUInt16LE(28);
-    const start = 30 + nameLen + extraLen;
-
-    let compressed = head.readUInt32LE(18);
-    if (compressed === 0xffffffff) {
-      const extra = Buffer.alloc(extraLen);
-      await fh.read(extra, 0, extraLen, 30 + nameLen);
-      // A sequence of (id, size, payload). The zip64 record is 0x0001 and carries the uncompressed
-      // size first, then the compressed one — both always present when either overflowed.
-      let at = 0;
-      while (at + 4 <= extraLen) {
-        const id = extra.readUInt16LE(at);
-        const size = extra.readUInt16LE(at + 2);
-        if (id === 0x0001 && size >= 16) {
-          compressed = Number(extra.readBigUInt64LE(at + 4 + 8));
-          break;
-        }
-        at += 4 + size;
-      }
-      if (compressed === 0xffffffff) throw new Error(`${path}: no zip64 size record`);
-    }
-
-    return { start, end: start + compressed - 1 };
-  } finally {
-    await fh.close();
-  }
 }
 
 /**

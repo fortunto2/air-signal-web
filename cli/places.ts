@@ -3,8 +3,11 @@
  *
  * The cities database is embedded in `airq-core` — 10 596 entries across 156 countries, capped at
  * 100 per country and ordered by population descending. That ordering is the only population
- * signal the source carries (there is no population column), and it is what `rank` becomes: the
- * PRD's "top-N by population" gate, expressed as the data actually allows.
+ * signal the source carries (there is no population column), and it is what `rank` becomes.
+ *
+ * That cap is why `expand-cities` exists. This seed still runs first, because these are the cities
+ * whose slugs are already indexed and they must keep them; GeoNames is merged on top afterwards
+ * and supplies the population figures this source never had.
  *
  * This runs once, under Node, and the result lands in D1. The browser never loads the cities
  * database — that is the whole reason the WASM build was split in two.

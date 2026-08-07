@@ -19,7 +19,9 @@ import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
 const country = await getCountry(Astro.params.country!);
 if (!country) return new Response(null, { status: 404 });
 
-const cities = await getCitiesInCountry(country.id);
+// Sensor cities first, then by population. 400 is where a page stops being a list and
+// starts being a data dump; the note below says how many were left out.
+const cities = await getCitiesInCountry(country.id, 400);
 
 // The list is ordered sensor-cities-first by comfort, so both extremes are almost always already
 // in it. Looking them up here costs a map build; fetching them cost two queries and a round trip

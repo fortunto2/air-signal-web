@@ -148,7 +148,13 @@ export async function listCountries(sort: CountrySort = "sensors"): Promise<Coun
   return results ?? [];
 }
 
-/** A country's cities. Ordered by comfort where it is known, then by population rank. */
+/**
+ * A country's cities. Sensor cities first, then by comfort, then by size.
+ *
+ * The last term used to be a position with no number behind it; since the GeoNames merge `rank` is
+ * ordered by real population, so the tail of a long list is the largest towns rather than whatever
+ * the source happened to emit first. That is what makes truncating at a few hundred honest.
+ */
 export async function getCitiesInCountry(countryId: number, limit = 200): Promise<CityRow[]> {
   const { results } = await DB()
     .prepare(
