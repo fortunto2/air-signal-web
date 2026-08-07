@@ -119,6 +119,15 @@ const graph = [
           <a href="https://www.geonames.org/">GeoNames</a> (CC BY) ·
           <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
         </span>
+        {/*
+          Not decoration, and not modesty. AGPL section 13 says that anyone who uses a modified
+          version of this over a network is entitled to its source — which makes this link an
+          obligation the licence places on us, discharged in the one place every visitor can see.
+          Fork it and put it online and yours has to say the same.
+        */}
+        <span>
+          <a href={SITE.repo}>Source</a>, AGPL-3.0
+        </span>
         {
           updatedAt && (
             <span class="num">
@@ -137,7 +146,8 @@ const graph = [
       </div>
       <p style="margin-top:10px;font-size:12.5px">
         Comfort is one score from fourteen signals, not an AQI. Community sensors are corrected
-        against the model where they disagree — <a href={SITE.repo}>the maths is open</a>.
+        against the model where they disagree — <a href={SITE.repo}>the maths is open</a>, and so
+        is the code.
       </p>
     </footer>
 

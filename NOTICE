@@ -1,0 +1,52 @@
+Air Signal — what it is actually like outside.
+Copyright (C) 2026 Rustam Gilfanov
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE. See the GNU Affero General Public License for more details. You should
+have received a copy of it along with this program; if not, see
+<https://www.gnu.org/licenses/>.
+
+-------------------------------------------------------------------------------
+
+Section 13, and what it means here
+
+AGPL differs from GPL in one clause that matters for a website: if you run a
+modified version of this where other people can reach it over a network, those
+people are entitled to its source. Not just people you distribute a copy to —
+anyone who uses the running service.
+
+That obligation binds us as much as anyone, which is why the footer of every
+page links to this repository. If you fork this and put it online, your footer
+has to point at yours.
+
+You may use this commercially. That is not an oversight.
+
+-------------------------------------------------------------------------------
+
+Data, which carries its own terms and is not covered by the licence above
+
+  Sensor.Community   ODbL 1.0     https://sensor.community/
+  Open-Meteo         CC BY 4.0    https://open-meteo.com/
+  USGS earthquakes   public domain
+  NOAA SWPC          public domain
+  GeoNames           CC BY 4.0    https://www.geonames.org/
+  OpenStreetMap      ODbL 1.0     https://www.openstreetmap.org/copyright
+  CARTO basemaps                  https://carto.com/attribution
+
+ODbL is share-alike on derived databases. The D1 database this site runs on is
+built from Sensor.Community and OpenStreetMap, so it is a derived database and
+that obligation applies to it independently of the code licence.
+
+-------------------------------------------------------------------------------
+
+The core
+
+The fourteen scoring curves, the sensor/model merge and the source attribution
+live in airq-core, a separate Rust crate, also AGPL-3.0:
+https://github.com/fortunto2/airq

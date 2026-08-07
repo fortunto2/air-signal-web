@@ -102,6 +102,11 @@ ${sample(best)}
 
 ${sample(worst)}
 
+## Licence
+
+The code is AGPL-3.0: \`${SITE.repo}\`. You may use it commercially. If you run a modified version
+where other people can reach it over a network, section 13 says you owe them the source.
+
 ## Sources and licence
 
 - Sensor.Community — community particulate sensors, ODbL

@@ -1,70 +1,54 @@
 # Air Signal
 
-Live air quality and outdoor comfort — [airsignal.app](https://airsignal.app).
+Live air quality and outdoor comfort for 62,000 cities, at
+[airsignal.app](https://airsignal.app).
 
-Fourteen environmental signals collapsed into one score, plus a map of the ~9 000 community sensors
-the score was computed from. The thing no other air map does: when a cheap sensor disagrees with the
-atmospheric model, this one says by how much and weights it down, instead of plotting the
-disagreement at face value.
+Most air quality sites print one index number. A person does not go outside for PM2.5 — they go out
+into a combination of heat, wind, UV, pollen, sea state and daylight, and one number cannot say
+"the air is clean but the UV will burn you in twenty minutes", which is the actually useful
+sentence. So this scores fourteen environmental signals and says which one is costing the points.
 
-## Setup
+The part no other air map does: community sensors cost about fifty euros and read several times
+high in humidity or beside a road. Where they disagree with the atmospheric model, this site says
+by how much and resolves it rather than averaging. In Moscow the model said 130 µg/m³, ten devices
+agreed on 6.7, and the answer is 6.2 — the average would have been 68, and 68 was never true
+anywhere.
 
-```bash
-pnpm install
-pnpm exec wrangler d1 create air-signal   # once; put the id in wrangler.jsonc
-make db-init                              # apply db/schema.sql locally
-make seed                                 # load the cities database into D1
-make ingest                               # fetch everything and fill the tables (~20 min)
-make dev                                  # :4321
-```
+## How it is built
 
-No Rust toolchain is needed: both `airq-core` WASM builds are committed under `src/wasm/`. Rebuild
-them with `make wasm` when the core changes — it expects the sibling checkout at
-`~/startups/active/airq` (override with `AIRQ=…`).
+- **Astro 6**, `output: "server"`, on Cloudflare **Workers**
+- **D1** for everything, read by the worker and written only by `cli/`
+- **[airq-core](https://github.com/fortunto2/airq)** (Rust → WASM) for the scoring curves, the
+  sensor/model merge and the source attribution
+- **MapLibre GL** over CARTO Positron
+- No tracking beyond a page counter, no ads, no account
 
-`FIRMS_API_KEY` is optional. Without it the fire signal is absent rather than invented.
-
-## Commands
-
-| | |
-|---|---|
-| `make dev` | dev server on :4321, against the local D1 |
-| `make preview` | the built worker under `wrangler dev` — **the real runtime**, verify routing here |
-| `make ingest` | full ETL pass; `-- --only <stage>` for one stage, `-- --remote` for production |
-| `make integration` | upstream shapes and the guarantee that a rerun cannot shrink the site |
-| `make check` | `wrangler types` + `astro check` |
-| `make deploy` | build and deploy to Cloudflare Workers |
-
-Use `make deploy`, not `wrangler deploy` on its own: the adapter copies `wrangler.jsonc` into
-`dist/server/wrangler.json` at build time and wrangler reads *that* copy, so deploying without
-rebuilding ships the previous config. (`pnpm deploy` is also wrong — it is a built-in pnpm command
-that shadows the script; the target runs `pnpm run deploy`.)
-
-## How it fits together
+Everything a search engine or an agent needs is in the HTML before any script runs. Every page also
+answers with Markdown if you ask for it, and there is an [OpenAPI
+document](https://airsignal.app/openapi.json) and an [A2A endpoint](https://airsignal.app/a2a).
 
 ```
-GitHub Actions, daily ── cli/ under Node ── every upstream ── D1
-Cloudflare Worker ────── D1 ── HTML with all fourteen readings and JSON-LD
-Browser ──────────────── islands refresh what the HTML already says
+cli/main.ts        the CLI: seed, expand-cities, ingest, backfill, cpf, integration
+cli/upstreams.ts   every network call, with the response shape narrowed here and nowhere deeper
+db/schema.sql      the data model
+src/lib/site.ts    origin, brand, the 14 signals, bands, URL shapes
+src/lib/db.ts      the only module that knows D1 exists
+src/lib/signals.ts readings → scores, shared by the ETL and the browser
 ```
 
-The worker only reads. Every row enters through `cli/`, and the ETL only upserts — a bad upstream
-minute ages a device, it never deletes a page.
+`make help` lists the commands. `CLAUDE.md` is the map of the rest, including the mistakes that
+shaped it — the ones worth knowing before changing anything are in "Gotchas found the hard way".
 
-Details: [`docs/prd.md`](docs/prd.md) for what the product is,
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the module rules, `CLAUDE.md` for the map of the
-repository.
+## Licence
 
-## Data
+**AGPL-3.0.** Use it, study it, change it, run it, charge for it. If you run a modified version
+somewhere other people can reach it over a network, section 13 says those people are entitled to
+the source — which is why the footer of this site links to this repository, and why yours would
+have to link to yours.
 
-- [Sensor.Community](https://sensor.community/) — community particulate sensors, ODbL
-- [Open-Meteo](https://open-meteo.com/) — weather, air quality, marine
-- [USGS](https://earthquake.usgs.gov/) — earthquakes · [NOAA SWPC](https://www.swpc.noaa.gov/) — geomagnetic
-- The maths: [`airq-core`](https://github.com/fortunto2/airq), Rust compiled to WebAssembly
+That obligation is the whole reason for the licence. The scoring curves and the merge were derived
+from measurements volunteers give away for free, and taking that, improving it and keeping the
+improvements private is the one use this is meant to prevent. Commercial use is not.
 
-`/llms.txt` says the same thing in a form an agent can read, and any page returns Markdown if you
-ask for it:
-
-```bash
-curl -H "Accept: text/markdown" https://airsignal.app/turkey/alanya
-```
+The data is not covered by the code licence and carries its own terms — Sensor.Community and
+OpenStreetMap are ODbL, which is share-alike on derived databases. See [NOTICE](NOTICE).
