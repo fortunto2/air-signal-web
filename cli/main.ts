@@ -212,7 +212,7 @@ async function integration(): Promise<void> {
     // Actually re-run the pass, rather than reading the same number twice and declaring victory.
     // The earlier version compared `before` to an identical query issued a millisecond later, so
     // the assertion was unreachable and the check printed "ok" on a run that deleted every row.
-    await ingestStations(loadCities(), opts);
+    await ingestStations(await citiesFromDb(query, opts), opts);
 
     const [after] = await query<{ cities: number; stations: number }>(
       "SELECT (SELECT COUNT(*) FROM cities) AS cities, (SELECT COUNT(*) FROM stations) AS stations",

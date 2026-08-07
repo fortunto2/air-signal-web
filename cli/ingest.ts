@@ -7,7 +7,7 @@
  * rerun just that one.
  */
 
-import { loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
+import { citiesFromDb, loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
 import { loadGeoNames } from "./geonames.ts";
 import { bearing, comfortFrom, haversine, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
@@ -689,7 +689,13 @@ export async function applyGate(opts: Opts = {}): Promise<void> {
 
 export async function ingestAll(opts: Opts = {}): Promise<void> {
   const started = Date.now();
-  const cities = await seedCities(opts);
+  await seedCities(opts);
+
+  // The seed writes the crate's ~10 600; the merged set in D1 is six times that. Everything after
+  // this point decides which city a device belongs to, so it has to read the table rather than the
+  // list that was just written into part of it — otherwise a device two kilometres from a town
+  // added by `expand-cities` is attributed to a city twenty kilometres away, for ever.
+  const cities = await citiesFromDb(query, opts);
   const stations = await ingestStations(cities, opts);
   await ingestComfort(cities, stations, opts);
   await ingestDivergence(opts);
