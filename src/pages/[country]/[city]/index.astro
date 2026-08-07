@@ -30,7 +30,7 @@ const row = await getCity(country!, citySlug!);
 if (!row) return new Response(null, { status: 404 });
 
 const [history, stations, nearby] = await Promise.all([
-  getCityHistory(row.id, 30),
+  getCityHistory(row.id, 120),
   getStationsForCity(row.id, 24),
   getNearbyCities(row.lat, row.lon, 2, 5, row.id),
 ]);
@@ -289,6 +289,7 @@ const schema = [
               points={history.map((d) => d.comfort)}
               labels={history.map((d) => d.day)}
               band={v.band ?? undefined}
+              unit="/100"
               floor={100}
               label={`Comfort in ${v.name} over the last ${history.length} days`}
             />

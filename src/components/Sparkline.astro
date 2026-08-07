@@ -1,20 +1,33 @@
 ---
 /**
- * A thirty-day line, drawn as inline SVG.
+ * A thirty-day line, drawn as inline SVG, and readable.
  *
  * Deliberately not recharts. That library is ~400 KB of JavaScript to draw one polyline on a site
  * whose entire promise is that the reading is already on screen — and a chart rendered in the
  * browser is a chart a crawler never sees. This is a path, computed at render, in the HTML.
+ *
+ * It was also, until now, only a shape: no dates, no values, no way to ask what happened on the
+ * twelfth. The enhancement below is about 60 lines and changes nothing server-side — the path, the
+ * end dates and the summary are all in the HTML either way, and a reader without JavaScript loses
+ * the crosshair and keeps the chart.
+ *
+ * The range buttons move the **viewBox**, they do not redraw the path. Recomputing it in the
+ * browser would mean a second implementation of the same arithmetic, drifting from this one — and
+ * since x is linear in the index, the last seven of thirty days is simply a window. The y-scale
+ * stays put while it moves, which is the same argument `floor` already makes: rescaling the axis to
+ * whatever is on screen makes a flat week look like a crisis.
  */
 import { comfortBand, type Band } from "../lib/site";
 
 interface Props {
   points: (number | null)[];
-  /** Days, for the accessible label. */
+  /** Days, `YYYY-MM-DD`. Shown under the chart and in the crosshair readout. */
   labels?: string[];
   band?: Band;
   height?: number;
   label: string;
+  /** What one point means, for the readout — "µg/m³", "/100". */
+  unit?: string;
   /**
    * Never scale the axis tighter than this. Without it the chart auto-fits its own data, so a city
    * that spent the month between 3 and 6 µg/m³ draws the same dramatic mountain range as one that
@@ -26,7 +39,16 @@ interface Props {
   guide?: { value: number; label: string };
 }
 
-const { points, labels = [], band, height = 78, label, floor, guide } = Astro.props;
+const {
+  points,
+  labels = [],
+  band,
+  height = 78,
+  label,
+  unit = "",
+  floor,
+  guide,
+} = Astro.props;
 
 const W = 600;
 const H = height;
@@ -82,60 +104,245 @@ const summary =
     ? `${label}: no history yet`
     : `${label}: min ${Math.round(min)}, max ${Math.round(max)}` +
       (labels.length ? `, from ${labels[0]} to ${labels.at(-1)}` : "");
+
+/** "2026-07-12" → "12 Jul". The axis has room for the day and the month and nothing else. */
+const short = (day: string) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  return Number.isNaN(d.getTime())
+    ? day
+    : `${d.getUTCDate()} ${d.toLocaleString("en-US", { month: "short", timeZone: "UTC" })}`;
+};
+
+// Only the ranges the data can actually fill. Offering "90 days" over five weeks of history would
+// draw four weeks of blank and call it a chart.
+const RANGES = [7, 14, 30, 90, 365].filter((n) => n < points.length);
+const hi = known.length ? Math.max(...known) : null;
+const lo = known.length ? Math.min(...known) : null;
 ---
 
-<svg
-  class="spark"
-  style={`height:${H}px`}
-  viewBox={`0 0 ${W} ${H}`}
-  preserveAspectRatio="none"
-  role="img"
-  aria-label={summary}
+<figure
+  class="chart"
+  data-labels={JSON.stringify(labels)}
+  data-points={JSON.stringify(points)}
+  data-unit={unit}
+  data-min={min}
+  data-span={span}
+  data-pad={PAD}
 >
-  <defs>
-    <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color={stroke} stop-opacity=".22"></stop>
-      <stop offset="100%" stop-color={stroke} stop-opacity="0"></stop>
-    </linearGradient>
-  </defs>
-
-  <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="var(--line-soft)" stroke-width="1"></line>
-
   {
-    showGuide && (
-      <g>
-      <line
-        x1="0"
-        y1={guideY}
-        x2={W}
-        y2={guideY}
-        stroke="var(--ink-3)"
-        stroke-width="1"
-        stroke-dasharray="4 4"
-        opacity="0.8"
-      />
-      <text
-        x="6"
-        y={guideY - 4}
-        font-family="var(--font-mono)"
-        font-size="10"
-        fill="var(--ink-3)"
-      >
-        {guide!.label}
-      </text>
-      </g>
+    (RANGES.length > 0 || known.length > 0) && (
+      <figcaption class="chart-head">
+        <span class="chart-read" aria-live="polite">
+          {known.length > 0 && (
+            <>
+              <span class="eyebrow">range</span>{" "}
+              <span class="num">
+                {lo === hi ? lo : `${lo}–${hi}`}
+                {unit && ` ${unit}`}
+              </span>
+            </>
+          )}
+        </span>
+
+        {RANGES.length > 0 && (
+          <span class="chart-ranges" role="group" aria-label="Chart period">
+            {RANGES.map((n) => (
+              <button type="button" class="seg" data-range={n}>
+                {n}d
+              </button>
+            ))}
+            <button type="button" class="seg is-on" data-range="0">
+              all
+            </button>
+          </span>
+        )}
+      </figcaption>
     )
   }
 
-  {area && <path d={area} fill={`url(#${id})`} />}
+  <svg
+    class="spark"
+    style={`height:${H}px`}
+    viewBox={`0 0 ${W} ${H}`}
+    preserveAspectRatio="none"
+    role="img"
+    aria-label={summary}
+  >
+    <defs>
+      <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color={stroke} stop-opacity=".22"></stop>
+        <stop offset="100%" stop-color={stroke} stop-opacity="0"></stop>
+      </linearGradient>
+    </defs>
+
+    <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="var(--line-soft)" stroke-width="1"
+      vector-effect="non-scaling-stroke"></line>
+
+    {
+      showGuide && (
+        <g>
+        <line
+          x1="0"
+          y1={guideY}
+          x2={W}
+          y2={guideY}
+          stroke="var(--ink-3)"
+          stroke-width="1"
+          stroke-dasharray="4 4"
+          opacity="0.8"
+          vector-effect="non-scaling-stroke"
+        />
+        <text
+          class="spark-guide"
+          x="6"
+          y={guideY - 4}
+          font-family="var(--font-mono)"
+          font-size="10"
+          fill="var(--ink-3)"
+        >
+          {guide!.label}
+        </text>
+        </g>
+      )
+    }
+
+    {area && <path d={area} fill={`url(#${id})`} />}
+    {
+      segments.map((d) => (
+        <path
+          d={d}
+          fill="none"
+          stroke={stroke}
+          stroke-width="1.6"
+          stroke-linejoin="round"
+          vector-effect="non-scaling-stroke"
+        />
+      ))
+    }
+    {
+      lastValue !== null && lastValue !== undefined && (
+        <circle cx={x(lastIndex)} cy={y(lastValue)} r="3.2" fill={stroke} />
+      )
+    }
+
+    {/* The crosshair. Empty until a pointer arrives, and invisible to everyone who never moves one. */}
+    <line class="spark-cursor" y1="0" y2={H} stroke={stroke} stroke-width="1"
+      vector-effect="non-scaling-stroke" opacity="0"></line>
+    <circle class="spark-dot" r="3.4" fill="var(--surface)" stroke={stroke} stroke-width="2"
+      opacity="0"></circle>
+  </svg>
+
   {
-    segments.map((d) => (
-      <path d={d} fill="none" stroke={stroke} stroke-width="1.6" stroke-linejoin="round" />
-    ))
-  }
-  {
-    lastValue !== null && lastValue !== undefined && (
-      <circle cx={x(lastIndex)} cy={y(lastValue)} r="3.2" fill={stroke} />
+    labels.length > 1 && (
+      <div class="chart-axis">
+        <span class="num">{short(labels[0]!)}</span>
+        <span class="num">{short(labels.at(-1)!)}</span>
+      </div>
     )
   }
-</svg>
+</figure>
+
+<script>
+  /**
+   * Progressive enhancement, and nothing more.
+   *
+   * Everything this reads is already in the DOM: the points and days ride on the figure as data
+   * attributes (about 500 bytes for a month), and the path is the server's. Nothing is fetched and
+   * nothing is redrawn — the range buttons pan the viewBox, the crosshair moves two elements.
+   */
+  const W = 600;
+
+  document.querySelectorAll<HTMLElement>(".chart").forEach((chart) => {
+    const svg = chart.querySelector<SVGSVGElement>("svg.spark");
+    const cursor = chart.querySelector<SVGLineElement>(".spark-cursor");
+    const dot = chart.querySelector<SVGCircleElement>(".spark-dot");
+    const readout = chart.querySelector<HTMLElement>(".chart-read");
+    const axis = chart.querySelectorAll<HTMLElement>(".chart-axis .num");
+    if (!svg || !cursor || !dot || !readout) return;
+
+    const points: (number | null)[] = JSON.parse(chart.dataset.points || "[]");
+    const labels: string[] = JSON.parse(chart.dataset.labels || "[]");
+    const unit = chart.dataset.unit || "";
+    if (points.length < 2) return;
+
+    const height = svg.viewBox.baseVal.height;
+    // The y-scale the server drew with, handed over rather than reverse-engineered from the path.
+    // It is two numbers; recovering them by solving for the last point's cy was clever and wrong —
+    // clever because it worked, wrong because the next person to change `floor` would find out.
+    const min = Number(chart.dataset.min ?? 0);
+    const span = Number(chart.dataset.span ?? 1) || 1;
+    const pad = Number(chart.dataset.pad ?? 6);
+    const step = W / (points.length - 1);
+    const resting = readout.innerHTML;
+
+    /** The window, as indices. `from` moves; the right edge is always today. */
+    let from = 0;
+
+    const short = (day: string) => {
+      const d = new Date(`${day}T00:00:00Z`);
+      return Number.isNaN(d.getTime())
+        ? day
+        : `${d.getUTCDate()} ${d.toLocaleString("en-US", { month: "short", timeZone: "UTC" })}`;
+    };
+
+    const applyRange = (days: number) => {
+      from = days > 0 ? Math.max(0, points.length - days) : 0;
+      svg.setAttribute("viewBox", `${(from * step).toFixed(1)} 0 ${(W - from * step).toFixed(1)} ${height}`);
+      if (axis.length === 2 && labels.length) {
+        axis[0]!.textContent = short(labels[from] ?? labels[0]!);
+        axis[1]!.textContent = short(labels.at(-1)!);
+      }
+    };
+
+    chart.querySelectorAll<HTMLButtonElement>("[data-range]").forEach((button) => {
+      button.addEventListener("click", () => {
+        chart.querySelectorAll("[data-range]").forEach((b) => b.classList.remove("is-on"));
+        button.classList.add("is-on");
+        applyRange(Number(button.dataset.range));
+      });
+    });
+
+    const move = (event: PointerEvent) => {
+      const box = svg.getBoundingClientRect();
+      const ratio = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
+      // Back through the current window rather than the whole series — the viewBox has moved, so
+      // the pixel under the pointer is not the index it would have been at full width.
+      const i = Math.round(from + ratio * (points.length - 1 - from));
+      const value = points[i];
+
+      if (value === null || value === undefined) {
+        cursor.setAttribute("opacity", "0");
+        dot.setAttribute("opacity", "0");
+        readout.innerHTML =
+          `<span class="eyebrow">${labels[i] ? short(labels[i]!) : ""}</span> ` +
+          `<span class="num">no reading</span>`;
+        return;
+      }
+
+      const vb = svg.viewBox.baseVal;
+      const cx = i * step;
+      const cy = height - pad - ((value - min) / span) * (height - pad * 2);
+
+      cursor.setAttribute("x1", String(cx));
+      cursor.setAttribute("x2", String(cx));
+      cursor.setAttribute("opacity", "0.35");
+      dot.setAttribute("cx", String(cx));
+      dot.setAttribute("cy", String(cy));
+      dot.setAttribute("opacity", "1");
+      // The dot is drawn in user units, so a panned viewBox would stretch it into an ellipse.
+      dot.setAttribute("transform", `translate(${cx} ${cy}) scale(${vb.width / W} 1) translate(${-cx} ${-cy})`);
+
+      readout.innerHTML =
+        `<span class="eyebrow">${labels[i] ? short(labels[i]!) : ""}</span> ` +
+        `<span class="num">${value}${unit ? ` ${unit}` : ""}</span>`;
+    };
+
+    svg.addEventListener("pointermove", move);
+    svg.addEventListener("pointerdown", move);
+    svg.addEventListener("pointerleave", () => {
+      cursor.setAttribute("opacity", "0");
+      dot.setAttribute("opacity", "0");
+      readout.innerHTML = resting;
+    });
+  });
+</script>

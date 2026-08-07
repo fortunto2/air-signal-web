@@ -782,4 +782,65 @@ a {
     display: inline-flex;
     align-items: center;
   }
+  /* The chart's period buttons opt down to 24 px on a desktop, where they sit beside a readout and
+     a pointer is exact. A finger is not, and this is the one control on the page it has to hit. */
+  .chart-ranges .seg {
+    min-height: 32px;
+    padding: 2px 12px;
+  }
+}
+
+/* ── the history chart's furniture ──────────────────────────────────────── */
+
+/* The chart itself was always here; what is new is the frame that makes it readable — the value
+   under the pointer, the period buttons, the dates at either end. */
+.chart {
+  margin: 0;
+}
+.chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  min-height: 24px;
+}
+/* Fixed height and its own line: the readout swaps between "range 3–19" and a date with a value,
+   and letting the row reflow on every pointer move made the chart jump under the cursor. */
+.chart-read {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.chart-read .num {
+  font-size: 14px;
+}
+.chart-ranges {
+  display: flex;
+  gap: 4px;
+}
+.chart-ranges .seg {
+  font-size: 11px;
+  padding: 2px 8px;
+  min-height: 24px;
+}
+.chart-ranges .seg.is-on {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.spark {
+  width: 100%;
+  display: block;
+  /* A crosshair would be more literal, but the chart is also a tap target on a phone. */
+  touch-action: pan-y;
 }

@@ -39,7 +39,7 @@ if (city.country_slug !== country || city.slug !== citySlug) {
 }
 
 const [history, nearest] = await Promise.all([
-  getStationHistory(stationId),
+  getStationHistory(stationId, 120),
   getNearestStations(city.id, station.lat, station.lon, 4, stationId),
 ]);
 
@@ -190,6 +190,7 @@ const schema = v.indexable
               labels={history.map((d) => d.day)}
               band={v.band === "quiet" ? undefined : v.band}
               height={96}
+              unit="µg/m³"
               floor={50}
               guide={{ value: 15, label: "WHO 15" }}
               label={`PM2.5 at station ${v.id} over ${history.length} days`}
