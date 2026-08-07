@@ -189,6 +189,20 @@ const CITY_SELECT = `
  */
 const RANKABLE = "c.comfort IS NOT NULL AND c.station_count > 0";
 
+/**
+ * How many devices before a city's number is a measurement rather than a sample.
+ *
+ * Three is a judgement, and here is the arithmetic behind it: 420 of the 904 scored cities have
+ * exactly one device, and 587 have fewer than three. A single fifty-euro sensor on one balcony is
+ * a reading about that balcony — it can sit beside a road, above a chimney, or in the sun, and
+ * nothing in the data says which. With three there is a median, and a median of three survives one
+ * of them being wrong.
+ *
+ * They keep their pages. They are only kept out of a *league table*, which is the one place a
+ * number gets read as a comparison.
+ */
+export const RANK_MIN_SENSORS = 3;
+
 export async function getCity(countrySlug: string, citySlug: string): Promise<CityRow | null> {
   return await DB()
     .prepare(`${CITY_SELECT} WHERE co.slug = ?1 AND c.slug = ?2`)
@@ -371,17 +385,34 @@ export function citySort(value: string | null | undefined): CitySort {
   return value && value in CITY_SORTS ? (value as CitySort) : "best";
 }
 
-export async function getRankedCities(limit = 200, sort: CitySort = "best"): Promise<CityRow[]> {
+export async function getRankedCities(
+  limit = 200,
+  sort: CitySort = "best",
+  minSensors = RANK_MIN_SENSORS,
+): Promise<CityRow[]> {
   // `pm25_median` can be NULL on a city whose devices all went quiet, and NULLs sort first in
   // SQLite — which would open "cleanest air" with a list of cities that have no reading at all.
   const nullsLast = sort === "cleanest" ? " AND c.pm25_median IS NOT NULL" : "";
   const { results } = await DB()
     .prepare(
-      `${CITY_SELECT} WHERE ${RANKABLE}${nullsLast} ORDER BY ${CITY_SORTS[sort].sql} LIMIT ?1`,
+      `${CITY_SELECT} WHERE ${RANKABLE}${nullsLast} AND c.station_count >= ?2
+        ORDER BY ${CITY_SORTS[sort].sql} LIMIT ?1`,
     )
-    .bind(limit)
+    .bind(limit, minSensors)
     .all<CityRow>();
   return results ?? [];
+}
+
+/** How many cities clear the bar, and how many are being held back by it. */
+export async function countRankable(): Promise<{ eligible: number; thin: number }> {
+  const row = await DB()
+    .prepare(
+      `SELECT SUM(c.station_count >= ?1) AS eligible, SUM(c.station_count < ?1) AS thin
+         FROM cities c WHERE ${RANKABLE}`,
+    )
+    .bind(RANK_MIN_SENSORS)
+    .first<{ eligible: number; thin: number }>();
+  return { eligible: row?.eligible ?? 0, thin: row?.thin ?? 0 };
 }
 
 /** How many cities have a device at all — the total behind a truncated ranking. */

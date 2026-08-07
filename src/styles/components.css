@@ -1108,3 +1108,9 @@ a {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* A city ranked on one or two devices. Marked rather than hidden when the reader asked for it —
+   the point is that they can see which numbers rest on a single box in someone's garden. */
+.thin-sensors {
+  color: var(--s-fair);
+}
