@@ -85,6 +85,16 @@ export const paths = {
   map: () => `/map`,
   ranking: () => `/ranking`,
   howItWorks: () => `/how-it-works`,
+  /**
+   * The guide. `/guide` is the index; `/guide/<signal>` is one signal explained at length.
+   *
+   * Note the shape: a signal's article lives under the guide, not at the root. A reader arriving
+   * on `/guide/pm25` should be able to delete the last segment and land somewhere that makes
+   * sense — and it keeps fourteen article slugs out of the namespace that `[country].astro`
+   * catches, where `/pollen` would otherwise be indistinguishable from a country.
+   */
+  guide: () => `/guide`,
+  guideEntry: (topic: string) => `/guide/${slug(topic)}`,
   cityMarkdown: (country: string, city: string) => `/${slug(country)}/${slug(city)}.md`,
 };
 

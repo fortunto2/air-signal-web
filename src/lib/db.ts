@@ -118,9 +118,32 @@ export async function getCountry(countrySlug: string): Promise<CountryRow | null
  * these with a GROUP BY over ten thousand cities on every request would work at this size and be
  * the same mistake as querying in a loop, just better hidden.
  */
-export async function listCountries(): Promise<CountryRow[]> {
+/**
+ * The same idea as `CITY_SORTS`, for countries.
+ *
+ * `NULLS LAST` is spelled out on every order that can meet one. A country with no sensor has no
+ * comfort and no median, and SQLite sorts NULL first — so "cleanest air" opened with a screen of
+ * countries that have no reading at all, which is the opposite of what the heading promises.
+ */
+export const COUNTRY_SORTS = {
+  sensors: { sql: "station_count DESC, city_count DESC, name", label: "Most sensors" },
+  best: { sql: "comfort DESC NULLS LAST, station_count DESC", label: "Most comfortable" },
+  worst: { sql: "comfort ASC NULLS LAST, station_count DESC", label: "Least comfortable" },
+  cleanest: { sql: "pm25_median ASC NULLS LAST, comfort DESC", label: "Cleanest air" },
+  dirtiest: { sql: "pm25_median DESC NULLS LAST, comfort ASC", label: "Dirtiest air" },
+  cities: { sql: "city_count DESC, name", label: "Most cities" },
+  name: { sql: "name", label: "A–Z" },
+} as const;
+
+export type CountrySort = keyof typeof COUNTRY_SORTS;
+
+export function countrySort(value: string | null | undefined): CountrySort {
+  return value && value in COUNTRY_SORTS ? (value as CountrySort) : "sensors";
+}
+
+export async function listCountries(sort: CountrySort = "sensors"): Promise<CountryRow[]> {
   const { results } = await DB()
-    .prepare("SELECT * FROM countries ORDER BY station_count DESC, city_count DESC, name")
+    .prepare(`SELECT * FROM countries ORDER BY ${COUNTRY_SORTS[sort].sql}`)
     .all<CountryRow>();
   return results ?? [];
 }
@@ -318,10 +341,37 @@ export async function search(query: string, limit = 8): Promise<SearchHit[]> {
  * signal blob to it would put ten thousand copies of a JSON string into a GeoJSON response for the
  * sake of a list nobody is looking at from the map.
  */
-export async function getRankedCities(limit = 200): Promise<CityRow[]> {
+/**
+ * How a list can be ordered.
+ *
+ * A ranking that only shows the best is half a ranking. Someone comparing three towns before
+ * deciding where to spend a winter wants the bottom as much as the top, and someone who lives in
+ * the bottom one wants to find it. The orders live here rather than in the page because the country
+ * list needs the same set, and because a sort key arriving from a query string must never reach
+ * SQL — this map is the allow-list that makes that impossible.
+ */
+export const CITY_SORTS = {
+  best: { sql: "c.comfort DESC, c.station_count DESC", label: "Most comfortable" },
+  worst: { sql: "c.comfort ASC, c.station_count DESC", label: "Least comfortable" },
+  cleanest: { sql: "c.pm25_median ASC, c.comfort DESC", label: "Cleanest air" },
+  dirtiest: { sql: "c.pm25_median DESC, c.comfort ASC", label: "Dirtiest air" },
+  sensors: { sql: "c.station_count DESC, c.comfort DESC", label: "Most sensors" },
+} as const;
+
+export type CitySort = keyof typeof CITY_SORTS;
+
+/** Whatever arrived, narrowed to something safe — an unknown key is the default, never an error. */
+export function citySort(value: string | null | undefined): CitySort {
+  return value && value in CITY_SORTS ? (value as CitySort) : "best";
+}
+
+export async function getRankedCities(limit = 200, sort: CitySort = "best"): Promise<CityRow[]> {
+  // `pm25_median` can be NULL on a city whose devices all went quiet, and NULLs sort first in
+  // SQLite — which would open "cleanest air" with a list of cities that have no reading at all.
+  const nullsLast = sort === "cleanest" ? " AND c.pm25_median IS NOT NULL" : "";
   const { results } = await DB()
     .prepare(
-      `${CITY_SELECT} WHERE ${RANKABLE} ORDER BY c.comfort DESC, c.station_count DESC LIMIT ?1`,
+      `${CITY_SELECT} WHERE ${RANKABLE}${nullsLast} ORDER BY ${CITY_SORTS[sort].sql} LIMIT ?1`,
     )
     .bind(limit)
     .all<CityRow>();

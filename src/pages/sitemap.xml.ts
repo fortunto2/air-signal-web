@@ -23,6 +23,9 @@ export const GET: APIRoute = async () => {
     // Countries first: they are the hub that links every city, so a crawler that starts here
     // reaches the rest by following links rather than by finishing a ten-thousand-line file.
     abs("/sitemap-countries.xml"),
+    // The guide and the handful of pages that are not a place. Small and rarely changing, so it
+    // sits beside the country hub rather than inside the nightly data shards.
+    abs("/sitemap-guide.xml"),
     ...Array.from({ length: cityShards }, (_, i) => abs(`/sitemap-cities-${i + 1}.xml`)),
     ...Array.from({ length: stationShards }, (_, i) => abs(`/sitemap-stations-${i + 1}.xml`)),
   ];

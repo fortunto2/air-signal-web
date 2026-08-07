@@ -1,0 +1,103 @@
+---
+/**
+ * The guide index.
+ *
+ * Two jobs. It is the destination for every tooltip on every city page, so a reader who asked
+ * "what is geomagnetic" has somewhere to land; and it is the only part of this site that answers
+ * a question rather than reporting a measurement, which is what most people are actually typing
+ * into a search box.
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import { ARTICLES, BY_SLUG, NAMES } from "../../lib/guide";
+import { EXPLAIN } from "../../lib/explain";
+import { SITE, SIGNALS, abs, paths } from "../../lib/site";
+
+// The topics come first because they are what people search; the signals are the reference
+// section underneath, in the order they appear on a city page so the two can be read side by side.
+const TOPICS = ["pm25", "aqi", "sensor-accuracy", "pm25-vs-pm10", "how-comfort-is-scored"];
+const topics = TOPICS.map((s) => BY_SLUG.get(s)!).filter(Boolean);
+
+const description =
+  "What each of the fourteen signals means, where its number comes from, and what the thresholds " +
+  "are. Plus PM2.5 and health, how the AQI works, and how far to trust a fifty-euro sensor.";
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "The Air Signal guide",
+    description,
+    url: abs(paths.guide()),
+    isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.origin },
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: ARTICLES.length,
+      itemListElement: ARTICLES.map((a, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        name: a.h1,
+        url: abs(paths.guideEntry(a.slug)),
+      })),
+    },
+  },
+];
+---
+
+<Layout title={`The guide — ${SITE.name}`} description={description} path={paths.guide()} schema={schema}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div class="eyebrow">Guide</div>
+      </Bar>
+
+      <div style="padding:24px 20px 12px">
+        <h1 style="font-size:27px;margin:0">What the numbers mean</h1>
+        <p class="lede" style="margin-top:10px">
+          Every reading on this site is scored by a published curve with a stated midpoint. These
+          pages are those curves in words: what is measured, why it counts, and what the number in
+          front of you is being compared against.
+        </p>
+      </div>
+
+      <div class="rows">
+        <div style="padding:12px 20px 8px" class="eyebrow">Start here</div>
+        {
+          topics.map((a) => (
+            <a class="guide-row" href={paths.guideEntry(a.slug)}>
+              <span class="city">{a.h1}</span>
+              <span class="guide-blurb">{a.description}</span>
+            </a>
+          ))
+        }
+      </div>
+
+      <div class="rows">
+        <div style="padding:14px 20px 8px" class="eyebrow">The fourteen signals</div>
+        <div class="guide-grid">
+          {
+            SIGNALS.map((s) => {
+              // `air` is the signal key; the article lives at the name people search for.
+              const slug = s.key === "air" ? "pm25" : s.key;
+              return (
+                <a class="guide-cell" href={paths.guideEntry(slug)}>
+                  <span class="nm">{NAMES[s.key]}</span>
+                  <span class="guide-blurb">{EXPLAIN[s.key].what}</span>
+                  <span class="eyebrow num">{Math.round(EXPLAIN[s.key].weight * 100)} % of score</span>
+                </a>
+              );
+            })
+          }
+        </div>
+      </div>
+
+      <div style="padding:16px 20px 22px;border-top:1px solid var(--line-soft)">
+        <p style="font-size:13px;max-width:74ch">
+          The scoring itself is described in more detail on{" "}
+          <a href={paths.howItWorks()} style="color:var(--accent)">how it works</a>, including what
+          happens when a community sensor and the atmospheric model disagree.
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>

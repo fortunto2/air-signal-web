@@ -9,11 +9,14 @@
  */
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
-import { listCountries, getLastIngest, getSitemapCounts } from "../lib/db";
+import SortBar from "../components/SortBar.astro";
+import { COUNTRY_SORTS, countrySort, listCountries, getLastIngest, getSitemapCounts } from "../lib/db";
 import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
 
+const sort = countrySort(Astro.url.searchParams.get("sort"));
+
 const [countries, counts, lastIngest] = await Promise.all([
-  listCountries(),
+  listCountries(sort),
   // Not a sum of the rollup columns: those are maintained by the ETL and would disagree with the
   // rest of the site the first moment a rollup half-failed — in an indexed <title>, silently.
   getSitemapCounts(),
@@ -21,7 +24,6 @@ const [countries, counts, lastIngest] = await Promise.all([
 ]);
 
 const withSensors = countries.filter((c) => c.station_count > 0);
-const rest = countries.filter((c) => c.station_count === 0);
 const totalCities = counts.cities;
 const totalStations = counts.stations;
 
@@ -40,7 +42,7 @@ const schema = [
     mainEntity: {
       "@type": "ItemList",
       numberOfItems: countries.length,
-      itemListElement: withSensors.slice(0, 50).map((c, i) => ({
+      itemListElement: countries.slice(0, 50).map((c, i) => ({
         "@type": "ListItem",
         position: i + 1,
         name: c.name,
@@ -70,26 +72,43 @@ const schema = [
       <div style="padding:24px 20px 10px">
         <h1 style="font-size:27px;margin:0">Every country</h1>
         <p style="margin-top:9px;max-width:64ch;font-size:14.5px">
-          Sensor-dense countries first, because that is where a reading is a measurement rather
-          than a model. Everywhere else still has real numbers — Open-Meteo covers every coordinate
-          on Earth — they are just computed rather than measured.
+          All {countries.length} of them, {withSensors.length} with a community sensor. The rest
+          still carry real numbers for every city — Open-Meteo covers every coordinate on Earth —
+          they are modelled rather than measured, and the row says which.
         </p>
       </div>
 
+      <SortBar
+        options={Object.fromEntries(Object.entries(COUNTRY_SORTS).map(([k, v]) => [k, v.label]))}
+        active={sort}
+        base="/countries"
+      />
+
       <div class="rows">
         <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
-          <div class="eyebrow">With community sensors</div>
+          <div class="eyebrow">Country</div>
           <div class="eyebrow">Comfort</div>
         </div>
 
+        {/*
+          Every country is a row now. The eighty-nine without a community sensor used to be a cloud
+          of chips under the sixty-seven that had one, which read as a footnote to the real list —
+          and that is not what they are. Open-Meteo covers every coordinate on Earth, so a country
+          with no device still has fourteen real signals per city; what it lacks is a *measurement*
+          to check the model against, and saying so in the row is more honest than demoting it.
+        */}
         {
-          withSensors.map((c, i) => (
+          countries.map((c, i) => (
             <a class="row" href={paths.country(c.slug)}>
               <span class="rank num">{i + 1}</span>
               <span>
                 <span class="city">{c.name}</span>{" "}
                 <span class="country">
-                  {c.station_count} sensor{c.station_count === 1 ? "" : "s"} · {c.city_count} cities
+                  {c.station_count > 0
+                    ? `${c.station_count} sensor${c.station_count === 1 ? "" : "s"}`
+                    : "modelled"}
+                  {" · "}
+                  {c.city_count} cities
                   {c.pm25_median !== null && (
                     <span class={`fg-${pmBand(c.pm25_median)}`}>
                       {" "}
@@ -107,23 +126,6 @@ const schema = [
         }
       </div>
 
-      {
-        rest.length > 0 && (
-          <div style="padding:18px 20px 22px;border-top:1px solid var(--line-soft)">
-            <div class="eyebrow" style="margin-bottom:10px">
-              Modelled only — {rest.length} countries, no community sensor yet
-            </div>
-            <div style="display:flex;gap:7px;flex-wrap:wrap">
-              {rest.map((c) => (
-                <a class="seg" style="text-decoration:none" href={paths.country(c.slug)}>
-                  {c.name}
-                  <span style="color:var(--ink-3)"> {c.city_count}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )
-      }
     </div>
   </main>
 </Layout>

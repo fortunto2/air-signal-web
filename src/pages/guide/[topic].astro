@@ -1,0 +1,150 @@
+---
+/**
+ * One guide article.
+ *
+ * A signal article is composed from two places: `EXPLAIN`, which the tooltips also use, and the
+ * long-form sections in `guide.ts`. That is deliberate — the scale printed here and the scale in
+ * the tooltip are the same string, so they cannot drift, and neither can drift from the Rust doc
+ * comment they were both quoted from.
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import { BY_SLUG, NAMES } from "../../lib/guide";
+import { EXPLAIN } from "../../lib/explain";
+import { SITE, abs, paths } from "../../lib/site";
+
+const article = BY_SLUG.get(Astro.params.topic!);
+if (!article) return new Response(null, { status: 404 });
+
+const e = article.signal ? EXPLAIN[article.signal] : null;
+
+const schema: Record<string, unknown>[] = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: article.title,
+    description: article.description,
+    url: abs(paths.guideEntry(article.slug)),
+    isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.origin },
+    publisher: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Guide", item: abs(paths.guide()) },
+      { "@type": "ListItem", position: 2, name: article.h1, item: abs(paths.guideEntry(article.slug)) },
+    ],
+  },
+];
+
+// Only when there are real questions with real answers. An FAQPage block generated from headings
+// is the kind of thing that gets a site a manual action, and it deserves one.
+if (article.faq?.length) {
+  schema.push({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: article.faq.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
+  });
+}
+---
+
+<Layout
+  title={`${article.title} — ${SITE.name}`}
+  description={article.description}
+  path={paths.guideEntry(article.slug)}
+  schema={schema}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar>
+        <div style="font-size:13.5px;color:var(--ink-3)">
+          <a href={paths.guide()} style="color:var(--accent);text-decoration:none">Guide</a> ·
+          {article.h1}
+        </div>
+      </Bar>
+
+      <article class="prose">
+        <div class="eyebrow">{article.signal ? "Signal" : "Topic"}</div>
+        <h1>{article.h1}</h1>
+        <p class="lede">{article.lede}</p>
+
+        {
+          e && (
+            <div class="statrow" style="margin:20px 0 4px">
+              <div class="stat">
+                <span class="eyebrow">Share of the score</span>
+                <span class="num" style="font-size:23px">{Math.round(e.weight * 100)} %</span>
+                <span class="unit">of fourteen signals</span>
+              </div>
+              <div class="stat" style="flex:2">
+                <span class="eyebrow">The curve</span>
+                <span class="num" style="font-size:14px;line-height:1.45">{e.scale}</span>
+                <span class="unit">{e.source}</span>
+              </div>
+            </div>
+          )
+        }
+
+        {e && <p>{e.why}</p>}
+
+        {
+          article.sections.map((s) => (
+            <section>
+              <h2>{s.heading}</h2>
+              {s.body.map((p) => (
+                <p>{p}</p>
+              ))}
+            </section>
+          ))
+        }
+
+        {
+          article.faq?.length && (
+            <section>
+              <h2>Questions</h2>
+              {article.faq.map((f) => (
+                <div class="qa">
+                  <h3>{f.q}</h3>
+                  <p>{f.a}</p>
+                </div>
+              ))}
+            </section>
+          )
+        }
+
+        {
+          article.related?.length && (
+            <section>
+              <h2>Related</h2>
+              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                {article.related
+                  .map((r) => BY_SLUG.get(r))
+                  .filter(Boolean)
+                  .map((r) => (
+                    <a class="seg" style="text-decoration:none" href={paths.guideEntry(r!.slug)}>
+                      {r!.h1}
+                    </a>
+                  ))}
+              </div>
+            </section>
+          )
+        }
+
+        {
+          article.signal && (
+            <p class="eyebrow" style="margin-top:22px">
+              This signal on a live page:{" "}
+              <a href={paths.map()} style="color:var(--accent)">the map</a> ·{" "}
+              <a href={paths.ranking()} style="color:var(--accent)">the ranking</a>
+            </p>
+          )
+        }
+      </article>
+    </div>
+  </main>
+</Layout>

@@ -9,7 +9,10 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
+import SortBar from "../components/SortBar.astro";
 import {
+  CITY_SORTS,
+  citySort,
   countCitiesWithSensors,
   getLastIngest,
   getRankedCities,
@@ -20,8 +23,9 @@ import { comfortBand, pmBand, SITE, abs, paths } from "../lib/site";
 import { ago } from "../lib/view";
 
 const LIMIT = 150;
+const sort = citySort(Astro.url.searchParams.get("sort"));
 const [ranked, total, counts, lastIngest] = await Promise.all([
-  getRankedCities(LIMIT),
+  getRankedCities(LIMIT, sort),
   countCitiesWithSensors(),
   getSitemapCounts(),
   getLastIngest(),
@@ -29,6 +33,44 @@ const [ranked, total, counts, lastIngest] = await Promise.all([
 
 /** Too few to be a ranking. Say so rather than presenting three rows as a league table. */
 const sparse = total < 20;
+
+const SORT_COPY: Record<typeof sort, { h1: string; lede: string; title: string }> = {
+  best: {
+    h1: "Ranked by comfort, right now",
+    title: `Cities ranked by outdoor comfort — ${SITE.name}`,
+    lede: "One score from fourteen signals, for every city where community sensors are reporting.",
+  },
+  worst: {
+    h1: "The least comfortable, right now",
+    title: `Least comfortable cities right now — ${SITE.name}`,
+    lede:
+      "The same fourteen signals, from the bottom. A low score is usually one signal doing the " +
+      "damage rather than everything being bad at once — the spectrum beside each row shows which.",
+  },
+  cleanest: {
+    h1: "Cleanest air, right now",
+    title: `Cities with the cleanest air right now — ${SITE.name}`,
+    lede:
+      "Ordered by the median PM2.5 across each city's community sensors — measured, not modelled, " +
+      "which is why only cities with devices appear.",
+  },
+  dirtiest: {
+    h1: "Dirtiest air, right now",
+    title: `Cities with the dirtiest air right now — ${SITE.name}`,
+    lede:
+      "Ordered by the median PM2.5 across each city's community sensors. These are the places " +
+      "where the fine particulate reading is highest at this moment, not on annual average.",
+  },
+  sensors: {
+    h1: "Best measured, right now",
+    title: `Cities with the most air sensors — ${SITE.name}`,
+    lede:
+      "Where the community network is densest. More devices means the city median is a " +
+      "measurement rather than an estimate from one box on one street.",
+  },
+};
+
+const copy = SORT_COPY[sort];
 
 const description =
   `Every city with community air sensors, ranked by outdoor comfort — ${total} places scored on ` +
@@ -51,7 +93,7 @@ const schema = [
 ---
 
 <Layout
-  title={`Cities ranked by outdoor comfort — ${SITE.name}`}
+  title={copy.title}
   description={description}
   path="/ranking"
   schema={schema}
@@ -67,11 +109,10 @@ const schema = [
       </Bar>
 
       <div style="padding:22px 20px 10px">
-        <h1 style="font-size:27px;margin:0">Ranked by comfort, right now</h1>
+        <h1 style="font-size:27px;margin:0">{copy.h1}</h1>
         <p style="margin-top:9px;max-width:62ch;font-size:14.5px">
-          One score from fourteen signals, for every city where community sensors are reporting.
-          The fourteen bars beside each row are that city's spectrum — the same glyph as the hero,
-          at 22 px, which is the reason it was chosen over a dial.
+          {copy.lede} The fourteen bars beside each row are that city's spectrum — the same glyph
+          as the hero, at 22 px, which is the reason it was chosen over a dial.
         </p>
 
         {/*
@@ -93,6 +134,12 @@ const schema = [
           )
         }
       </div>
+
+      <SortBar
+        options={Object.fromEntries(Object.entries(CITY_SORTS).map(([k, v]) => [k, v.label]))}
+        active={sort}
+        base="/ranking"
+      />
 
       <div class="rows">
         <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">

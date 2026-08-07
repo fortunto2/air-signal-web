@@ -1,0 +1,49 @@
+---
+/**
+ * The order a list is in, as links.
+ *
+ * Links, not buttons with JavaScript. Each order is a real page the server renders, which means it
+ * works before hydration, survives a reload, can be shared, and — the reason that matters here —
+ * "the least comfortable cities in Europe" is a thing people search for and a thing a crawler can
+ * reach. A client-side sort would be invisible to all of that.
+ *
+ * Every variant canonicals to the default, because it is the same set of rows in a different order
+ * and five near-identical pages competing for one query is worse than one.
+ */
+interface Props {
+  /** `{ key: label }`, in the order they should appear. */
+  options: Record<string, string>;
+  active: string;
+  /** The page these link to, without a query string. */
+  base: string;
+  /** Query parameters to preserve alongside `sort`. */
+  keep?: Record<string, string>;
+}
+
+const { options, active, base, keep = {} } = Astro.props;
+
+const href = (key: string) => {
+  const q = new URLSearchParams(keep);
+  // The default order is the bare URL. A `?sort=best` that renders the same page as `/ranking`
+  // is a second address for one thing, and the first one is the address.
+  if (key !== Object.keys(options)[0]) q.set("sort", key);
+  const s = q.toString();
+  return s ? `${base}?${s}` : base;
+};
+---
+
+<div class="sortbar" role="navigation" aria-label="Sort order">
+  <span class="eyebrow">Order</span>
+  {
+    Object.entries(options).map(([key, label]) => (
+      <a
+        class:list={["seg", key === active && "is-on"]}
+        href={href(key)}
+        aria-current={key === active ? "true" : undefined}
+        rel={key === active ? undefined : "nofollow"}
+      >
+        {label}
+      </a>
+    ))
+  }
+</div>

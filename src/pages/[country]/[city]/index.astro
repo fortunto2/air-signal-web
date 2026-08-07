@@ -23,6 +23,8 @@ import {
 } from "../../../lib/db";
 import { aqi, classifySource, computeComfort, detectEvent, isStale, windDirection } from "../../../lib/comfort-server";
 import { cityView, ago } from "../../../lib/view";
+import { EXPLAIN } from "../../../lib/explain";
+import { SIGNAL_TO_SLUG } from "../../../lib/guide";
 import { SITE, abs, paths, comfortBand, pmBand } from "../../../lib/site";
 
 const { country, city: citySlug } = Astro.params;
@@ -258,7 +260,37 @@ const schema = [
         {
           v.signals.map((s) => (
             <div class:list={["sig", s.measure === null && "is-absent"]}>
-              <span class="name">{s.name}</span>
+              {/*
+                The name is the trigger. A reader looking at "Geomagnetic 96" has no way to know
+                what that is or whether 96 is good, and the answer used to live only in the method
+                page. It opens on hover and on focus, so a keyboard and a thumb both reach it.
+
+                Short on purpose: what it is, where the number sits on the curve, and a link. The
+                long version lives in the guide once rather than on ten thousand city pages.
+              */}
+              <button class="name has-help" type="button" aria-describedby={`h-${s.key}`}>
+                {s.name}
+                <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" class="help-mark">
+                  <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4" />
+                  <path
+                    d="M6 6a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.4"
+                    stroke-linecap="round"
+                  />
+                  <circle cx="8" cy="11.6" r="0.9" fill="currentColor" />
+                </svg>
+              </button>
+              <span class="help" id={`h-${s.key}`} role="tooltip">
+                <b>{EXPLAIN[s.key].what}</b>
+                <span class="help-scale num">{EXPLAIN[s.key].scale}</span>
+                <span class="help-meta">
+                  {Math.round(EXPLAIN[s.key].weight * 100)} % of the score ·{" "}
+                  {EXPLAIN[s.key].source} ·{" "}
+                  <a href={paths.guideEntry(SIGNAL_TO_SLUG[s.key])}>what this means</a>
+                </span>
+              </span>
               <div class="reading">
                 <span class:list={["measure", s.band && `fg-${s.band}`]}>
                   {s.measure ?? "no reading"}

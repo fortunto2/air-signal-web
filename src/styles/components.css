@@ -844,3 +844,185 @@ a {
   /* A crosshair would be more literal, but the chart is also a tap target on a phone. */
   touch-action: pan-y;
 }
+
+/* ── sort bar ───────────────────────────────────────────────────────────── */
+
+.sortbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 10px 20px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.sortbar .seg {
+  text-decoration: none;
+}
+.sortbar .seg.is-on {
+  border-color: var(--ink-3);
+  color: var(--ink);
+  background: var(--ground);
+}
+
+/* ── the per-signal help card ───────────────────────────────────────────── */
+
+/* The signal name doubles as the trigger, so it has to keep looking like a label rather than
+   sprouting a button's chrome. Only the question mark says it is interactive. */
+.sig .name.has-help {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: help;
+  text-align: left;
+}
+.help-mark {
+  color: var(--ink-3);
+  flex: none;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.sig .name.has-help:hover .help-mark,
+.sig .name.has-help:focus-visible .help-mark {
+  opacity: 1;
+}
+
+.sig {
+  position: relative;
+}
+.help {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% - 6px);
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  /* The card is decoration for the pointer; the pointer must be able to fall through it. */
+  pointer-events: none;
+  min-width: 240px;
+}
+/* `:focus-within` rather than `:focus` so a tap that focuses the button also opens it — and it
+   stays open long enough to reach the link inside. */
+.sig:hover .help,
+.sig:focus-within .help {
+  display: flex;
+  pointer-events: auto;
+}
+.help b {
+  color: var(--ink);
+  font-weight: 560;
+}
+.help-scale {
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: -0.01em;
+}
+.help-meta {
+  font-size: 11px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
+}
+.help-meta a {
+  color: var(--accent);
+}
+
+/* On a phone the grid is one column, so a card pinned to the cell has room below rather than
+   above — and above would open off the top of the screen for the first row. */
+@media (max-width: 760px) {
+  .help {
+    bottom: auto;
+    top: calc(100% - 6px);
+    min-width: 0;
+  }
+}
+
+/* ── the guide ──────────────────────────────────────────────────────────── */
+
+.prose {
+  padding: 24px 20px 28px;
+  max-width: 68ch;
+}
+.prose h1 {
+  font-size: 30px;
+  margin: 6px 0 0;
+}
+.prose h2 {
+  font-size: 18px;
+  margin: 26px 0 0;
+}
+.prose h3 {
+  font-size: 14.5px;
+  margin: 16px 0 0;
+}
+.prose p {
+  margin-top: 10px;
+  font-size: 15px;
+  line-height: 1.62;
+}
+.prose .lede {
+  font-size: 17px;
+  color: var(--ink);
+}
+.prose .qa p {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.guide-row {
+  display: grid;
+  gap: 3px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  text-decoration: none;
+  color: inherit;
+}
+.guide-row:hover,
+.guide-row:focus-visible {
+  background: var(--ground);
+}
+.guide-blurb {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+  border-top: 1px solid var(--line-soft);
+}
+.guide-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 13px 16px;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  text-decoration: none;
+  color: inherit;
+}
+.guide-cell:hover,
+.guide-cell:focus-visible {
+  background: var(--ground);
+}
+.guide-cell .nm {
+  font-size: 14px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+}
