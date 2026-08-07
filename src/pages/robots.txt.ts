@@ -34,10 +34,18 @@ export const GET: APIRoute = () => {
     // nothing a sitemap URL does not, and they change every ingest.
     "Disallow: /api/",
     "",
-    ...AGENTS.flatMap((agent) => [`User-agent: ${agent}`, "Allow: /", "Disallow: /api/", ""]),
+    // Named agents get the API. The blanket rule above exists so a search crawler does not spend
+    // its budget on JSON; an agent calling an endpoint on someone's behalf is the intended use, and
+    // pointing it at /api/stations.geojson in a comment while disallowing the path it sits on was a
+    // contradiction this file has carried since it was written.
+    ...AGENTS.flatMap((agent) => [`User-agent: ${agent}`, "Allow: /", ""]),
     "# Entry points for agents:",
     "#   /llms.txt                    what this site is and how it is computed",
     "#   Accept: text/markdown        any page, as Markdown instead of HTML",
+    "#   /openapi.json                the HTTP API, described. No key.",
+    "#   /a2a                         A2A over JSON-RPC 2.0, method message/send",
+    "#   /.well-known/agent-card.json what that endpoint can do",
+    "#   /.well-known/api-catalog     all of the above, as one link set",
     "#   /api/stations.geojson        every sensor, as GeoJSON (ODbL, from Sensor.Community)",
     "",
     `Sitemap: ${abs("/sitemap.xml")}`,
