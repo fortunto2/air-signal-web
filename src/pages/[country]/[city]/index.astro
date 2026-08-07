@@ -14,11 +14,13 @@ import AirIntel from "../../../components/AirIntel.astro";
 import SetPlace from "../../../components/SetPlace.tsx";
 import LiveCity from "../../../components/LiveCity.tsx";
 import StationMap from "../../../components/StationMap.tsx";
+import Blame from "../../../components/Blame.astro";
 import {
   getCity,
   getCityHistory,
   getStationsForCity,
   getNearbyCities,
+  getCpf,
   getSources,
   saveCityReadings,
 } from "../../../lib/db";
@@ -32,11 +34,12 @@ const { country, city: citySlug } = Astro.params;
 const row = await getCity(country!, citySlug!);
 if (!row) return new Response(null, { status: 404 });
 
-const [history, stations, nearby, sources] = await Promise.all([
+const [history, stations, nearby, sources, blame] = await Promise.all([
   getCityHistory(row.id, 120),
   getStationsForCity(row.id, 24),
   getNearbyCities(row.lat, row.lon, 2, 5, row.id),
   getSources(row.id, 24),
+  getCpf(row.id, 5),
 ]);
 
 /**
@@ -398,6 +401,8 @@ const schema = [
           </div>
         )
       }
+
+      <Blame rows={blame} placeName={v.name} />
 
       {
         stations.length > 0 && (

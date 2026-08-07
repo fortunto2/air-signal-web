@@ -1054,3 +1054,51 @@ a {
   width: 10px;
   height: 10px;
 }
+
+/* ── blame: where the dirty hours blow from ─────────────────────────────── */
+
+.blame {
+  border-top: 1px solid var(--line-soft);
+}
+.blame-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 46px;
+  gap: 3px 14px;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.blame-row .nm {
+  font-size: 14px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+}
+.blame-bar {
+  height: 6px;
+  background: var(--ground);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.blame-bar i {
+  display: block;
+  height: 100%;
+  /* Amber, not red. The strongest claim on the site is still circumstantial, and a red bar would
+     assert a certainty the method does not have. */
+  background: var(--s-fair);
+}
+.blame-detail {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 760px) {
+  .blame-row {
+    grid-template-columns: 1fr 56px;
+  }
+  .blame-bar {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+}

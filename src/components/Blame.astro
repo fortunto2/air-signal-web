@@ -1,0 +1,100 @@
+---
+/**
+ * Where the dirty hours came from.
+ *
+ * The strongest claim this site makes, and the one that most needs its limits printed next to it.
+ * A conditional probability function asks: of the hours when the wind blew from that direction,
+ * how many were in this city's dirtiest quarter? It is computed over a month of hourly readings
+ * against a month of hourly wind, which is why it appears at all — a single afternoon proves
+ * nothing and a month is hard to argue with.
+ *
+ * What it cannot do is separate two things on the same side of town. A works and the motorway
+ * beside it share a bearing, and so does the hill behind them; a fifteen-degree sector is a
+ * direction, not a defendant. The wording below says so rather than leaving the reader to assume
+ * otherwise, because a number this suggestive will be read as an accusation unless it is not one.
+ */
+import type { CpfRow } from "../lib/db";
+
+interface Props {
+  rows: CpfRow[];
+  placeName: string;
+}
+
+const { rows, placeName } = Astro.props;
+
+const KIND: Record<string, string> = {
+  power_plant: "power plant",
+  works: "factory",
+  industrial: "industrial land",
+  motorway: "motorway",
+  trunk: "major road",
+};
+
+/** 0–360 → a compass point. The same sixteen the wind arrow uses. */
+const compass = (deg: number) =>
+  ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][
+    Math.round(((deg % 360) + 360) % 360 / 22.5) % 16
+  ];
+
+const period = rows[0]?.period ?? null;
+const month = period
+  ? new Date(`${period}-01T00:00:00Z`).toLocaleString("en-US", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    })
+  : null;
+---
+
+{
+  rows.length > 0 && (
+    <div style="border-bottom:1px solid var(--line-soft)">
+      <div style="padding:16px 20px 4px">
+        <div class="eyebrow">Which way the bad hours blow from</div>
+        <p style="font-size:13px;margin-top:7px;max-width:76ch">
+          Of the hours when the wind came from each direction, how many were in {placeName}'s
+          dirtiest quarter{month && ` across ${month}`}. Computed from hourly community readings
+          against hourly reanalysis wind.
+        </p>
+      </div>
+
+      <div class="blame">
+        {rows.map((r) => (
+          <div class="blame-row">
+            <span>
+              <span class="nm">{r.name}</span>{" "}
+              <span class="guide-blurb">
+                {KIND[r.kind] ?? r.kind} · {r.distance_km} km {compass(r.bearing_deg)}
+                {r.others > 1 && ` · and ${r.others - 1} more mapped on that bearing`}
+              </span>
+            </span>
+
+            <span class="blame-bar" aria-hidden="true">
+              <i style={`width:${Math.round(r.score * 100)}%`} />
+            </span>
+
+            <span class="num" style="text-align:right">
+              {Math.round(r.score * 100)} %
+            </span>
+
+            {r.pm25_from !== null && r.pm25_other !== null && (
+              <span class="blame-detail">
+                {r.pm25_from} µg/m³ with the wind off it, {r.pm25_other} otherwise ·{" "}
+                {r.high_hours} of {r.hours} hours
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style="padding:10px 20px 18px">
+        <p style="font-size:12.5px;color:var(--ink-3);max-width:76ch">
+          A direction is not a defendant. Anything sharing that bearing shares the number — the
+          works, the road beside it, the hill behind it — and weather that arrives from one side of
+          a region arrives with everything already in it. This says where to look, not who is
+          responsible.
+        </p>
+      </div>
+    </div>
+  )
+}

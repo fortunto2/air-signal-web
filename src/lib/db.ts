@@ -685,3 +685,64 @@ export async function getSources(cityId: number, limit = 24): Promise<SourceRow[
     .all<SourceRow>();
   return results ?? [];
 }
+
+export interface CpfRow {
+  source_id: number;
+  name: string;
+  kind: SourceRow["kind"];
+  distance_km: number;
+  score: number;
+  bearing_deg: number;
+  hours: number;
+  high_hours: number;
+  pm25_from: number | null;
+  pm25_other: number | null;
+  period: string | null;
+  /** How many mapped sites share this bearing, including the one named. */
+  others: number;
+}
+
+/**
+ * Which direction this city's dirtiest hours blew from, one row per direction.
+ *
+ * Filtered to sources that clear their own background: one whose downwind average matches every
+ * other direction has not been shown to do anything, and printing it with a number beside it would
+ * read as an accusation the data does not make.
+ *
+ * Grouped by bearing, which is not a presentation detail. The method compares a fifteen-degree
+ * sector against everything else, so every site on that bearing gets the *same* score by
+ * construction — Heilbronn returned three factories with an identical 76 %, 4.9 against 2.3, over
+ * the same 25 hours. Listing them separately implies three findings where there is one, and the
+ * repetition reads as a bug. One row per thirty-degree sector, named after the nearest site in it,
+ * with the rest counted.
+ */
+export async function getCpf(cityId: number, limit = 5): Promise<CpfRow[]> {
+  const { results } = await DB()
+    .prepare(
+      `WITH scored AS (
+         SELECT s.id AS source_id, s.name, s.kind, s.distance_km,
+                c.score, c.bearing_deg, c.hours, c.high_hours,
+                c.pm25_from, c.pm25_other, c.period,
+                CAST(c.bearing_deg / 30 AS INTEGER) AS sector,
+                ROW_NUMBER() OVER (
+                  PARTITION BY CAST(c.bearing_deg / 30 AS INTEGER)
+                  -- The nearest site names the sector, and a works outranks a road at equal
+                  -- distance: the road is the least surprising thing on any bearing.
+                  ORDER BY (s.kind IN ('motorway','trunk')), s.distance_km
+                ) AS r,
+                COUNT(*) OVER (PARTITION BY CAST(c.bearing_deg / 30 AS INTEGER)) AS n
+           FROM cpf c JOIN sources s ON s.id = c.source_id
+          WHERE c.city_id = ?1
+            AND c.pm25_from > c.pm25_other * 1.15
+       )
+       SELECT source_id, name, kind, distance_km, score, bearing_deg,
+              hours, high_hours, pm25_from, pm25_other, period, n AS others
+         FROM scored
+        WHERE r = 1
+        ORDER BY score DESC, pm25_from DESC
+        LIMIT ?2`,
+    )
+    .bind(cityId, limit)
+    .all<CpfRow>();
+  return results ?? [];
+}

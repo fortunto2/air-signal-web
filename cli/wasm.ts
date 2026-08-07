@@ -27,6 +27,7 @@ interface AirqCore extends SignalCore {
   wasm_classify_source(pm25: number, pm10: number): string;
   wasm_haversine(lat1: number, lon1: number, lat2: number, lon2: number): number;
   wasm_bearing(lat1: number, lon1: number, lat2: number, lon2: number): number;
+  wasm_calculate_cpf(json: string): string;
   wasm_moon_phase(year: number, month: number, day: number): number;
 
   wasm_list_countries(): string;

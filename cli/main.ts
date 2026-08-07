@@ -25,11 +25,12 @@ import {
   type Opts,
   type StationFacts,
 } from "./ingest.ts";
-import { loadCities, loadPlaces } from "./places.ts";
+import { citiesFromDb, loadCities, loadPlaces } from "./places.ts";
 import { comfortFrom, scoresFrom, moonPhase, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { query } from "./d1.ts";
 import { backfill } from "./backfill.ts";
+import { computeCpf } from "./cpf.ts";
 import { SIGNALS, comfortBand } from "../src/lib/site.ts";
 
 // ── flags ───────────────────────────────────────────────────────────────────
@@ -239,6 +240,7 @@ const usage = `usage: tsx cli/main.ts <command> [flags]
   expand-cities               add every city GeoNames knows that we do not (~70 k)
   ingest [--only <stage>]     stations | comfort | sources | divergence | gate
   backfill [--month YYYY-MM]  device history from the Sensor.Community monthly archive
+  cpf [--month YYYY-MM]       which direction the dirty hours blow from (needs backfill archives)
   comfort <lat> <lon>         the fourteen signals for a point
   integration                 upstream shapes and the no-shrink guarantee
 
@@ -262,7 +264,7 @@ try {
         await ingestAll(opts);
         break;
       }
-      const cities = loadCities();
+      const cities = await citiesFromDb(query, opts);
       if (only === "stations") await ingestStations(cities, opts);
       else if (only === "comfort") {
         // Read the devices back rather than re-fetching them. The comfort pass needs four fields
@@ -293,6 +295,15 @@ try {
 
     case "expand-cities":
       await expandCities({ ...opts, dir: flag("dir") ?? ".cache", file: flag("file") ?? "cities5000" });
+      break;
+
+    case "cpf":
+      await computeCpf({
+        ...opts,
+        dir: flag("dir") ?? ".archive",
+        month: flag("month"),
+        minDevices: flag("min-devices") ? Number(flag("min-devices")) : undefined,
+      });
       break;
 
     case "backfill":

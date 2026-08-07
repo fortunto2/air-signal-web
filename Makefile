@@ -60,6 +60,12 @@ backfill-fetch: ## Download the monthly archives for MONTH (3.4 GB — sds011 al
 backfill: ## Aggregate the downloaded archives into readings_daily (add REMOTE=1 for production)
 	pnpm backfill --dir $(ARCHIVE) --month $(MONTH) $(if $(REMOTE),--remote,)
 
+cpf: ## Which direction the dirty hours blow from (needs backfill-fetch first; add REMOTE=1)
+	pnpm tsx cli/main.ts cpf --dir $(ARCHIVE) --month $(MONTH) $(if $(REMOTE),--remote,)
+
+expand-cities: ## Merge GeoNames on top of the seed — ~70k places, keeps every existing slug
+	pnpm tsx cli/main.ts expand-cities $(if $(REMOTE),--remote,)
+
 integration: ## Run the pipeline against live upstreams — no browser, no build
 	pnpm integration
 

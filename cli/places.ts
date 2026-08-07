@@ -140,3 +140,42 @@ export class CityIndex {
     return null;
   }
 }
+
+/**
+ * The cities as the database has them, which since the GeoNames merge is more than the crate holds.
+ *
+ * `loadCities` reads the embedded database and stops at ~100 per country. That is the right source
+ * for the *seed* — those are the slugs already indexed — and the wrong one for anything that has to
+ * decide which city a device belongs to. A station two kilometres from a town added by
+ * `expand-cities` was still being attributed to a city twenty kilometres away, because the index it
+ * was matched against had never heard of the closer one.
+ *
+ * So the station pass reads from D1. Deliberately falling back to the crate when the table is
+ * empty, which is the first run and only the first run.
+ */
+export async function citiesFromDb(
+  query: <T>(sql: string, opts: { remote?: boolean }) => Promise<T[]>,
+  opts: { remote?: boolean },
+): Promise<City[]> {
+  const rows = await query<{
+    id: number;
+    country_id: number;
+    slug: string;
+    name: string;
+    lat: number;
+    lon: number;
+    rank: number;
+  }>("SELECT id, country_id, slug, name, lat, lon, rank FROM cities", opts);
+
+  if (rows.length === 0) return loadCities();
+
+  return rows.map((r) => ({
+    id: r.id,
+    countryId: r.country_id,
+    slug: r.slug,
+    name: r.name,
+    lat: r.lat,
+    lon: r.lon,
+    rank: r.rank,
+  }));
+}
