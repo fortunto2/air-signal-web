@@ -19,6 +19,7 @@ import {
   getCityHistory,
   getStationsForCity,
   getNearbyCities,
+  getSources,
   saveCityReadings,
 } from "../../../lib/db";
 import { aqi, classifySource, computeComfort, detectEvent, isStale, windDirection } from "../../../lib/comfort-server";
@@ -31,10 +32,11 @@ const { country, city: citySlug } = Astro.params;
 const row = await getCity(country!, citySlug!);
 if (!row) return new Response(null, { status: 404 });
 
-const [history, stations, nearby] = await Promise.all([
+const [history, stations, nearby, sources] = await Promise.all([
   getCityHistory(row.id, 120),
   getStationsForCity(row.id, 24),
   getNearbyCities(row.lat, row.lon, 2, 5, row.id),
+  getSources(row.id, 24),
 ]);
 
 /**
@@ -365,6 +367,10 @@ const schema = [
                 {plume &&
                   ` The shaded wedge is where the high readings are clustered, which is the side
                     something is arriving from.`}
+                {sources.length > 0 &&
+                  ` The hollow rings are what OpenStreetMap has mapped nearby — works, power plants,
+                    industrial land and major roads. Nothing is measured at those points; whether
+                    any of it reaches the city depends on the wind.`}
               </p>
             </div>
             {/*
@@ -380,6 +386,13 @@ const schema = [
               spanKm={spanKm}
               wind={windArrow}
               plume={plume}
+              sources={sources.map((s) => ({
+                name: s.name,
+                kind: s.kind,
+                lat: s.lat,
+                lon: s.lon,
+                distanceKm: s.distance_km,
+              }))}
               inset
             />
           </div>

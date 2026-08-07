@@ -48,8 +48,19 @@ interface Selected {
   path?: string;
   pm25: number;
   quiet: boolean;
-  kind: "city" | "station";
+  kind: "city" | "station" | "source";
+  /** Sources only: how far from the city centre. */
+  km?: number;
 }
+
+/** OSM tag values are not sentences. */
+const SOURCE_LABEL: Record<string, string> = {
+  power_plant: "Power plant",
+  works: "Factory",
+  industrial: "Industrial land",
+  motorway: "Motorway",
+  trunk: "Major road",
+};
 
 /** Reads a token off the document so the map's palette follows the site's, in both themes. */
 function token(name: string): string {
@@ -222,6 +233,21 @@ export interface Props {
   spanKm?: number;
   /** Shorter, for a map sitting inside a page rather than being the page. */
   inset?: boolean;
+  /**
+   * What OpenStreetMap says is upwind: factories, power plants, industrial land, major roads.
+   *
+   * Drawn as outlines rather than pins, and never coloured on the reading scale. A works is not a
+   * measurement — putting it in the same palette as a sensor would claim we had measured it.
+   */
+  sources?: MapSource[];
+}
+
+export interface MapSource {
+  name: string;
+  kind: "power_plant" | "works" | "industrial" | "motorway" | "trunk";
+  lat: number;
+  lon: number;
+  distanceKm: number;
 }
 
 export default function StationMap({
@@ -232,12 +258,14 @@ export default function StationMap({
   plume = null,
   spanKm = 18,
   inset = false,
+  sources = [],
 }: Props = {}) {
   const holder = useRef<HTMLDivElement>(null);
   const map = useRef<InstanceType<typeof MlMap> | null>(null);
   const [selected, setSelected] = useState<Selected | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  const [heat, setHeat] = useState(false);
 
   useEffect(() => {
     if (!holder.current || map.current) return;
@@ -373,6 +401,43 @@ export default function StationMap({
         },
       });
 
+      // ── the measured heat ──
+      //
+      // Built from the devices themselves rather than from a dispersion model. Modelling a plume
+      // needs a stack: its height, its exit velocity and temperature, and how much comes out of it.
+      // None of that exists for ten thousand cities, and inventing it to draw a convincing shape
+      // would be the most confident wrong thing on the site. What the sensors measured, smeared to
+      // the distance between them, is a claim we can actually support.
+      //
+      // Hidden until asked for. The dots are the data; this is a reading of them.
+      m.addLayer({
+        id: "heat",
+        type: "heatmap",
+        source: "stations",
+        layout: { visibility: "none" },
+        filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "quiet"], 0]],
+        paint: {
+          // Weight is the reading against the top of the scale, so a bad sensor cannot dominate.
+          "heatmap-weight": [
+            "interpolate", ["linear"], ["max", ["get", "pm25"], 0],
+            0, 0,
+            55, 1,
+          ] as ExpressionSpecification,
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 6, 1, 13, 2.4] as ExpressionSpecification,
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 6, 14, 13, 46] as ExpressionSpecification,
+          "heatmap-opacity": 0.55,
+          "heatmap-color": [
+            "interpolate", ["linear"], ["heatmap-density"],
+            0, "rgba(0,0,0,0)",
+            0.2, c.excellent,
+            0.4, c.good,
+            0.6, c.fair,
+            0.8, c.poor,
+            1, c.bad,
+          ] as ExpressionSpecification,
+        },
+      });
+
       const clusterMean: ExpressionSpecification = [
         "case",
         ["==", ["get", "live"], 0],
@@ -455,6 +520,41 @@ export default function StationMap({
         },
       });
 
+      // ── what OSM says is upwind ──
+      // Squares, hollow, in the ink colour. Deliberately not on the reading scale: this is a thing
+      // that exists, not a thing measured, and colouring it like a sensor would assert otherwise.
+      if (sources.length > 0) {
+        m.addSource("osm-sources", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: sources.map((src) => ({
+              type: "Feature" as const,
+              geometry: { type: "Point" as const, coordinates: [src.lon, src.lat] },
+              properties: { name: src.name, kind: src.kind, km: src.distanceKm },
+            })),
+          },
+        });
+        m.addLayer({
+          id: "sources",
+          type: "circle",
+          source: "osm-sources",
+          paint: {
+            "circle-radius": [
+              "match", ["get", "kind"],
+              "power_plant", 9,
+              "works", 8,
+              "industrial", 7,
+              5,
+            ] as ExpressionSpecification,
+            "circle-color": "rgba(0,0,0,0)",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": c.ink3,
+            "circle-opacity": 0.9,
+          },
+        });
+      }
+
       if (wind) {
         // A casing under the stroke, in the page's own background. Without it the arrow is an
         // accent-coloured line crossing three hundred accent-adjacent dots, and the eye cannot
@@ -505,12 +605,26 @@ export default function StationMap({
       const f = e.features?.[0];
       if (f) setSelected(fromStation(f));
     });
+    m.on("click", "sources", (e) => {
+      const f = e.features?.[0];
+      if (!f) return;
+      const p = f.properties ?? {};
+      setSelected({
+        kind: "source",
+        id: 0,
+        name: String(p.name),
+        hw: SOURCE_LABEL[String(p.kind)] ?? String(p.kind),
+        pm25: -1,
+        quiet: false,
+        km: Number(p.km),
+      });
+    });
     m.on("click", "cities", (e) => {
       const f = e.features?.[0];
       if (f) setSelected(fromCity(f));
     });
 
-    for (const layer of ["stations", "cities", "clusters"]) {
+    for (const layer of ["stations", "cities", "clusters", "sources"]) {
       m.on("mouseenter", layer, () => (m.getCanvas().style.cursor = "pointer"));
       m.on("mouseleave", layer, () => (m.getCanvas().style.cursor = ""));
     }
@@ -540,9 +654,31 @@ export default function StationMap({
     };
   }, []);
 
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !m.getLayer("heat")) return;
+    m.setLayoutProperty("heat", "visibility", heat ? "visible" : "none");
+    // The dots stay, faded, so the heat reads as an interpretation of them rather than as a
+    // replacement for them. A reader must always be able to see where a number came from.
+    for (const id of ["stations", "clusters"]) {
+      if (m.getLayer(id)) m.setPaintProperty(id, "circle-opacity", heat ? 0.35 : id === "stations" ? 0.95 : 0.75);
+    }
+  }, [heat, ready]);
+
   return (
     <div className={inset ? "mapview is-inset" : "mapview"}>
       <div ref={holder} style={{ position: "absolute", inset: 0 }} />
+
+      <div className="maptools">
+        <button
+          type="button"
+          className={heat ? "seg is-on" : "seg"}
+          onClick={() => setHeat((v) => !v)}
+          aria-pressed={heat}
+        >
+          heat
+        </button>
+      </div>
 
       <div className="legend">
         <span className="eyebrow" style={{ marginRight: 2 }}>PM2.5</span>
@@ -559,6 +695,12 @@ export default function StationMap({
             {wind.kmh > 0 && ` · ${Math.round(wind.kmh)} km/h`}
           </span>
         )}
+        {sources.length > 0 && (
+          <span className="lg" style={{ marginLeft: 6 }}>
+            <i className="src-key" />
+            {sources.length} OSM sources
+          </span>
+        )}
         {plume && (
           <span className="lg">
             <i className="plume-key" />
@@ -571,31 +713,44 @@ export default function StationMap({
         <div className="peek">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <span className="eyebrow">
-              {selected.kind === "city" ? selected.name : `Station ${selected.id}`}
+              {selected.kind === "station" ? `Station ${selected.id}` : selected.name}
             </span>
-            <span
-              className={`chip fg-${selected.quiet ? "quiet" : pmBand(selected.pm25)}`}
-              style={{ fontSize: 10 }}
-            >
-              <span className="dot" />
-              {selected.quiet ? "quiet" : "live"}
-            </span>
+            {selected.kind !== "source" && (
+              <span
+                className={`chip fg-${selected.quiet ? "quiet" : pmBand(selected.pm25)}`}
+                style={{ fontSize: 10 }}
+              >
+                <span className="dot" />
+                {selected.quiet ? "quiet" : "live"}
+              </span>
+            )}
           </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginTop: 6 }}>
-            <span
-              className={`num fg-${selected.quiet ? "quiet" : pmBand(selected.pm25)}`}
-              style={{ fontSize: 30, lineHeight: 1 }}
-            >
-              {selected.pm25 >= 0 ? selected.pm25.toFixed(1) : "—"}
-            </span>
-            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>µg/m³ PM2.5</span>
-          </div>
-          {(selected.name || selected.hw) && (
+          {selected.kind === "source" ? (
+            <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 7, lineHeight: 1.5 }}>
+              {selected.hw}
+              {selected.km !== undefined && ` · ${selected.km} km away`}
+              <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 6 }}>
+                Mapped in OpenStreetMap. Nothing here is measured at this point — whether it reaches
+                you depends on the wind.
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginTop: 6 }}>
+              <span
+                className={`num fg-${selected.quiet ? "quiet" : pmBand(selected.pm25)}`}
+                style={{ fontSize: 30, lineHeight: 1 }}
+              >
+                {selected.pm25 >= 0 ? selected.pm25.toFixed(1) : "—"}
+              </span>
+              <span style={{ fontSize: 12, color: "var(--ink-3)" }}>µg/m³ PM2.5</span>
+            </div>
+          )}
+          {selected.kind !== "source" && (selected.name || selected.hw) && (
             <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4 }}>
               {[selected.name, selected.hw].filter(Boolean).join(" · ")}
             </div>
           )}
-          {selected.path ? (
+          {selected.kind === "source" ? null : selected.path ? (
             <a
               href={selected.path}
               style={{ fontSize: 12.5, color: "var(--accent)", marginTop: 8, display: "inline-block" }}

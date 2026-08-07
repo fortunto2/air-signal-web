@@ -535,3 +535,118 @@ export function median(values: number[]): number | null {
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
+
+// ---------------------------------------------------------------------------
+// OpenStreetMap — where the pollution plausibly comes from
+// ---------------------------------------------------------------------------
+
+export interface OsmSource {
+  osmId: string;
+  name: string;
+  kind: "power_plant" | "works" | "industrial" | "motorway" | "trunk";
+  lat: number;
+  lon: number;
+}
+
+/**
+ * Factories, power plants, industrial zones and major roads near a point.
+ *
+ * A port of `fetch_pollution_sources` in the `airq` binary crate, which has done this since early
+ * on and could never reach the site: it is built on reqwest and a filesystem cache, so it never
+ * became part of the WASM the worker and the browser share. Only the shape of its answer,
+ * `PollutionSource`, made it into airq-core.
+ *
+ * The query is deliberately the same one. `nwr` catches a factory whether it is mapped as a node,
+ * a way or a relation, which in OSM depends entirely on who mapped it; `out center` collapses each
+ * to a single coordinate so a plant the size of a district and a chimney are comparable.
+ *
+ * Overpass is a volunteer-run service with no commercial tier. It is called once per city on the
+ * nightly pass and never from a page, the results are stored, and the two public instances are
+ * tried in turn because one of them is usually busy.
+ */
+export async function fetchSources(
+  lat: number,
+  lon: number,
+  radiusKm = 25,
+): Promise<OsmSource[]> {
+  const r = Math.round(radiusKm * 1000);
+  const around = `(around:${r},${lat},${lon})`;
+  const query =
+    `[out:json][timeout:25];\n(\n` +
+    `  nwr["power"="plant"]${around};\n` +
+    `  nwr["man_made"="works"]${around};\n` +
+    `  nwr["landuse"="industrial"]${around};\n` +
+    `  way["highway"="motorway"]${around};\n` +
+    `  way["highway"="trunk"]${around};\n` +
+    `);\nout center tags 50;`;
+
+  const servers = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+  ];
+
+  for (const server of servers) {
+    try {
+      const res = await fetch(server, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", ...UA },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) continue;
+
+      const body = (await res.json()) as {
+        elements?: {
+          type: string;
+          id: number;
+          lat?: number;
+          lon?: number;
+          center?: { lat: number; lon: number };
+          tags?: Record<string, string>;
+        }[];
+      };
+
+      const out: OsmSource[] = [];
+      for (const el of body.elements ?? []) {
+        const at = el.center ?? (el.lat !== undefined && el.lon !== undefined ? { lat: el.lat, lon: el.lon } : null);
+        if (!at) continue;
+        const tags = el.tags ?? {};
+
+        const kind: OsmSource["kind"] | null =
+          tags.power === "plant"
+            ? "power_plant"
+            : tags.man_made === "works"
+              ? "works"
+              : tags.landuse === "industrial"
+                ? "industrial"
+                : tags.highway === "motorway"
+                  ? "motorway"
+                  : tags.highway === "trunk"
+                    ? "trunk"
+                    : null;
+        if (!kind) continue;
+
+        // An unnamed industrial zone is still a source; falling back to the category keeps it
+        // rather than dropping it for the sake of a tidy label.
+        const name =
+          tags.name ??
+          tags["name:en"] ??
+          tags.operator ??
+          {
+            power_plant: "Power plant",
+            works: "Factory",
+            industrial: "Industrial zone",
+            motorway: "Motorway",
+            trunk: "Major road",
+          }[kind];
+
+        out.push({ osmId: `${el.type}/${el.id}`, name, kind, lat: at.lat, lon: at.lon });
+      }
+      return out;
+    } catch {
+      // Try the next server. Both being busy is a normal Overpass afternoon, not an error worth
+      // failing the whole pass over — the city keeps whatever sources it already had.
+    }
+  }
+  return [];
+}

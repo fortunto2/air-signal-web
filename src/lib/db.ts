@@ -647,3 +647,35 @@ export async function getLastIngest(): Promise<Date | null> {
   const t = row?.value ? Date.parse(row.value) : NaN;
   return Number.isFinite(t) ? new Date(t) : null;
 }
+
+export interface SourceRow {
+  id: number;
+  city_id: number;
+  osm_id: string;
+  name: string;
+  kind: "power_plant" | "works" | "industrial" | "motorway" | "trunk";
+  lat: number;
+  lon: number;
+  distance_km: number;
+  bearing_deg: number | null;
+}
+
+/**
+ * What is upwind, from OpenStreetMap.
+ *
+ * Ordered by distance because that is the order they matter in, and capped because a city can sit
+ * inside a ring of forty industrial parcels and a map with forty labels on it says nothing. Roads
+ * come last on a tie: a motorway is a real source and also the least surprising one.
+ */
+export async function getSources(cityId: number, limit = 24): Promise<SourceRow[]> {
+  const { results } = await DB()
+    .prepare(
+      `SELECT * FROM sources
+        WHERE city_id = ?1
+        ORDER BY (kind IN ('motorway','trunk')), distance_km
+        LIMIT ?2`,
+    )
+    .bind(cityId, limit)
+    .all<SourceRow>();
+  return results ?? [];
+}

@@ -8,7 +8,7 @@
  */
 
 import { loadCities, loadPlaces, CityIndex, type City } from "./places.ts";
-import { comfortFrom, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
+import { bearing, comfortFrom, haversine, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { execute, query, update, upsert } from "./d1.ts";
 import { storedReadings } from "../src/lib/live.ts";
@@ -698,3 +698,80 @@ export async function ingestAll(opts: Opts = {}): Promise<void> {
 
 export type { City, SignalKey };
 export { slug };
+
+/**
+ * Where the pollution plausibly comes from.
+ *
+ * Only cities that have devices, and only the ones whose sensors disagree with each other enough
+ * to be worth explaining — Overpass is volunteer-run infrastructure and a query for every one of
+ * ten thousand cities would be an abuse of it. Sources change on the timescale of construction
+ * projects, so a city already carrying them is skipped unless `--force`.
+ *
+ * This is the input `wasm_calculate_cpf` has been waiting for. It also needs hourly wind and PM2.5
+ * to say "when the wind is off the works you breathe 31 µg/m³, otherwise 12", and that series is
+ * a separate fetch this pass does not do yet.
+ */
+export async function ingestSources(opts: Opts & { limit?: number }): Promise<void> {
+  const targets = await query<{ id: number; name: string; lat: number; lon: number }>(
+    `SELECT c.id, c.name, c.lat, c.lon
+       FROM cities c
+      WHERE c.station_count > 0
+        ${opts.force ? "" : "AND NOT EXISTS (SELECT 1 FROM sources s WHERE s.city_id = c.id)"}
+      ORDER BY c.station_count DESC
+      LIMIT ${opts.limit ?? 200}`,
+    opts,
+  );
+
+  if (targets.length === 0) {
+    console.log("sources: every city with devices already has them (pass --force to redo)");
+    return;
+  }
+  console.log(`sources: ${targets.length} cities`);
+
+  const rows: (string | number | null)[][] = [];
+  let found = 0;
+  let empty = 0;
+
+  for (const [i, city] of targets.entries()) {
+    // Overpass asks for one query at a time and means it. Two seconds between calls is the
+    // difference between being a good citizen and being blocked.
+    if (i > 0) await up.sleep(2_000);
+
+    const sources = await up.fetchSources(city.lat, city.lon, 25);
+    if (sources.length === 0) empty++;
+    found += sources.length;
+
+    for (const s of sources) {
+      rows.push([
+        city.id,
+        s.osmId,
+        s.name.slice(0, 120),
+        s.kind,
+        Math.round(s.lat * 1e5) / 1e5,
+        Math.round(s.lon * 1e5) / 1e5,
+        Math.round(haversine(city.lat, city.lon, s.lat, s.lon) * 10) / 10,
+        Math.round(bearing(city.lat, city.lon, s.lat, s.lon) * 10) / 10,
+        new Date().toISOString(),
+      ]);
+    }
+
+    if (rows.length >= 800 || i === targets.length - 1) {
+      await execute(
+        upsert(
+          "sources",
+          ["city_id", "osm_id", "name", "kind", "lat", "lon", "distance_km", "bearing_deg", "updated_at"],
+          rows,
+          { conflict: ["city_id", "osm_id"] },
+        ),
+        { ...opts, label: `sources (${rows.length})` },
+      );
+      rows.length = 0;
+    }
+
+    if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${targets.length} cities, ${found} sources`);
+  }
+
+  console.log(
+    `sources: ${found} across ${targets.length - empty} cities; ${empty} had nothing mapped nearby`,
+  );
+}

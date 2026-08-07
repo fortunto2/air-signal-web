@@ -41,6 +41,7 @@ export const wasm_normalize_pressure: (a: number, b: number) => number;
 export const wasm_signal_names: () => [number, number];
 export const wasm_pm10_aqi: (a: number) => number;
 export const wasm_pm25_aqi: (a: number) => number;
+export const wasm_bearing: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_malloc: (a: number, b: number) => number;

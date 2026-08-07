@@ -4,6 +4,15 @@
 export function wasm_aqi_category(aqi: number): string;
 
 /**
+ * Initial bearing from the first point to the second, in degrees clockwise from north.
+ *
+ * Exported because the source pass needs it and `directional_cluster` already uses it: which
+ * side of town a factory is on and which side the anomalous sensors are on have to be measured
+ * the same way, or comparing them is meaningless.
+ */
+export function wasm_bearing(lat1: number, lon1: number, lat2: number, lon2: number): number;
+
+/**
  * Which neighbour is making the air bad — the conditional probability function.
  *
  * Given a month of hourly PM2.5 alongside the wind that blew during each of those hours, and

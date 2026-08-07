@@ -18,6 +18,7 @@ import {
   ingestAll,
   ingestComfort,
   ingestDivergence,
+  ingestSources,
   ingestStations,
   seedCities,
   type Opts,
@@ -234,7 +235,7 @@ async function integration(): Promise<void> {
 const usage = `usage: tsx cli/main.ts <command> [flags]
 
   seed-cities                 load the cities database into D1
-  ingest [--only <stage>]     stations | comfort | divergence | gate
+  ingest [--only <stage>]     stations | comfort | sources | divergence | gate
   backfill [--month YYYY-MM]  device history from the Sensor.Community monthly archive
   comfort <lat> <lon>         the fourteen signals for a point
   integration                 upstream shapes and the no-shrink guarantee
@@ -281,6 +282,7 @@ try {
           opts,
         );
       }
+      else if (only === "sources") await ingestSources({ ...opts, limit: Number(flag("cities") ?? 200) });
       else if (only === "divergence") await ingestDivergence(opts);
       else if (only === "gate") await applyGate(opts);
       else throw new Error(`unknown stage "${only}"`);

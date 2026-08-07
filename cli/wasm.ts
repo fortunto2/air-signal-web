@@ -26,6 +26,7 @@ interface AirqCore extends SignalCore {
   wasm_merge(json: string): string;
   wasm_classify_source(pm25: number, pm10: number): string;
   wasm_haversine(lat1: number, lon1: number, lat2: number, lon2: number): number;
+  wasm_bearing(lat1: number, lon1: number, lat2: number, lon2: number): number;
   wasm_moon_phase(year: number, month: number, day: number): number;
 
   wasm_list_countries(): string;
@@ -66,6 +67,8 @@ export function merge(input: {
 }
 
 export const haversine = core.wasm_haversine;
+/** Degrees clockwise from north. The same one `directional_cluster` measures anomalies with. */
+export const bearing = core.wasm_bearing;
 
 /** Moon phase 0–1 for a UTC date. Cheap, and the only signal that needs no network at all. */
 export function moonPhase(d: Date): number {
