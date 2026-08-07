@@ -315,11 +315,15 @@ const schema = [
       {
         history.length > 2 && (
           <div style="padding:18px 20px 22px;border-bottom:1px solid var(--line-soft)">
+            {/*
+              Only the average here. The chart's own header already prints the range and replaces it
+              with the value under the pointer, so min and max were the same two numbers twice, one
+              line apart — and the mean is the one the range does not give you.
+            */}
             <div style="display:flex;justify-content:space-between;align-items:baseline">
               <div class="eyebrow">Comfort, last {history.length} days</div>
               <div class="eyebrow num">
-                min {Math.min(...past)} · avg {Math.round(past.reduce((a, b) => a + b, 0) / past.length)} ·
-                max {Math.max(...past)}
+                average {Math.round(past.reduce((a, b) => a + b, 0) / past.length)}
               </div>
             </div>
             <Sparkline

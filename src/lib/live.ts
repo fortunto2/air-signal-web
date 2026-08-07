@@ -13,6 +13,7 @@
  */
 
 import type { Readings } from "./signals";
+import { core } from "./core";
 
 /** Long enough for a slow model server, short enough that a page never hangs on one. */
 const TIMEOUT_MS = 6_000;
@@ -29,6 +30,73 @@ export interface Extras {
   seaTempC?: number;
   /** Degrees the wind is coming *from*. Rust turns it into a compass label and an arrow. */
   windDirection?: number;
+  kp?: number;
+  quakeMagnitude?: number;
+  moonPhase?: number;
+}
+
+/**
+ * Phase 0..1, full moon at 0.5. Delegated to the core rather than reimplemented, because the site
+ * already scores it there and two implementations of an astronomical formula is one too many.
+ */
+function moonPhaseFor(d: Date): number {
+  return core().wasm_moon_phase(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+
+/** Kilometres between two points, from the same haversine the ETL and the map use. */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  return core().wasm_haversine(lat1, lon1, lat2, lon2);
+}
+
+/**
+ * The two feeds that are the same for everybody.
+ *
+ * Geomagnetic activity is one number for the whole planet, and the earthquake summary is one
+ * document listing every event above magnitude 2.5 in the last day. Fetching them per city would
+ * be the same two responses ten thousand times, so they are fetched once and held for the life of
+ * the isolate — which on a Worker is minutes, and both change on the order of hours.
+ *
+ * This is why a city warmed on demand used to show six of fourteen signals absent while the same
+ * city warmed by the nightly pass showed nine: the ETL fetched these and the Worker never did.
+ */
+let globals: { at: number; kp?: number; quakes: { lat: number; lon: number; magnitude: number }[] } | null =
+  null;
+
+async function globalFeeds() {
+  if (globals && Date.now() - globals.at < 15 * 60_000) return globals;
+
+  const [kpRes, quakeRes] = await Promise.allSettled([
+    json("https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"),
+    json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson"),
+  ]);
+
+  // The feed publishes either an array of rows or an array of objects depending on the day, and
+  // reading only one shape is how geomagnetic once vanished from every city on Earth at once.
+  let kp: number | undefined;
+  if (kpRes.status === "fulfilled") {
+    const rows = kpRes.value as unknown[] | undefined;
+    const last = rows?.at(-1) as Record<string, unknown> | unknown[] | undefined;
+    const v = Array.isArray(last)
+      ? Number(last[1])
+      : Number(last?.["Kp"] ?? last?.["kp_index"] ?? last?.["k_index"]);
+    if (Number.isFinite(v)) kp = v;
+  }
+
+  const quakes: { lat: number; lon: number; magnitude: number }[] = [];
+  if (quakeRes.status === "fulfilled") {
+    const features = (quakeRes.value as { features?: unknown[] } | undefined)?.features ?? [];
+    for (const f of features as Record<string, any>[]) {
+      const lon = Number(f?.geometry?.coordinates?.[0]);
+      const lat = Number(f?.geometry?.coordinates?.[1]);
+      const magnitude = Number(f?.properties?.mag);
+      if (Number.isFinite(lat) && Number.isFinite(lon) && Number.isFinite(magnitude)) {
+        quakes.push({ lat, lon, magnitude });
+      }
+    }
+  }
+
+  globals = { at: Date.now(), kp, quakes };
+  return globals;
 }
 
 export async function fetchReadings(
@@ -40,7 +108,7 @@ export async function fetchReadings(
 
   // Settled, not all-or-nothing: a marine model that has nothing to say about an inland city must
   // not cost that city its temperature.
-  const [weather, air, marine, sensors] = await Promise.allSettled([
+  const [weather, air, marine, sensors, shared] = await Promise.allSettled([
     json(
       `https://api.open-meteo.com/v1/forecast?${q}` +
         "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl" +
@@ -52,6 +120,7 @@ export async function fetchReadings(
     ),
     json(`https://marine-api.open-meteo.com/v1/marine?${q}&current=wave_height,sea_surface_temperature`),
     json(`https://data.sensor.community/airrohr/v1/filter/area=${lat},${lon},15`),
+    globalFeeds(),
   ]);
 
   const w = value(weather)?.current ?? {};
@@ -78,8 +147,34 @@ export async function fetchReadings(
     };
   }
 
+  // The moon costs nothing: it is arithmetic on today's date, and it was absent from every
+  // on-demand city purely because the code that computed it lived in the nightly pass.
+  const now = new Date();
+  const moon = moonPhaseFor(now);
+
+  const g = shared.status === "fulfilled" ? shared.value : null;
+  if (extras) {
+    extras.out.moonPhase = moon;
+    if (g?.kp !== undefined) extras.out.kp = g.kp;
+  }
+
+  // The largest quake within reach. -1 rather than undefined when the feed loaded and found
+  // nothing: a quiet day is a reading worth a hundred points, and an outage is not.
+  let quake: number | undefined;
+  if (g) {
+    let worst = -1;
+    for (const q of g.quakes) {
+      if (haversineKm(lat, lon, q.lat, q.lon) <= 300 && q.magnitude > worst) worst = q.magnitude;
+    }
+    quake = worst;
+    if (extras) extras.out.quakeMagnitude = worst;
+  }
+
   return {
     pm25: sensorPm25 ?? num(a.pm2_5),
+    moonPhase: moon,
+    kp: g?.kp,
+    quakeMagnitude: quake,
     temperatureC: num(w.temperature_2m),
     humidityPct: num(w.relative_humidity_2m),
     windKmh: num(w.wind_speed_10m),

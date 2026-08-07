@@ -252,7 +252,7 @@ export interface MapSource {
 
 export default function StationMap({
   centre = CENTER,
-  zoom = ZOOM,
+  zoom: zoomProp = ZOOM,
   bbox,
   wind = null,
   plume = null,
@@ -266,6 +266,7 @@ export default function StationMap({
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [heat, setHeat] = useState(false);
+  const [zoom, setZoom] = useState(zoomProp);
 
   useEffect(() => {
     if (!holder.current || map.current) return;
@@ -273,7 +274,7 @@ export default function StationMap({
       container: holder.current,
       style: basemap(isDark()),
       center: centre,
-      zoom,
+      zoom: zoomProp,
       // The window follows the devices. A fixed zoom is right for the world map, which opens on a
       // continent; on a city it is a guess that crops Sofia's 289 sensors or strands a village's
       // three in an empty field.
@@ -307,6 +308,15 @@ export default function StationMap({
     // Without this, MapLibre swallows style and expression failures: the `error` event has no
     // listener, `load` never fires, and the only symptom is a permanent "Loading sensors…" over a
     // blank canvas. Which is exactly how this shipped.
+    // The heat control needs to know whether there is anything for it to draw.
+    m.on("zoomend", () => {
+      const z = m.getZoom();
+      setZoom(z);
+      // Zooming out past the device layer leaves the toggle on with nothing under it. Turn it off
+      // rather than leave a pressed button describing a layer that is no longer drawn.
+      if (z < CITY_ZOOM_MAX) setHeat(false);
+    });
+
     m.on("error", (e) => {
       const message = (e as { error?: Error }).error?.message ?? String(e);
       console.error("[map]", message);
@@ -669,12 +679,30 @@ export default function StationMap({
     <div className={inset ? "mapview is-inset" : "mapview"}>
       <div ref={holder} style={{ position: "absolute", inset: 0 }} />
 
+      {/*
+        Only where individual devices are drawn.
+        //
+        A heatmap accumulates by point *count*, and weight barely moves it once the points are
+        dense. Over Europe that made Germany a solid crimson blob because it has 3 382 devices —
+        while its median reading is 1.5 µg/m³, the cleanest band on the scale. A picture that turns
+        the cleanest country into the worst one is the exact failure this site exists to argue
+        against, so the control says it is unavailable rather than drawing it.
+
+        At city scale the devices are dense and comparably spaced, and the same layer means what it
+        looks like.
+      */}
       <div className="maptools">
         <button
           type="button"
           className={heat ? "seg is-on" : "seg"}
           onClick={() => setHeat((v) => !v)}
           aria-pressed={heat}
+          disabled={zoom < CITY_ZOOM_MAX}
+          title={
+            zoom < CITY_ZOOM_MAX
+              ? "Zoom in to a city. Across a continent this would draw where the sensors are, not where the air is worse."
+              : "Smear the readings to the distance between the devices"
+          }
         >
           heat
         </button>

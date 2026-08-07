@@ -1102,3 +1102,9 @@ a {
     order: 3;
   }
 }
+
+/* A control that cannot do anything says so, rather than doing nothing when pressed. */
+.maptools .seg[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
