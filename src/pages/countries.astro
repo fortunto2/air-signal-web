@@ -11,30 +11,8 @@ import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import SortBar from "../components/SortBar.astro";
 import { COUNTRY_SORTS, countrySort, listCountries, getLastIngest, getSitemapCounts } from "../lib/db";
-import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
+import { SITE, abs, comfortBand, paths, pm25Aqi, pmBand } from "../lib/site";
 
-/**
- * The EPA's PM2.5 breakpoints, 2024 revision, interpolated.
- *
- * Duplicated from the ranking page rather than routed through the WASM core: both pages print it a
- * few hundred times and instantiating the binary to interpolate between two pairs of numbers is the
- * expensive way to do arithmetic. The table is the one `airq-core` holds, and changes with it.
- */
-const PM25_BREAKS: [number, number, number, number][] = [
-  [0, 9, 0, 50],
-  [9.1, 35.4, 51, 100],
-  [35.5, 55.4, 101, 150],
-  [55.5, 125.4, 151, 200],
-  [125.5, 225.4, 201, 300],
-  [225.5, 325.4, 301, 500],
-];
-
-function pm25Aqi(v: number): number {
-  for (const [cLo, cHi, aLo, aHi] of PM25_BREAKS) {
-    if (v <= cHi) return Math.round(((aHi - aLo) / (cHi - cLo)) * (v - cLo) + aLo);
-  }
-  return 500;
-}
 
 
 const sort = countrySort(Astro.url.searchParams.get("sort"));
@@ -109,9 +87,21 @@ const schema = [
       />
 
       <div class="rows">
-        <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
-          <div class="eyebrow">Country</div>
-          <div class="eyebrow">Comfort</div>
+        {/*
+          Laid out on the row grid rather than as a flex pair, so each label sits over its own
+          column. "AQI" was repeating under every number in every row — a unit printed 156 times is
+          a column heading that has not been written yet.
+        */}
+        {/*
+          One shape for every list on the site. The header rides the row grid so each label sits
+          over its column, and the AQI is a heading rather than a unit repeated under every number.
+        */}
+        <div class="row is-head">
+          <span />
+          <span class="eyebrow">"Country"</span>
+          <span />
+          <span class="eyebrow">AQI</span>
+          <span class="eyebrow">Comfort</span>
         </div>
 
         {/*
@@ -123,7 +113,7 @@ const schema = [
         */}
         {
           countries.map((c, i) => (
-            <a class="row is-country" href={paths.country(c.slug)}>
+            <a class="row" href={paths.country(c.slug)}>
               <span class="rank num">{i + 1}</span>
               <span>
                 <span class="city">{c.name}</span>{" "}
@@ -161,17 +151,8 @@ const schema = [
                 AQI needs only a PM2.5 reading, so it appears as soon as any city in the country has
                 been looked at. Two numbers that fail independently beat one that fails alone.
               */}
-              <span class="n-aqi">
-                {
-                  c.pm25_median !== null && (
-                    <>
-                      <span class:list={["num", `fg-${pmBand(c.pm25_median)}`]}>
-                        {pm25Aqi(c.pm25_median)}
-                      </span>
-                      <span class="eyebrow">AQI</span>
-                    </>
-                  )
-                }
+              <span class:list={["n", c.pm25_median !== null && `fg-${pmBand(c.pm25_median)}`]}>
+                {c.pm25_median !== null ? pm25Aqi(c.pm25_median) : "—"}
               </span>
               <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>
                 {c.comfort ?? "—"}

@@ -303,6 +303,22 @@ export async function rollUpCountries(opts: Opts = {}): Promise<void> {
        )
        UPDATE countries SET comfort = (SELECT m FROM med WHERE med.country_id = countries.id);`,
 
+      /*
+       * A modelled city has a PM2.5 reading too — it is simply not a median of anything.
+       *
+       * `pm25_median` was defined as "the middle of this city's devices", so a city with none had
+       * NULL and its AQI column printed a dash beside a comfort score of 92. The number was there
+       * the whole time, inside readings_json, having just been used to compute that score.
+       *
+       * Filled only where there are no devices, so a measured city is never overwritten by the
+       * model it is meant to check. The row still says which is which: "modelled", or a count.
+       */
+      `UPDATE cities
+          SET pm25_median = CAST(json_extract(readings_json, '$.pm25') AS REAL)
+        WHERE station_count = 0
+          AND readings_json IS NOT NULL
+          AND json_extract(readings_json, '$.pm25') IS NOT NULL;`,
+
       // The sample the median came from, so the page can say "from 1 of 5 991" rather than implying
       // a number built from all of them.
       `UPDATE countries SET scored_cities = COALESCE((

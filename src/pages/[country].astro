@@ -14,7 +14,7 @@ import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
 import { getCitiesInCountry, getCountry, parseSignals } from "../lib/db";
-import { SITE, abs, comfortBand, paths, pmBand } from "../lib/site";
+import { SITE, abs, comfortBand, paths, pm25Aqi, pmBand } from "../lib/site";
 
 const country = await getCountry(Astro.params.country!);
 if (!country) return new Response(null, { status: 404 });
@@ -126,12 +126,17 @@ const schema = [
           <span class="num" style="font-size:27px">{country.station_count}</span>
           <span class="unit">Sensor.Community</span>
         </div>
+        {/* AQI first, since that is the headline index now; the concentration it came from below. */}
         <div class="stat">
-          <span class="eyebrow">Typical PM2.5</span>
+          <span class="eyebrow">Typical AQI</span>
           <span class:list={["num", `fg-${pmBand(country.pm25_median)}`]} style="font-size:27px">
-            {country.pm25_median !== null ? country.pm25_median.toFixed(1) : "—"}
+            {country.pm25_median !== null ? pm25Aqi(country.pm25_median) : "—"}
           </span>
-          <span class="unit">µg/m³ · median city</span>
+          <span class="unit">
+            {country.pm25_median !== null
+              ? `${country.pm25_median.toFixed(1)} µg/m³ PM2.5 · median city`
+              : "no reading yet"}
+          </span>
         </div>
         <div class="stat">
           <span class="eyebrow">Comfort</span>
@@ -143,11 +148,16 @@ const schema = [
       </div>
 
       <div class="rows">
-        <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
-          <div class="eyebrow">
-            {withSensors.length > 0 ? "Cities with sensors first" : "Cities"}
-          </div>
-          <div class="eyebrow">Comfort</div>
+        {/*
+          One shape for every list on the site. The header rides the row grid so each label sits
+          over its column, and the AQI is a heading rather than a unit repeated under every number.
+        */}
+        <div class="row is-head">
+          <span />
+          <span class="eyebrow">{withSensors.length > 0 ? "Cities with sensors first" : "Cities"}</span>
+          <span />
+          <span class="eyebrow">AQI</span>
+          <span class="eyebrow">Comfort</span>
         </div>
 
         {
@@ -173,6 +183,9 @@ const schema = [
                 size="mini"
                 caption={`${c.name}: comfort ${c.comfort ?? "unknown"} out of 100`}
               />
+              <span class:list={["n", c.pm25_median !== null && `fg-${pmBand(c.pm25_median)}`]}>
+                {c.pm25_median !== null ? pm25Aqi(c.pm25_median) : "—"}
+              </span>
               <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>
                 {c.comfort ?? "—"}
               </span>

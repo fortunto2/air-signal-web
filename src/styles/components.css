@@ -361,7 +361,8 @@ a {
 }
 .row {
   display: grid;
-  grid-template-columns: 26px 1fr 150px 62px;
+  /* rank · name · spectrum · AQI · comfort */
+  grid-template-columns: 26px 1fr 150px 46px 52px;
   gap: 16px;
   align-items: center;
   padding: 11px 20px;
@@ -1124,23 +1125,19 @@ a {
   flex-wrap: wrap;
 }
 
-/* The AQI column, beside comfort. Right-aligned so the two numbers form a column each. */
-.n-aqi {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-  min-width: 42px;
+/* The header row rides the same grid as the rows below it, so each label sits over its column. */
+.row.is-head {
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 8px;
 }
-.n-aqi .num {
-  font-size: 15px;
+.row.is-head:hover {
+  background: none;
 }
-.n-aqi .eyebrow {
-  font-size: 9px;
+.row.is-head .eyebrow:not(:nth-child(2)) {
+  text-align: right;
 }
 
-/* The country list has no spectrum, so its third column is the AQI rather than 150px of nothing. */
-.row.is-country {
-  grid-template-columns: 26px 1fr 54px 56px;
-  gap: 12px;
+/* The country list has no spectrum; its third column collapses and the numbers keep their places. */
+.rows .row:has(> span:nth-child(3):empty) {
+  grid-template-columns: 26px 1fr 0 46px 52px;
 }

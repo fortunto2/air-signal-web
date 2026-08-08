@@ -121,4 +121,29 @@ export function slug(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+
+/**
+ * PM2.5 → US AQI, on the EPA's 2024 breakpoints.
+ *
+ * Lives here because three list pages print it a few hundred times each, and routing that through
+ * the WASM core would be instantiating a binary to interpolate between two pairs of numbers. The
+ * table is the one `airq-core` holds — if it moves there it moves here, and that is the single
+ * thing to remember about this function.
+ */
+const PM25_BREAKS: readonly (readonly [number, number, number, number])[] = [
+  [0, 9, 0, 50],
+  [9.1, 35.4, 51, 100],
+  [35.5, 55.4, 101, 150],
+  [55.5, 125.4, 151, 200],
+  [125.5, 225.4, 201, 300],
+  [225.5, 325.4, 301, 500],
+] as const;
+
+export function pm25Aqi(v: number): number {
+  for (const [cLo, cHi, aLo, aHi] of PM25_BREAKS) {
+    if (v <= cHi) return Math.round(((aHi - aLo) / (cHi - cLo)) * (v - cLo) + aLo);
+  }
+  return 500;
+}
+
 export const abs = (path: string) => new URL(path, SITE.origin).href;

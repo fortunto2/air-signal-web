@@ -21,31 +21,8 @@ import {
   getSitemapCounts,
   parseSignals,
 } from "../lib/db";
-import { comfortBand, pmBand, SITE, abs, paths } from "../lib/site";
+import { comfortBand, pm25Aqi, pmBand, SITE, abs, paths } from "../lib/site";
 
-/**
- * The EPA's PM2.5 breakpoints, 2024 revision, interpolated.
- *
- * Here rather than through the WASM core because this page prints it a hundred and fifty times and
- * instantiating the binary to interpolate between two pairs of numbers would be the expensive way
- * to do arithmetic. The table is the same one `airq-core` holds; if it changes there it changes
- * here, which is the one thing to remember about this function.
- */
-const PM25_BREAKS: [number, number, number, number][] = [
-  [0, 9, 0, 50],
-  [9.1, 35.4, 51, 100],
-  [35.5, 55.4, 101, 150],
-  [55.5, 125.4, 151, 200],
-  [125.5, 225.4, 201, 300],
-  [225.5, 325.4, 301, 500],
-];
-
-function pm25Aqi(v: number): number {
-  for (const [cLo, cHi, aLo, aHi] of PM25_BREAKS) {
-    if (v <= cHi) return Math.round(((aHi - aLo) / (cHi - cLo)) * (v - cLo) + aLo);
-  }
-  return 500;
-}
 import { ago } from "../lib/view";
 
 const LIMIT = 150;
@@ -229,9 +206,16 @@ const schema = [
       </div>
 
       <div class="rows">
-        <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
-          <div class="eyebrow">City</div>
-          <div class="eyebrow">Comfort</div>
+        {/*
+          One shape for every list on the site. The header rides the row grid so each label sits
+          over its column, and the AQI is a heading rather than a unit repeated under every number.
+        */}
+        <div class="row is-head">
+          <span />
+          <span class="eyebrow">"City"</span>
+          <span />
+          <span class="eyebrow">AQI</span>
+          <span class="eyebrow">Comfort</span>
         </div>
 
         {
@@ -248,7 +232,7 @@ const schema = [
                   {c.pm25_median !== null && (
                     <span class={`fg-${pmBand(c.pm25_median)}`}>
                       {" "}
-                      · {c.pm25_median.toFixed(1)} µg/m³ · AQI {pm25Aqi(c.pm25_median)}
+                      · {c.pm25_median.toFixed(1)} µg/m³
                     </span>
                   )}
                   {c.percentile !== null && <span> · {c.percentile}th pct</span>}
