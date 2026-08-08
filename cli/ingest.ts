@@ -253,6 +253,17 @@ export async function rankPercentiles(opts: Opts = {}): Promise<void> {
   );
 }
 
+/**
+ * Country totals from every scored city, not only the measured ones.
+ *
+ * It used to require devices, which made the rollup agree with the warm-up: warm sensor cities,
+ * roll up sensor cities. Now that the largest city of every country is scored, that condition is
+ * what would keep ninety countries blank anyway — it would throw away the one reading they have.
+ *
+ * A country whose number comes from the model is not the same claim as one built from three hundred
+ * devices, and the row says which: the sensor count is printed beside the name, and "modelled"
+ * where there is none.
+ */
 export async function rollUpCountries(opts: Opts = {}): Promise<void> {
   await execute(
     [
@@ -284,7 +295,7 @@ export async function rollUpCountries(opts: Opts = {}): Promise<void> {
                 ROW_NUMBER() OVER (PARTITION BY c.country_id ORDER BY c.comfort) AS rn,
                 COUNT(*)     OVER (PARTITION BY c.country_id)                     AS n
            FROM cities c
-          WHERE c.comfort IS NOT NULL AND c.station_count > 0
+          WHERE c.comfort IS NOT NULL
        ),
        med AS (
          SELECT country_id, CAST(AVG(v) AS INTEGER) AS m FROM ranked
@@ -292,14 +303,21 @@ export async function rollUpCountries(opts: Opts = {}): Promise<void> {
        )
        UPDATE countries SET comfort = (SELECT m FROM med WHERE med.country_id = countries.id);`,
 
+      // The sample the median came from, so the page can say "from 1 of 5 991" rather than implying
+      // a number built from all of them.
+      `UPDATE countries SET scored_cities = COALESCE((
+         SELECT COUNT(*) FROM cities
+          WHERE cities.country_id = countries.id AND cities.comfort IS NOT NULL
+       ), 0);`,
+
       `UPDATE countries SET best_city_id = (
          SELECT id FROM cities
-          WHERE country_id = countries.id AND comfort IS NOT NULL AND station_count > 0
+          WHERE country_id = countries.id AND comfort IS NOT NULL
           ORDER BY comfort DESC LIMIT 1
        );`,
       `UPDATE countries SET worst_city_id = (
          SELECT id FROM cities
-          WHERE country_id = countries.id AND comfort IS NOT NULL AND station_count > 0
+          WHERE country_id = countries.id AND comfort IS NOT NULL
           ORDER BY comfort ASC LIMIT 1
        );`,
     ],
@@ -337,16 +355,34 @@ export async function ingestComfort(
    * `--all` scores everything, for the rare case of wanting the whole set warm at once.
    */
   if (!opts.all && !opts.limitCities) {
+    /**
+     * Cities with devices, plus the largest city of every country.
+     *
+     * The second half is one hundred and fifty-six extra locations — a single batch — and it is
+     * what stops half the country list being blank. A country's comfort and its median are rolled
+     * up from its *scored* cities, and warming only the ones with devices meant ninety countries
+     * had none: India, with 5 991 cities and no community sensor, showed a dash where a number
+     * belongs. Open-Meteo covers every coordinate on Earth, so that dash was a scheduling decision
+     * and not a limit of the data.
+     *
+     * `rank = 0` is the largest city in its country since the GeoNames merge, so this is one query
+     * with no ordering guesswork.
+     */
     const withDevices = new Set(
-      (await query<{ id: number }>("SELECT id FROM cities WHERE station_count > 0", opts)).map(
-        (r) => r.id,
-      ),
+      (
+        await query<{ id: number }>(
+          `SELECT id FROM cities WHERE station_count > 0
+             UNION
+           SELECT id FROM cities WHERE rank = 0`,
+          opts,
+        )
+      ).map((r) => r.id),
     );
     const before = targets.length;
     targets = targets.filter((c) => withDevices.has(c.id));
     console.log(
-      `comfort: warming ${targets.length} cities with devices; the other ${before - targets.length} ` +
-        "are scored on demand (pass --all to include them)",
+      `comfort: warming ${targets.length} — every city with devices, plus the largest of each ` +
+        `country; the other ${before - targets.length} are scored on demand (pass --all for all)`,
     );
   }
 

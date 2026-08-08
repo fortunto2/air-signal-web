@@ -40,6 +40,8 @@ interface Answer {
   worst: SignalKey | null;
   scores: Partial<Record<SignalKey, number>>;
   readings: Record<string, number>;
+  /** Null when there is no particulate reading to derive it from. */
+  aqi: { aqi: number; label: string; color: string; emoji: string } | null;
 }
 
 export default function LiveCity({ lat, lon, computedAt }: Props) {
@@ -71,7 +73,7 @@ export default function LiveCity({ lat, lon, computedAt }: Props) {
         const data = (await res.json()) as Answer;
         if (cancelled) return;
 
-        paint(data.total, data.scores);
+        paint(data.total, data.scores, data.aqi ?? null);
         setAt(new Date());
         setState("done");
       } catch {
@@ -114,17 +116,27 @@ export default function LiveCity({ lat, lon, computedAt }: Props) {
  * Every element touched here was already in the HTML with a real value. Nothing is created, so
  * there is no arrangement in which this function is what makes the page readable.
  */
-function paint(total: number, scores: Partial<Record<SignalKey, number>>) {
+function paint(
+  total: number,
+  scores: Partial<Record<SignalKey, number>>,
+  live: { aqi: number; label: string; color: string } | null,
+) {
   const band = comfortBand(total);
+
+  // Comfort is the second number now, not the hero, so its class is `num` and not `value`. Writing
+  // `value` here would restyle it to 78 px in the middle of a sentence.
+  // The headline, and the word beside it, both describe the air rather than the comfort score.
+  const headline = document.querySelector<HTMLElement>('[data-live="aqi"]');
+  if (headline && live) headline.textContent = String(live.aqi);
+
+  const word = document.querySelector<HTMLElement>(".verdict .word");
+  if (word && live) word.textContent = live.label;
 
   const score = document.querySelector<HTMLElement>('[data-live="comfort"]');
   if (score) {
     score.textContent = String(total);
-    score.className = `value fg-${band}`;
+    score.className = `num fg-${band}`;
   }
-
-  const word = document.querySelector<HTMLElement>(".verdict .word");
-  if (word) word.className = `word fg-${band}`;
 
   const cols = document.querySelectorAll<HTMLElement>(".spectrum .col");
   SIGNALS.forEach((s, i) => {

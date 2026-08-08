@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS countries (
   iso           TEXT,                      -- 'TR', when known. Unused today; here so it never
                                            -- becomes a join table later
   city_count    INTEGER NOT NULL DEFAULT 0,
+  scored_cities INTEGER NOT NULL DEFAULT 0,  -- the sample the median was taken from
   station_count INTEGER NOT NULL DEFAULT 0,
   comfort       INTEGER,
   pm25_median   REAL,

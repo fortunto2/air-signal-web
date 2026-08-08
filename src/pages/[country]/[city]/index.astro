@@ -206,14 +206,29 @@ const schema = [
 
       <div class="readout" style="padding-top:16px">
         <div>
+          {/*
+            AQI leads, comfort follows.
+            //
+            The site's argument has not changed: a person does not go outside for PM2.5, and one
+            index cannot say "the air is clean but the UV will burn you". But an argument is what
+            you make *after* answering the question the reader arrived with, and they arrived
+            asking what the air quality is. AQI is the number they know, it is absolute, and it is
+            comparable across every site and every season — where the comfort score, in a European
+            summer, puts nearly everything above 85 and separates almost nothing.
+
+            So AQI is the headline and comfort is the second opinion beside it: the thing this site
+            adds, rather than the thing it opens with.
+          */}
           <div class="score">
-            <div class:list={["value", v.band && `fg-${v.band}`]} data-live="comfort">
-              {v.comfort ?? "—"}
+            <div class:list={["value", airAqi && `fg-${pmBand(pm25Now)}`]} data-live="aqi">
+              {airAqi?.aqi ?? "—"}
             </div>
-            <div class="of">/100</div>
+            <div class="of">US AQI</div>
           </div>
           <div class="verdict">
-            <div class:list={["word", v.band && `fg-${v.band}`]}>{v.word}</div>
+            <div class:list={["word", airAqi && `fg-${pmBand(pm25Now)}`]}>
+              {airAqi?.label ?? v.word}
+            </div>
 
             {/*
               Two comparisons, and they answer different questions. Against this city's own past
@@ -246,16 +261,26 @@ const schema = [
               every other site prints. The comfort score is ours and the AQI is everyone's, so both
               belong where the reader looks first.
             */}
-            {
-              airAqi && (
-                <div class="hero-aqi">
-                  <span class="eyebrow">US AQI</span>
-                  <span class="num" style={`font-size:22px;color:${airAqi.color}`}>{airAqi.aqi}</span>
-                  <span class="eyebrow">{airAqi.label}</span>
-                  {pm25Now !== null && <span class="eyebrow num">{pm25Now} µg/m³ PM2.5</span>}
-                </div>
-              )
-            }
+            {/* The second opinion: our own score, and the reading the AQI was derived from. */}
+            <div class="hero-aqi">
+              {pm25Now !== null && <span class="eyebrow num">{pm25Now} µg/m³ PM2.5</span>}
+              {
+                v.comfort !== null && (
+                  <>
+                    <span class="eyebrow">·</span>
+                    <span class="eyebrow">comfort</span>
+                    <span
+                      class:list={["num", v.band && `fg-${v.band}`]}
+                      style="font-size:19px"
+                      data-live="comfort"
+                    >
+                      {v.comfort}
+                    </span>
+                    <span class="eyebrow">/100 from fourteen signals</span>
+                  </>
+                )
+              }
+            </div>
           </div>
           <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <SetPlace

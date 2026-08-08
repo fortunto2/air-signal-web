@@ -97,6 +97,8 @@ export interface CountryRow {
   name: string;
   iso: string | null;
   city_count: number;
+  /** How many of them have a score. The median is over these, not over city_count. */
+  scored_cities: number;
   station_count: number;
   comfort: number | null;
   pm25_median: number | null;

@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { computeComfort } from "../../lib/comfort-server";
+import { aqi, computeComfort } from "../../lib/comfort-server";
 
 /**
  * Live comfort for a coordinate.
@@ -38,7 +38,16 @@ export const GET: APIRoute = async ({ url }) => {
   }
 
   return json(
-    { total: result.total, worst: result.worst, scores: result.scores, readings: result.readings },
+    {
+      total: result.total,
+      worst: result.worst,
+      scores: result.scores,
+      readings: result.readings,
+      // The headline number, computed here rather than in the browser: the EPA breakpoint table
+      // lives in Rust and in two page templates already, and a fourth copy in an island would be
+      // the one that goes stale.
+      aqi: aqi(result.readings.pm25 ?? null, result.readings.pm10 ?? null),
+    },
     200,
     "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
   );
