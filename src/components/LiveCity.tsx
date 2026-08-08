@@ -40,8 +40,8 @@ interface Answer {
   worst: SignalKey | null;
   scores: Partial<Record<SignalKey, number>>;
   readings: Record<string, number>;
-  /** Null when there is no particulate reading to derive it from. */
-  aqi: { aqi: number; label: string; color: string; emoji: string } | null;
+  /** Null when there is no particulate reading to derive it from. Same shape as `CityView.aqi`. */
+  aqi: { value: number; label: string; band: string } | null;
 }
 
 export default function LiveCity({ lat, lon, computedAt }: Props) {
@@ -73,7 +73,7 @@ export default function LiveCity({ lat, lon, computedAt }: Props) {
         const data = (await res.json()) as Answer;
         if (cancelled) return;
 
-        paint(data.total, data.scores, data.aqi ?? null);
+        paint(data.total, data.scores, data.aqi);
         setAt(new Date());
         setState("done");
       } catch {
@@ -119,18 +119,27 @@ export default function LiveCity({ lat, lon, computedAt }: Props) {
 function paint(
   total: number,
   scores: Partial<Record<SignalKey, number>>,
-  live: { aqi: number; label: string; color: string } | null,
+  live: Answer["aqi"],
 ) {
   const band = comfortBand(total);
 
   // Comfort is the second number now, not the hero, so its class is `num` and not `value`. Writing
   // `value` here would restyle it to 78 px in the middle of a sentence.
   // The headline, and the word beside it, both describe the air rather than the comfort score.
+  // Text *and* colour. Patching only the number left a page cached at PM2.5 4 and hydrated at 60
+  // showing "152 · Unhealthy" in the excellent green — the band travels with the value for exactly
+  // this reason.
   const headline = document.querySelector<HTMLElement>('[data-live="aqi"]');
-  if (headline && live) headline.textContent = String(live.aqi);
+  if (headline && live) {
+    headline.textContent = String(live.value);
+    headline.className = `value fg-${live.band}`;
+  }
 
   const word = document.querySelector<HTMLElement>(".verdict .word");
-  if (word && live) word.textContent = live.label;
+  if (word && live) {
+    word.textContent = live.label;
+    word.className = `word fg-${live.band}`;
+  }
 
   const score = document.querySelector<HTMLElement>('[data-live="comfort"]');
   if (score) {

@@ -15,10 +15,18 @@
  *  - **How bad is it in the units people search for?** The comfort score is ours; AQI is the one
  *    everyone else prints, and refusing to show it is a way of losing an argument nobody made.
  */
-import type { AqiReading, EventAnalysis, SourceHint } from "../lib/comfort-server";
+import type { EventAnalysis, SourceHint } from "../lib/comfort-server";
+import type { CityView } from "../lib/view";
 
 interface Props {
-  aqi: AqiReading | null;
+  /**
+   * From the view-model, not computed here.
+   *
+   * This block used to take the Rust core's own AQI while the hero took the view-model's. Both
+   * follow the EPA rule and the same table, so they agreed — but two paths to one number is how
+   * they stop agreeing, and the colour is the part that had already drifted once.
+   */
+  aqi: CityView["aqi"];
   source: SourceHint | null;
   event: EventAnalysis | null;
   wind: { label: string; arrow: string; speed?: number } | null;
@@ -63,11 +71,11 @@ const ventilation = (kmh: number) =>
         {aqi && (
           <div class="stat">
             <span class="eyebrow">US AQI</span>
-            <span class="num" style={`font-size:27px;color:${aqi.color}`}>
-              {aqi.aqi}
+            <span class:list={["num", `fg-${aqi.band}`]} style="font-size:27px">
+              {aqi.value}
             </span>
             <span class="unit">
-              {aqi.emoji} {aqi.label}
+              {aqi.label}
             </span>
           </div>
         )}

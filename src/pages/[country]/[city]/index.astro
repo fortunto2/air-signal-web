@@ -24,11 +24,11 @@ import {
   getSources,
   saveCityReadings,
 } from "../../../lib/db";
-import { aqi, classifySource, computeComfort, detectEvent, isStale, windDirection } from "../../../lib/comfort-server";
+import { classifySource, computeComfort, detectEvent, isStale, windDirection } from "../../../lib/comfort-server";
 import { cityView, ago } from "../../../lib/view";
 import { EXPLAIN } from "../../../lib/explain";
 import { SIGNAL_TO_SLUG } from "../../../lib/guide";
-import { SITE, abs, aqiBand, paths, comfortBand, pmBand } from "../../../lib/site";
+import { SITE, abs, paths, comfortBand, pmBand } from "../../../lib/site";
 
 const { country, city: citySlug } = Astro.params;
 const row = await getCity(country!, citySlug!);
@@ -93,7 +93,6 @@ const pm25Now = v.readings.pm25 ?? airEvent?.median_pm25 ?? null;
 const pm10Now = v.readings.pm10 ?? airEvent?.median_pm10 ?? null;
 
 const airSource = classifySource(pm25Now, pm10Now);
-const airAqi = aqi(pm25Now, pm10Now);
 const compass = windDirection(v.readings.wind_dir);
 const wind = compass ? { ...compass, speed: v.readings.wind } : null;
 
@@ -159,9 +158,27 @@ const schema = [
     description: v.description,
     url: abs(v.path),
     temporalCoverage: history.length ? `${history[0]!.day}/${history.at(-1)!.day}` : undefined,
-    variableMeasured: v.signals
-      .filter((s) => s.measure !== null)
-      .map((s) => ({ "@type": "PropertyValue", name: s.name, value: s.measure })),
+    // The headline first, and in the vocabulary a machine reading this would look for. The list
+    // was fourteen signal names with no AQI in it, on a page whose largest number is an AQI.
+    variableMeasured: [
+      ...(v.aqi
+        ? [
+            {
+              "@type": "PropertyValue",
+              name: "Air Quality Index",
+              alternateName: "US AQI",
+              value: v.aqi.value,
+              description: v.aqi.label,
+            },
+          ]
+        : []),
+      ...(v.comfort !== null
+        ? [{ "@type": "PropertyValue", name: "Comfort", value: v.comfort, maxValue: 100 }]
+        : []),
+      ...v.signals
+        .filter((s) => s.measure !== null)
+        .map((s) => ({ "@type": "PropertyValue", name: s.name, value: s.measure })),
+    ],
     isBasedOn: [
       { "@type": "Dataset", name: "Sensor.Community", url: "https://sensor.community/" },
       { "@type": "Dataset", name: "Open-Meteo", url: "https://open-meteo.com/" },
@@ -220,14 +237,14 @@ const schema = [
             adds, rather than the thing it opens with.
           */}
           <div class="score">
-            <div class:list={["value", airAqi && `fg-${aqiBand(airAqi.aqi)}`]} data-live="aqi">
-              {airAqi?.aqi ?? "—"}
+            <div class:list={["value", v.aqi && `fg-${v.aqi.band}`]} data-live="aqi">
+              {v.aqi?.value ?? "—"}
             </div>
             <div class="of">US AQI</div>
           </div>
           <div class="verdict">
-            <div class:list={["word", airAqi && `fg-${aqiBand(airAqi.aqi)}`]}>
-              {airAqi?.label ?? v.word}
+            <div class:list={["word", v.aqi && `fg-${v.aqi.band}`]}>
+              {v.aqi?.label ?? v.word}
             </div>
 
             {/*
@@ -245,10 +262,10 @@ const schema = [
                   : `${v.stationCount} sensor${v.stationCount === 1 ? "" : "s"} within reach`
               }
               {
-                row.percentile !== null && (
+                v.percentile !== null && (
                   <>
                     {" · "}
-                    <span class="num">{row.percentile}</span>
+                    <span class="num">{v.percentile}</span>
                     {"th percentile of measured cities"}
                   </>
                 )
@@ -319,7 +336,7 @@ const schema = [
         </div>
       </div>
 
-      <AirIntel aqi={airAqi} source={airSource} event={airEvent} wind={wind} placeName={v.name} />
+      <AirIntel aqi={v.aqi} source={airSource} event={airEvent} wind={wind} placeName={v.name} />
 
       <div class="grid-signals">
         {

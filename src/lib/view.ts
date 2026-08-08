@@ -9,7 +9,17 @@
  * Nothing here touches the database or the DOM. It takes rows and returns strings and numbers.
  */
 
-import { SIGNALS, comfortBand, paths, pmBand, type Band, type SignalKey } from "./site";
+import {
+  SIGNALS,
+  aqiBand,
+  aqiLabel,
+  comfortBand,
+  overallAqi,
+  paths,
+  pmBand,
+  type Band,
+  type SignalKey,
+} from "./site";
 import type { CityRow, StationRow, DayPoint } from "./db";
 
 // ── readings ────────────────────────────────────────────────────────────────
@@ -161,6 +171,16 @@ export interface CityView {
   lon: number;
   comfort: number | null;
   band: Band | null;
+  /**
+   * The headline number, and the only place it is decided.
+   *
+   * The page led with AQI while the `.md` twin and the JSON-LD still opened with comfort, which is
+   * exactly the divergence this view-model exists to prevent — its own docstring says two
+   * renderings of one model cannot disagree, and they had started to.
+   */
+  aqi: { value: number; label: string; band: Band } | null;
+  /** Position against every comparably-measured city, 0-100. NULL where there is no comparison. */
+  percentile: number | null;
   /** "Good", "Fair" — the one word above the score. */
   word: string;
   signals: SignalLine[];
@@ -215,6 +235,8 @@ export function cityView(row: CityRow, history: DayPoint[] = []): CityView {
     stationCount: row.station_count,
     divergence: row.divergence,
     verdict: cityVerdict(row, readings, worst),
+    aqi: aqiOf(readings),
+    percentile: row.percentile,
     title: seoTitle(row.name, row.country),
     description: cityDescription(row, readings),
     updatedAt: row.updated_at ? new Date(row.updated_at) : null,
@@ -262,9 +284,20 @@ function cityVerdict(row: CityRow, r: Readings, worst: SignalLine | null): strin
   return parts.join(" ");
 }
 
+/** The AQI a city's readings imply, with the word and the colour that belong to it. */
+function aqiOf(r: Readings): CityView["aqi"] {
+  const value = overallAqi(r.pm25 ?? null, r.pm10 ?? null);
+  if (value === null) return null;
+  const band = aqiBand(value);
+  return { value, label: aqiLabel(value), band: band === "quiet" ? "excellent" : band };
+}
+
 function cityDescription(row: CityRow, r: Readings): string {
   const bits: string[] = [];
-  if (row.comfort !== null) bits.push(`Comfort ${row.comfort}/100 right now.`);
+  // AQI first, because that is what the page leads with and what a searcher typed. Comfort follows
+  // as the thing this site adds.
+  const air = aqiOf(r);
+  if (air) bits.push(`Air quality index ${air.value}, ${air.label.toLowerCase()}.`);
   if (r.pm25 !== undefined) {
     bits.push(
       `PM2.5 ${r.pm25} µg/m³` +
@@ -272,6 +305,7 @@ function cityDescription(row: CityRow, r: Readings): string {
         ".",
     );
   }
+  if (row.comfort !== null) bits.push(`Comfort ${row.comfort}/100 from fourteen signals.`);
   if (r.sea_temp !== undefined) bits.push(`Sea ${r.sea_temp} °C.`);
   if (r.uv !== undefined) bits.push(`UV peaks at ${r.uv}.`);
   bits.push("Updated hourly.");

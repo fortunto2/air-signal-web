@@ -53,9 +53,13 @@ export const GET: APIRoute = async ({ params }) => {
 
 ${v.verdict}
 
-**Comfort ${v.comfort ?? "—"}/100** (${v.word}) · ${v.stationCount} community sensor${
-    v.stationCount === 1 ? "" : "s"
-  } · ${v.updatedAt ? `computed ${v.updatedAt.toISOString()}` : "not yet computed"}
+${v.aqi ? `**AQI ${v.aqi.value}** (${v.aqi.label})` : "**AQI —** (no particulate reading)"} · comfort ${
+    v.comfort ?? "—"
+  }/100 from fourteen signals${
+    v.percentile !== null ? `, ${v.percentile}th percentile of measured cities` : ""
+  } · ${v.stationCount} community sensor${v.stationCount === 1 ? "" : "s"} · ${
+    v.updatedAt ? `computed ${v.updatedAt.toISOString()}` : "not yet computed"
+  }
 
 Source: ${abs(v.path)}
 

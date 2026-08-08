@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
-import { aqi, computeComfort } from "../../lib/comfort-server";
+import { computeComfort } from "../../lib/comfort-server";
+import { aqiBand, aqiLabel, overallAqi } from "../../lib/site";
 
 /**
  * Live comfort for a coordinate.
@@ -43,14 +44,21 @@ export const GET: APIRoute = async ({ url }) => {
       worst: result.worst,
       scores: result.scores,
       readings: result.readings,
-      // The headline number, computed here rather than in the browser: the browser would need the
-      // EPA breakpoint table, and the copy furthest from the data is the one that goes stale.
-      aqi: aqi(result.readings.pm25 ?? null, result.readings.pm10 ?? null),
+      // The headline, in the shape `cityView` produces so the island patches what the server
+      // rendered rather than deriving a second opinion about it.
+      aqi: liveAqi(result.readings.pm25 ?? null, result.readings.pm10 ?? null),
     },
     200,
     "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
   );
 };
+
+function liveAqi(pm25: number | null, pm10: number | null) {
+  const value = overallAqi(pm25, pm10);
+  if (value === null) return null;
+  const band = aqiBand(value);
+  return { value, label: aqiLabel(value), band: band === "quiet" ? "excellent" : band };
+}
 
 function json(body: unknown, status: number, cacheControl: string): Response {
   return new Response(JSON.stringify(body), {

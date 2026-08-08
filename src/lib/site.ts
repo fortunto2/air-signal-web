@@ -168,11 +168,58 @@ export function aqiBand(aqi: number | null): Band | "quiet" {
   return "bad";
 }
 
-export function pm25Aqi(v: number): number {
-  for (const [cLo, cHi, aLo, aHi] of PM25_BREAKS) {
+/** PM10, whose scale is coarser and whose brackets are its own. */
+const PM10_BREAKS: readonly (readonly [number, number, number, number])[] = [
+  [0, 54, 0, 50],
+  [55, 154, 51, 100],
+  [155, 254, 101, 150],
+  [255, 354, 151, 200],
+  [355, 424, 201, 300],
+  [425, 604, 301, 500],
+] as const;
+
+function interpolate(
+  v: number,
+  table: readonly (readonly [number, number, number, number])[],
+): number {
+  for (const [cLo, cHi, aLo, aHi] of table) {
     if (v <= cHi) return Math.round(((aHi - aLo) / (cHi - cLo)) * (v - cLo) + aLo);
   }
   return 500;
+}
+
+export function pm25Aqi(v: number): number {
+  return interpolate(v, PM25_BREAKS);
+}
+
+/**
+ * The AQI, by the EPA's own rule: the worst of the pollutants, not an average of them.
+ *
+ * This exists because the site briefly had two numbers called AQI. The city page took the max of
+ * both channels through the Rust core; the list pages interpolated PM2.5 alone. A dust-dominated
+ * city — the case `classify_source` exists to detect — showed one AQI in a list and a higher one on
+ * its own page, both labelled the same. Coarse particles are exactly what a dust day is made of, so
+ * dropping PM10 was dropping the reading that mattered.
+ *
+ * PM10 may be absent; the answer is then PM2.5's, which is what the EPA does with a missing
+ * pollutant.
+ */
+export function overallAqi(pm25: number | null, pm10: number | null): number | null {
+  const a = pm25 === null || !Number.isFinite(pm25) ? null : pm25Aqi(pm25);
+  const b = pm10 === null || !Number.isFinite(pm10) ? null : interpolate(pm10, PM10_BREAKS);
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.max(a, b);
+}
+
+/** The six EPA category names. Fixed strings, so no runtime is needed to say them. */
+export function aqiLabel(aqi: number): string {
+  if (aqi <= 50) return "Good";
+  if (aqi <= 100) return "Moderate";
+  if (aqi <= 150) return "Unhealthy for sensitive groups";
+  if (aqi <= 200) return "Unhealthy";
+  if (aqi <= 300) return "Very unhealthy";
+  return "Hazardous";
 }
 
 export const abs = (path: string) => new URL(path, SITE.origin).href;
