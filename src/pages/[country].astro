@@ -14,7 +14,7 @@ import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
 import { getCitiesInCountry, getCountry, parseSignals } from "../lib/db";
-import { SITE, abs, comfortBand, paths, pm25Aqi, pmBand } from "../lib/site";
+import { SITE, abs, aqiBand, comfortBand, paths, pm25Aqi, pmBand } from "../lib/site";
 
 const country = await getCountry(Astro.params.country!);
 if (!country) return new Response(null, { status: 404 });
@@ -129,7 +129,10 @@ const schema = [
         {/* AQI first, since that is the headline index now; the concentration it came from below. */}
         <div class="stat">
           <span class="eyebrow">Typical AQI</span>
-          <span class:list={["num", `fg-${pmBand(country.pm25_median)}`]} style="font-size:27px">
+          <span
+            class:list={["num", `fg-${aqiBand(country.pm25_median === null ? null : pm25Aqi(country.pm25_median))}`]}
+            style="font-size:27px"
+          >
             {country.pm25_median !== null ? pm25Aqi(country.pm25_median) : "—"}
           </span>
           <span class="unit">
@@ -183,7 +186,7 @@ const schema = [
                 size="mini"
                 caption={`${c.name}: comfort ${c.comfort ?? "unknown"} out of 100`}
               />
-              <span class:list={["n", c.pm25_median !== null && `fg-${pmBand(c.pm25_median)}`]}>
+              <span class:list={["n", c.pm25_median !== null && `fg-${aqiBand(pm25Aqi(c.pm25_median))}`]}>
                 {c.pm25_median !== null ? pm25Aqi(c.pm25_median) : "—"}
               </span>
               <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>

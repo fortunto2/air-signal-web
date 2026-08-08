@@ -681,7 +681,7 @@ export default function StationMap({
 
       {/*
         Only where individual devices are drawn.
-        //
+
         A heatmap accumulates by point *count*, and weight barely moves it once the points are
         dense. Over Europe that made Germany a solid crimson blob because it has 3 382 devices —
         while its median reading is 1.5 µg/m³, the cleanest band on the scale. A picture that turns

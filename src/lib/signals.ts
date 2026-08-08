@@ -37,7 +37,7 @@ export interface Readings {
   uv?: number;
   windKmh?: number;
   waveHeightM?: number;
-  /** Negative means "we looked and there is none" — which scores 100, not "unknown". */
+  /** Absent when nothing was in reach: an event signal reports events, not their absence. */
   quakeMagnitude?: number;
   fireDistanceKm?: number;
   pollen?: number;

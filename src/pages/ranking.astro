@@ -14,14 +14,13 @@ import {
   CITY_SORTS,
   RANK_MIN_SENSORS,
   citySort,
-  countCitiesWithSensors,
   countRankable,
   getLastIngest,
   getRankedCities,
   getSitemapCounts,
   parseSignals,
 } from "../lib/db";
-import { comfortBand, pm25Aqi, pmBand, SITE, abs, paths } from "../lib/site";
+import { aqiBand, comfortBand, pm25Aqi, pmBand, SITE, abs, paths } from "../lib/site";
 
 import { ago } from "../lib/view";
 
@@ -38,13 +37,16 @@ const sort = citySort(Astro.url.searchParams.get("sort"));
 const includeThin = Astro.url.searchParams.get("thin") === "1";
 const minSensors = includeThin ? 1 : RANK_MIN_SENSORS;
 
-const [ranked, total, rankable, counts, lastIngest] = await Promise.all([
+const [ranked, rankable, counts, lastIngest] = await Promise.all([
   getRankedCities(LIMIT, sort, minSensors),
-  countCitiesWithSensors(),
   countRankable(),
   getSitemapCounts(),
   getLastIngest(),
 ]);
+
+// `countRankable` splits the same predicate the old `countCitiesWithSensors` counted whole, so the
+// two halves are the total by construction — one D1 scan of 62 000 rows instead of two.
+const total = rankable.eligible + rankable.thin;
 
 /**
  * How far apart the top and the bottom of this list actually are.
@@ -212,7 +214,7 @@ const schema = [
         */}
         <div class="row is-head">
           <span />
-          <span class="eyebrow">"City"</span>
+          <span class="eyebrow">City</span>
           <span />
           <span class="eyebrow">AQI</span>
           <span class="eyebrow">Comfort</span>
@@ -226,7 +228,7 @@ const schema = [
                 <span class="city">{c.name}</span>{" "}
                 <span class="country">
                   {c.country} ·{" "}
-                  <span class:list={[c.station_count < 3 && "thin-sensors"]}>
+                  <span class:list={[c.station_count < RANK_MIN_SENSORS && "fg-fair"]}>
                     {c.station_count} sensor{c.station_count === 1 ? "" : "s"}
                   </span>
                   {c.pm25_median !== null && (
@@ -243,6 +245,9 @@ const schema = [
                 size="mini"
                 caption={`${c.name}: comfort ${c.comfort} out of 100`}
               />
+              <span class:list={["n", c.pm25_median !== null && `fg-${aqiBand(pm25Aqi(c.pm25_median))}`]}>
+                {c.pm25_median !== null ? pm25Aqi(c.pm25_median) : "—"}
+              </span>
               <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>
                 {c.comfort}
               </span>

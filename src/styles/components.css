@@ -361,7 +361,7 @@ a {
 }
 .row {
   display: grid;
-  /* rank · name · spectrum · AQI · comfort */
+  /* rank · name · spectrum · AQI · comfort — the full shape, used by the ranking and a country. */
   grid-template-columns: 26px 1fr 150px 46px 52px;
   gap: 16px;
   align-items: center;
@@ -1110,11 +1110,6 @@ a {
   cursor: not-allowed;
 }
 
-/* A city ranked on one or two devices. Marked rather than hidden when the reader asked for it —
-   the point is that they can see which numbers rest on a single box in someone's garden. */
-.thin-sensors {
-  color: var(--s-fair);
-}
 
 /* The absolute reading beside the relative score. */
 .hero-aqi {
@@ -1127,7 +1122,6 @@ a {
 
 /* The header row rides the same grid as the rows below it, so each label sits over its column. */
 .row.is-head {
-  border-bottom: 1px solid var(--line-soft);
   padding-bottom: 8px;
 }
 .row.is-head:hover {
@@ -1137,7 +1131,21 @@ a {
   text-align: right;
 }
 
-/* The country list has no spectrum; its third column collapses and the numbers keep their places. */
-.rows .row:has(> span:nth-child(3):empty) {
-  grid-template-columns: 26px 1fr 0 46px 52px;
+/*
+ * Two lists do not have all five columns, and they say so rather than being detected.
+ *
+ * This used to be `.row:has(> span:nth-child(3):empty)`, which probed every row's children to
+ * work out what kind of list it was in — and got it wrong: the only elements it matched were the
+ * header rows, whose third cell is an empty span, so it collapsed the header's spectrum column
+ * while the data rows below kept theirs and every label sat one column left of its numbers.
+ *
+ * A template knows its own shape at render time. Declaring it costs one class and cannot drift.
+ */
+.rows.is-plain .row {
+  /* No spectrum: the countries list. */
+  grid-template-columns: 26px 1fr 46px 52px;
+}
+.rows.is-compact .row {
+  /* No AQI: the home page and the 404, which show a top-few rather than a full table. */
+  grid-template-columns: 26px 1fr 150px 52px;
 }

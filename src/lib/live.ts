@@ -29,9 +29,71 @@ export interface Extras {
   seaTempC?: number;
   /** Degrees the wind is coming *from*. Rust turns it into a compass label and an arrow. */
   windDirection?: number;
-  kp?: number;
-  quakeMagnitude?: number;
-  moonPhase?: number;
+}
+
+/**
+ * One device's PM2.5, or nothing, applied by both runtimes.
+ *
+ * Lived in `cli/upstreams.ts` alone, which meant the nightly pass rejected Pfullingen's broken
+ * device and the Worker accepted it — and since `saveCityReadings` writes the Worker's answer back
+ * into the same row, opening the page undid the night's work. The city went 2.7 → 197 on a refresh.
+ *
+ * Two rules, both about physics rather than thresholds:
+ *
+ * PM2.5 is a subset of PM10 — every particle under 2.5 micrometres is also under ten — so a device
+ * reporting more fine than coarse is reporting a fault.
+ *
+ * And an extreme PM2.5 with no PM10 at all is the same fault with one channel dead: an SDS011
+ * publishes both in 8 359 of 8 376 readings, and among the seventeen that publish only PM2.5 the
+ * average is 372 µg/m³. Below 50 an uncorroborated reading changes nothing, so the rule only fires
+ * where it would matter.
+ */
+export interface Quake {
+  lat: number;
+  lon: number;
+  magnitude: number;
+}
+
+/**
+ * The strongest quake felt at a point, or nothing.
+ *
+ * One implementation, because there were two and they disagreed. The ETL used a 500 km radius with
+ * the magnitude attenuated by distance; the Worker used 300 km and the raw magnitude. An M5.0 at
+ * 250 km therefore scored 3.2 from one and 5.0 from the other — and both write the answer into the
+ * same row, so a city's earthquake reading changed depending on which touched it last, with nothing
+ * in the data saying which.
+ *
+ * Magnitude is logarithmic and attenuating it linearly with distance is crude, but the signal only
+ * needs an ordering, not a seismology paper.
+ *
+ * `undefined` when nothing is in reach: an event signal reports events, not their absence. Scoring
+ * "no earthquake" as a hundred pinned eight per cent of every score to the maximum for essentially
+ * every place on Earth, which separated nothing.
+ */
+export function quakeFelt(
+  quakes: Quake[],
+  lat: number,
+  lon: number,
+  haversine: (a: number, b: number, c: number, d: number) => number,
+  radiusKm = 500,
+): number | undefined {
+  let felt = -1;
+  for (const q of quakes) {
+    // A cheap box before the trigonometry: at these radii a degree is never less than ~78 km.
+    if (Math.abs(q.lat - lat) > 6 || Math.abs(q.lon - lon) > 8) continue;
+    const d = haversine(lat, lon, q.lat, q.lon);
+    if (d > radiusKm) continue;
+    const effective = q.magnitude * (1 - d / (radiusKm * 1.4));
+    if (effective > felt) felt = effective;
+  }
+  return felt < 0 ? undefined : felt;
+}
+
+export function usablePm25(pm25: number | null, pm10: number | null): number | null {
+  if (pm25 === null || !Number.isFinite(pm25) || pm25 <= 0 || pm25 > 500) return null;
+  if (pm10 !== null && Number.isFinite(pm10) && pm25 > pm10) return null;
+  if (pm10 === null && pm25 > 50) return null;
+  return pm25;
 }
 
 /**
@@ -58,11 +120,27 @@ export interface LiveCore {
  * This is why a city warmed on demand used to show six of fourteen signals absent while the same
  * city warmed by the nightly pass showed nine: the ETL fetched these and the Worker never did.
  */
-let globals: { at: number; kp?: number; quakes: { lat: number; lon: number; magnitude: number }[] } | null =
-  null;
+interface GlobalFeeds {
+  at: number;
+  kp?: number;
+  quakes: Quake[];
+}
+
+let globals: GlobalFeeds | null = null;
+let inFlight: Promise<GlobalFeeds> | null = null;
 
 async function globalFeeds() {
   if (globals && Date.now() - globals.at < 15 * 60_000) return globals;
+  // The promise is memoised, not just its result. A crawler burst starts twenty cold renders in one
+  // isolate before the first fetch returns; caching only the value let all twenty fire their own
+  // pair of requests at two public feeds and throw nineteen of the answers away.
+  inFlight ??= load().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function load(): Promise<GlobalFeeds> {
 
   const [kpRes, quakeRes] = await Promise.allSettled([
     json("https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"),
@@ -81,7 +159,7 @@ async function globalFeeds() {
     if (Number.isFinite(v)) kp = v;
   }
 
-  const quakes: { lat: number; lon: number; magnitude: number }[] = [];
+  const quakes: Quake[] = [];
   if (quakeRes.status === "fulfilled") {
     const features = (quakeRes.value as { features?: unknown[] } | undefined)?.features ?? [];
     for (const f of features as Record<string, any>[]) {
@@ -101,8 +179,10 @@ async function globalFeeds() {
 export async function fetchReadings(
   lat: number,
   lon: number,
-  extras?: { out: Extras },
-  core?: LiveCore,
+  extras: { out: Extras } | undefined,
+  // Required, not optional. When it was optional an omitted argument silently dropped the moon and
+  // every earthquake from a city's score, with no log — the exact failure CLAUDE.md warns against.
+  core: LiveCore,
 ): Promise<Readings> {
   const q = `latitude=${lat}&longitude=${lon}`;
 
@@ -150,29 +230,14 @@ export async function fetchReadings(
   // The moon costs nothing: it is arithmetic on today's date, and it was absent from every
   // on-demand city purely because the code that computed it lived in the nightly pass.
   const now = new Date();
-  const moon = core?.wasm_moon_phase(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate());
+  const moon = core.wasm_moon_phase(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate());
 
   const g = shared.status === "fulfilled" ? shared.value : null;
-  if (extras) {
-    if (moon !== undefined) extras.out.moonPhase = moon;
-    if (g?.kp !== undefined) extras.out.kp = g.kp;
-  }
 
   // The largest quake within reach, or nothing. See `quakeNear` in cli/upstreams.ts for why "no
   // event" is absent rather than a hundred: a signal that is maximal for every place on Earth
   // cannot separate any two of them, it only lifts them all.
-  let quake: number | undefined;
-  if (g) {
-    let worst = -1;
-    for (const q of g.quakes) {
-      const km = core ? core.wasm_haversine(lat, lon, q.lat, q.lon) : Infinity;
-      if (km <= 300 && q.magnitude > worst) worst = q.magnitude;
-    }
-    if (worst >= 0) {
-      quake = worst;
-      if (extras) extras.out.quakeMagnitude = worst;
-    }
-  }
+  const quake = g ? quakeFelt(g.quakes, lat, lon, core.wasm_haversine) : undefined;
 
   return {
     pm25: sensorPm25 ?? num(a.pm2_5),
@@ -248,11 +313,20 @@ function medianPm25(rows: any): number | undefined {
   const values: number[] = [];
   for (const row of rows) {
     if (Number(row?.location?.indoor) === 1) continue;
+
+    // Both channels, because the validity rule needs the coarse one to judge the fine one. Reading
+    // only P2 is how this path used to accept the reading the ETL had just thrown away.
+    let pm25: number | null = null;
+    let pm10: number | null = null;
     for (const v of row?.sensordatavalues ?? []) {
       const n = Number.parseFloat(v?.value);
-      // Outside this window is a broken sensor, not clean or catastrophic air.
-      if (v?.value_type === "P2" && Number.isFinite(n) && n > 0 && n <= 500) values.push(n);
+      if (!Number.isFinite(n)) continue;
+      if (v?.value_type === "P2") pm25 = n;
+      if (v?.value_type === "P1") pm10 = n;
     }
+
+    const usable = usablePm25(pm25, pm10);
+    if (usable !== null) values.push(usable);
   }
   if (values.length === 0) return undefined;
   values.sort((a, b) => a - b);

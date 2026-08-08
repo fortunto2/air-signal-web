@@ -12,8 +12,10 @@ import { loadGeoNames } from "./geonames.ts";
 import { bearing, comfortFrom, haversine, merge, moonPhase, scoresFrom, type Readings } from "./wasm.ts";
 import * as up from "./upstreams.ts";
 import { execute, query, update, upsert } from "./d1.ts";
+
 import { storedReadings } from "../src/lib/live.ts";
-import { slug, type SignalKey } from "../src/lib/site.ts";
+import { RANK_MIN_SENSORS, slug, type SignalKey } from "../src/lib/site.ts";
+import { QUIET_AFTER_MINUTES } from "../src/lib/view.ts";
 
 export interface Opts {
   remote?: boolean;
@@ -192,7 +194,11 @@ export async function ingestStations(cities: City[], opts: Opts = {}): Promise<S
             -- Pfullingen is the case: four devices, one of them stuck at 487.8 µg/m³ from a day it
             -- no longer reports on, dragging the median of four to 107 and putting a quiet German
             -- town at the bottom of the ranking. Excluded, the median is 2.7.
-            AND last_seen >= datetime('now', '-3 hours')
+            --
+            -- QUIET_AFTER_MINUTES, not a number of its own: it is the same threshold that draws a
+            -- device hollow on the map and labels it quiet on its page. A device the site calls
+            -- silent should not still be moving its city's median.
+            AND last_seen >= datetime('now', '-${QUIET_AFTER_MINUTES} minutes')
        ),
        med AS (
          SELECT city_id, AVG(pm25) AS m
@@ -227,9 +233,10 @@ export async function ingestStations(cities: City[], opts: Opts = {}): Promise<S
  * Where each measured city sits against the others.
  *
  * Recomputed whenever the scores move, because a percentile is only meaningful against the set it
- * was taken from. Only cities with devices are in the set — a modelled city has no measurement to
- * rank, and mixing the two would rank ten thousand model outputs against nine hundred measurements
- * and call the result a comparison.
+ * was taken from. That set is the same one the ranking page will show — RANK_MIN_SENSORS devices or
+ * more. It used to be every city with at least one, which meant the site's most prominent per-city
+ * comparison was drawn against 420 single-device cities that the ranking itself refuses to list, on
+ * the stated grounds that they are not comparable.
  *
  * 100 is the best. Ties share a position, so a hundred cities on 91 do not fan out across a hundred
  * percentiles and imply an order that is not there.
@@ -241,13 +248,14 @@ export async function rankPercentiles(opts: Opts = {}): Promise<void> {
          SELECT id,
                 PERCENT_RANK() OVER (ORDER BY comfort) AS p
            FROM cities
-          WHERE comfort IS NOT NULL AND station_count > 0
+          WHERE comfort IS NOT NULL AND station_count >= ${RANK_MIN_SENSORS}
        )
        UPDATE cities
           SET percentile = (SELECT CAST(ROUND(p * 100) AS INTEGER) FROM ranked WHERE ranked.id = cities.id)
-        WHERE comfort IS NOT NULL AND station_count > 0;`,
+        WHERE comfort IS NOT NULL AND station_count >= ${RANK_MIN_SENSORS};`,
       // A city that lost its devices or its score keeps a percentile that no longer means anything.
-      `UPDATE cities SET percentile = NULL WHERE comfort IS NULL OR station_count = 0;`,
+      `UPDATE cities SET percentile = NULL
+        WHERE comfort IS NULL OR station_count < ${RANK_MIN_SENSORS};`,
     ],
     { ...opts, label: "percentiles" },
   );
@@ -385,17 +393,14 @@ export async function ingestComfort(
      * with no ordering guesswork.
      */
     const withDevices = new Set(
-      (
-        await query<{ id: number }>(
-          `SELECT id FROM cities WHERE station_count > 0
-             UNION
-           SELECT id FROM cities WHERE rank = 0`,
-          opts,
-        )
-      ).map((r) => r.id),
+      (await query<{ id: number }>("SELECT id FROM cities WHERE station_count > 0", opts)).map(
+        (r) => r.id,
+      ),
     );
     const before = targets.length;
-    targets = targets.filter((c) => withDevices.has(c.id));
+    // `rank === 0` is the largest city in its country, and it is already on the row in memory —
+    // asking D1 for it was a second scan of 62 000 rows plus a temp b-tree to dedupe the overlap.
+    targets = targets.filter((c) => withDevices.has(c.id) || c.rank === 0);
     console.log(
       `comfort: warming ${targets.length} — every city with devices, plus the largest of each ` +
         `country; the other ${before - targets.length} are scored on demand (pass --all for all)`,

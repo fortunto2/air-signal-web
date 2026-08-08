@@ -28,7 +28,7 @@ import { aqi, classifySource, computeComfort, detectEvent, isStale, windDirectio
 import { cityView, ago } from "../../../lib/view";
 import { EXPLAIN } from "../../../lib/explain";
 import { SIGNAL_TO_SLUG } from "../../../lib/guide";
-import { SITE, abs, paths, comfortBand, pmBand } from "../../../lib/site";
+import { SITE, abs, aqiBand, paths, comfortBand, pmBand } from "../../../lib/site";
 
 const { country, city: citySlug } = Astro.params;
 const row = await getCity(country!, citySlug!);
@@ -208,7 +208,7 @@ const schema = [
         <div>
           {/*
             AQI leads, comfort follows.
-            //
+
             The site's argument has not changed: a person does not go outside for PM2.5, and one
             index cannot say "the air is clean but the UV will burn you". But an argument is what
             you make *after* answering the question the reader arrived with, and they arrived
@@ -220,13 +220,13 @@ const schema = [
             adds, rather than the thing it opens with.
           */}
           <div class="score">
-            <div class:list={["value", airAqi && `fg-${pmBand(pm25Now)}`]} data-live="aqi">
+            <div class:list={["value", airAqi && `fg-${aqiBand(airAqi.aqi)}`]} data-live="aqi">
               {airAqi?.aqi ?? "—"}
             </div>
             <div class="of">US AQI</div>
           </div>
           <div class="verdict">
-            <div class:list={["word", airAqi && `fg-${pmBand(pm25Now)}`]}>
+            <div class:list={["word", airAqi && `fg-${aqiBand(airAqi.aqi)}`]}>
               {airAqi?.label ?? v.word}
             </div>
 

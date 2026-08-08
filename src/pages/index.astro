@@ -135,7 +135,7 @@ const stamp = ago(lastIngest);
         ([["Most comfortable right now", best], ["Worst right now", worst]] as const).map(
           ([heading, rows]) =>
             rows.length > 0 && (
-              <div class="rows">
+              <div class="rows is-compact">
                 <div style="display:flex;justify-content:space-between;padding:12px 20px 8px">
                   <div class="eyebrow">{heading}</div>
                   <div class="eyebrow">Comfort</div>

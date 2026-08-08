@@ -11,6 +11,7 @@
  */
 
 import { haversine } from "./wasm.ts";
+import { quakeFelt, usablePm25 } from "../src/lib/live.ts";
 
 const UA = { "user-agent": "air-signal-web/0.1 (+https://airsignal.app)" };
 
@@ -130,24 +131,9 @@ export async function fetchSensorSnapshot(url = SC_NOW): Promise<SensorReading[]
       if (v.value_type === "P2") pm25 = n;
       if (v.value_type === "P1") pm10 = n;
     }
-    /**
-     * Two impossible readings, dropped here rather than left for a median to survive.
-     *
-     * PM2.5 is a subset of PM10 — every particle under 2.5 micrometres is also under ten — so a
-     * device reporting more fine than coarse is reporting a fault, not weather. Sixteen do.
-     *
-     * The second is the same fault wearing a different face. An SDS011 publishes both channels in
-     * 8 359 of 8 376 readings; among the seventeen that publish only PM2.5 the average is
-     * **372 µg/m³**. The coarse channel has died and the fine one is producing noise. Below 50 an
-     * uncorroborated reading changes nothing, so the rule only fires where it would matter.
-     *
-     * This is not a rounding error at the edges. Pfullingen has four devices: two reading 487.8
-     * and 392.4 with no PM10 at all, and two more six hundred metres away reading 2.6 and 1.9. The
-     * median of four came out at 197.5 µg/m³ and put a quiet German town at the bottom of the
-     * ranking on a number that was never in the air.
-     */
-    if (pm25 !== null && pm10 !== null && pm25 > pm10) pm25 = null;
-    if (pm25 !== null && pm10 === null && pm25 > 50) pm25 = null;
+    // See `usablePm25`: the same rule the Worker applies, so the two runtimes cannot disagree
+    // about which devices are broken.
+    pm25 = usablePm25(pm25, pm10);
 
     if (pm25 === null && pm10 === null) continue;
 
@@ -408,41 +394,16 @@ export async function fetchQuakes(): Promise<Quake[]> {
  * Distance is folded in here rather than in Rust: an M6 five hundred kilometres away is not an M6
  * where you are standing, and the normalizer only ever sees a magnitude.
  */
-/**
- * An event signal reports when there is an event, and stays quiet otherwise.
- *
- * This reverses an earlier decision in this file, and the reversal is the point. It used to return
- * -1 for "the feed loaded and found nothing", which `normalize_earthquake` scores as 100 — on the
- * argument that a quiet week is information rather than an absence. That argument is true about the
- * world and false about a comparison.
- *
- * Measured across the 904 scored cities: earthquake averaged **exactly 100**. It is eight per cent
- * of the weight, pinned to the maximum for essentially every place on Earth, so it could not
- * separate any two of them — it only lifted everyone. Together with fire that is thirteen per cent
- * of every score handed out for nothing happening, which is most of why 786 of 904 cities came out
- * "Excellent" and the top 150 of the ranking spanned four points.
- *
- * So: an event within reach is scored, and no event is absent. A city with a fire twenty kilometres
- * away still says so loudly; a city with nothing is judged on the twelve signals that vary.
- */
+/** The strongest quake felt at a point. One implementation, shared with the Worker. */
 export function quakeNear(
   quakes: Quake[] | null,
   lat: number,
   lon: number,
   radiusKm = 500,
 ): number | undefined {
-  if (quakes === null) return undefined; // the feed itself failed — say nothing rather than "calm"
-  let felt = -1;
-  for (const q of quakes) {
-    if (Math.abs(q.lat - lat) > 6 || Math.abs(q.lon - lon) > 8) continue;
-    const d = haversine(lat, lon, q.lat, q.lon);
-    if (d > radiusKm) continue;
-    // Magnitude is logarithmic; attenuating it linearly with distance is crude but monotonic,
-    // and the signal only needs an ordering, not a seismology paper.
-    const effective = q.magnitude * (1 - d / (radiusKm * 1.4));
-    if (effective > felt) felt = effective;
-  }
-  return felt < 0 ? undefined : felt;
+  // The feed itself failing is not the same as a calm day, and must not be reported as one.
+  if (quakes === null) return undefined;
+  return quakeFelt(quakes, lat, lon, haversine, radiusKm);
 }
 
 /**

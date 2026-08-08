@@ -11,7 +11,7 @@ import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import SortBar from "../components/SortBar.astro";
 import { COUNTRY_SORTS, countrySort, listCountries, getLastIngest, getSitemapCounts } from "../lib/db";
-import { SITE, abs, comfortBand, paths, pm25Aqi, pmBand } from "../lib/site";
+import { SITE, abs, aqiBand, comfortBand, paths, pm25Aqi, pmBand } from "../lib/site";
 
 
 
@@ -86,7 +86,7 @@ const schema = [
         base="/countries"
       />
 
-      <div class="rows">
+      <div class="rows is-plain">
         {/*
           Laid out on the row grid rather than as a flex pair, so each label sits over its own
           column. "AQI" was repeating under every number in every row — a unit printed 156 times is
@@ -98,8 +98,7 @@ const schema = [
         */}
         <div class="row is-head">
           <span />
-          <span class="eyebrow">"Country"</span>
-          <span />
+          <span class="eyebrow">Country</span>
           <span class="eyebrow">AQI</span>
           <span class="eyebrow">Comfort</span>
         </div>
@@ -151,7 +150,7 @@ const schema = [
                 AQI needs only a PM2.5 reading, so it appears as soon as any city in the country has
                 been looked at. Two numbers that fail independently beat one that fails alone.
               */}
-              <span class:list={["n", c.pm25_median !== null && `fg-${pmBand(c.pm25_median)}`]}>
+              <span class:list={["n", c.pm25_median !== null && `fg-${aqiBand(pm25Aqi(c.pm25_median))}`]}>
                 {c.pm25_median !== null ? pm25Aqi(c.pm25_median) : "—"}
               </span>
               <span class:list={["n", c.comfort !== null && `fg-${comfortBand(c.comfort)}`]}>

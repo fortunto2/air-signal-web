@@ -139,6 +139,35 @@ const PM25_BREAKS: readonly (readonly [number, number, number, number])[] = [
   [225.5, 325.4, 301, 500],
 ] as const;
 
+/**
+ * An AQI's own band, on the EPA's category boundaries.
+ *
+ * `pmBand` breaks at 10/20/35/55 µg/m³ and is right for a concentration; the EPA's categories break
+ * at 50/100/150/200 AQI. Using the first to colour the second put "52 · Moderate" in the excellent
+ * green, because 9.5 µg/m³ is under pmBand's first threshold and over the EPA's. One number, one
+ * band function, and the colour now agrees with the word beside it.
+ */
+/**
+ * How many devices before a city's number is a measurement rather than a sample.
+ *
+ * Three is a judgement with arithmetic behind it: 420 of the scored cities have exactly one device
+ * and 587 have fewer than three. A single fifty-euro sensor is a reading about the balcony it sits
+ * on. With three there is a median, and a median of three survives one of them being wrong.
+ *
+ * Lives here rather than in db.ts because the ETL needs it too, and db.ts opens with an import of
+ * `cloudflare:workers` that Node cannot load — the same hazard that crashed the ETL once already.
+ */
+export const RANK_MIN_SENSORS = 3;
+
+export function aqiBand(aqi: number | null): Band | "quiet" {
+  if (aqi === null) return "quiet";
+  if (aqi <= 50) return "excellent";
+  if (aqi <= 100) return "good";
+  if (aqi <= 150) return "fair";
+  if (aqi <= 200) return "poor";
+  return "bad";
+}
+
 export function pm25Aqi(v: number): number {
   for (const [cLo, cHi, aLo, aHi] of PM25_BREAKS) {
     if (v <= cHi) return Math.round(((aHi - aLo) / (cHi - cLo)) * (v - cLo) + aLo);

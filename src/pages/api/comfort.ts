@@ -43,9 +43,8 @@ export const GET: APIRoute = async ({ url }) => {
       worst: result.worst,
       scores: result.scores,
       readings: result.readings,
-      // The headline number, computed here rather than in the browser: the EPA breakpoint table
-      // lives in Rust and in two page templates already, and a fourth copy in an island would be
-      // the one that goes stale.
+      // The headline number, computed here rather than in the browser: the browser would need the
+      // EPA breakpoint table, and the copy furthest from the data is the one that goes stale.
       aqi: aqi(result.readings.pm25 ?? null, result.readings.pm10 ?? null),
     },
     200,
