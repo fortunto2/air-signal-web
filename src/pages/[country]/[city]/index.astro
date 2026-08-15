@@ -15,6 +15,7 @@ import SetPlace from "../../../components/SetPlace.tsx";
 import LiveCity from "../../../components/LiveCity.tsx";
 import StationMap from "../../../components/StationMap.tsx";
 import Blame from "../../../components/Blame.astro";
+import Embed from "../../../components/Embed.astro";
 import {
   getCity,
   getCityHistory,
@@ -22,9 +23,8 @@ import {
   getNearbyCities,
   getCpf,
   getSources,
-  saveCityReadings,
 } from "../../../lib/db";
-import { classifySource, computeComfort, detectEvent, isStale, windDirection } from "../../../lib/comfort-server";
+import { classifySource, detectEvent, warmCity, windDirection } from "../../../lib/comfort-server";
 import { cityView, ago } from "../../../lib/view";
 import { EXPLAIN } from "../../../lib/explain";
 import { SIGNAL_TO_SLUG } from "../../../lib/guide";
@@ -53,28 +53,8 @@ const [history, stations, nearby, sources, blame] = await Promise.all([
  * When the upstreams say no, `computeComfort` returns null and the page renders whatever the
  * database has. Yesterday's real numbers beat an error, and beat a blank page by more.
  */
-let fresh = null;
-if (isStale(row.updated_at)) {
-  fresh = await computeComfort(row.lat, row.lon);
-  if (fresh) {
-    row.comfort = fresh.total;
-    row.worst_signal = (fresh.worst ?? null) as typeof row.worst_signal;
-    row.signals_json = JSON.stringify(fresh.scores);
-    row.readings_json = JSON.stringify(fresh.readings);
-    row.updated_at = new Date().toISOString();
-
-    Astro.locals.cfContext?.waitUntil(
-      saveCityReadings(row.id, {
-        comfort: fresh.total,
-        worstSignal: fresh.worst ?? null,
-        signals: fresh.scores as Record<string, number>,
-        readings: fresh.readings,
-      }).catch(() => {
-        // A failed write costs the next visitor one recomputation. It is not worth a 500.
-      }),
-    );
-  }
-}
+const cf = Astro.locals.cfContext;
+await warmCity(row, cf ? cf.waitUntil.bind(cf) : undefined);
 
 const v = cityView(row, history);
 const scores = v.scores;
@@ -534,6 +514,8 @@ const schema = [
           </div>
         )
       }
+
+      <Embed place={`${row.country_slug}/${row.slug}`} name={v.name} path={v.path} />
     </div>
 
     <!--

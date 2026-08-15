@@ -1,0 +1,88 @@
+---
+/**
+ * "Put this on your site."
+ *
+ * The only piece of the site that asks the reader for something, and it asks for the one thing the
+ * site actually needs. Nothing links here. The rewrite exists because a crawler saw an empty shell,
+ * and it now sees a full page — but a page nobody links to is a page Google has no reason to fetch
+ * twice. A widget somebody wants on their own site is a link they place because it is useful to
+ * them, which is the only kind worth having.
+ *
+ * Collapsed by default: a `<details>` costs one line of chrome on a page whose argument is that the
+ * only saturated pixels are measurements, and it opens without a script.
+ */
+import { abs } from "../lib/site";
+
+interface Props {
+  /** `turkey/gazipasa` — what the widget will ask for. */
+  place: string;
+  name: string;
+  path: string;
+}
+
+const { place, name, path } = Astro.props;
+
+const snippet = `<a href="${abs(path)}" data-airsignal="${place}">Air quality in ${name}</a>
+<script async src="${abs("/embed.js")}"><\/script>`;
+---
+
+<details class="embed">
+  <summary>
+    <span class="eyebrow">Put this reading on your site</span>
+    <span class="embed-hint">free, no key, one line</span>
+  </summary>
+
+  <div class="embed-body">
+    <p class="embed-lede">
+      A live bar with {name}'s air quality, updated whenever someone loads your page. It is an
+      ordinary link that upgrades itself, so it still reads correctly if the script never runs.
+    </p>
+
+    <!--
+      Rendered by the very script it is advertising. A preview drawn by hand would be a promise;
+      this is the thing itself, and if the widget breaks the demo breaks with it — which is the
+      only way anyone would find out.
+    -->
+    <div class="embed-demo">
+      <a href={path} data-airsignal={place}>Air quality in {name}</a>
+    </div>
+
+    <pre class="embed-code"><code>{snippet}</code></pre>
+
+    <div class="embed-actions">
+      <button class="seg" type="button" data-copy>Copy</button>
+      <a class="seg" href="/how-it-works#embed" style="text-decoration:none">
+        Options &amp; API
+      </a>
+    </div>
+  </div>
+</details>
+
+<script is:inline>
+  // Inline and tiny: an island for one clipboard call would ship a framework to do what four lines
+  // do. Scoped to this component's own button, so a second copy of it on a page still works.
+  document.querySelectorAll(".embed [data-copy]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const code = button.closest(".embed-body")?.querySelector("code")?.textContent ?? "";
+      try {
+        await navigator.clipboard.writeText(code);
+        button.textContent = "Copied";
+      } catch {
+        // Clipboard is refused without a user gesture on some browsers and over http. Select the
+        // text instead so the reader can copy it themselves rather than press a button that lies.
+        const node = button.closest(".embed-body")?.querySelector("code");
+        if (node) {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+        button.textContent = "Select and copy";
+      }
+      setTimeout(() => (button.textContent = "Copy"), 2400);
+    });
+  });
+</script>
+
+<script is:inline async src="/embed.js"></script>

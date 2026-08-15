@@ -1149,3 +1149,77 @@ a {
   /* No AQI: the home page and the 404, which show a top-few rather than a full table. */
   grid-template-columns: 26px 1fr 150px 52px;
 }
+
+/* ── embed ──────────────────────────────────────────────────────────────── */
+
+/*
+ * The "put this on your site" block. Closed it is one quiet line; open it is the widget rendering
+ * itself, the snippet, and a copy button.
+ *
+ * The code block is the one place on the site where a horizontal scrollbar is correct: wrapping a
+ * script tag makes it unreadable, and nothing here should ever make the page itself scroll sideways.
+ */
+.embed {
+  border-top: 1px solid var(--line-soft);
+  padding: 14px 20px 16px;
+}
+.embed > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  /* A 44 px target on a phone, without pushing the collapsed row taller than a line of text. */
+  padding: 6px 0;
+}
+.embed > summary::-webkit-details-marker {
+  display: none;
+}
+.embed > summary::before {
+  content: "+";
+  font-family: var(--font-mono);
+  color: var(--ink-3);
+}
+.embed[open] > summary::before {
+  content: "−";
+}
+.embed-hint {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.embed-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+}
+.embed-lede {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+.embed-demo {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.embed-code {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  overflow-x: auto;
+  white-space: pre;
+}
+.embed-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

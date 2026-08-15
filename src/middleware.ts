@@ -27,8 +27,19 @@ const NO_CACHE = "no-store";
 
 const CANONICAL_HOST = new URL(SITE.origin).hostname;
 
-/** Hosts that answer but must not rank. `air.miralinka.com` is where the Next version lived. */
-const ALIAS_HOSTS = new Set(["air.miralinka.com", `www.${CANONICAL_HOST}`]);
+/**
+ * Hosts that answer but must not rank, and where each one lands.
+ *
+ * `null` keeps the path, which is what `www` wants: it is the same site under a second spelling and
+ * every URL on it exists here. `air.miralinka.com` is different — it is where the Next version
+ * lived, its paths (`/city/<name>`) do not map onto ours, and the one thing Google knows about it is
+ * its root. It belongs to a site about one stretch of the Turkish coast, so it lands on the town
+ * there rather than on a global home page that answers a question its visitors did not ask.
+ */
+const ALIAS_HOSTS = new Map<string, string | null>([
+  ["air.miralinka.com", paths.city("turkey", "gazipasa")],
+  [`www.${CANONICAL_HOST}`, null],
+]);
 
 /**
  * The q-value this Accept header gives a media type, or -1 if it does not name it.
@@ -107,10 +118,17 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   // the first time someone ran `wrangler dev`.
   const host = context.url.hostname;
   if (ALIAS_HOSTS.has(host)) {
+    const fixed = ALIAS_HOSTS.get(host);
     const to = new URL(context.url);
     to.protocol = "https:";
     to.hostname = CANONICAL_HOST;
     to.port = "";
+    // A fixed destination drops the query too. The old app's `?city=` params mean nothing here, and
+    // carrying them onto a page that ignores them would fork one destination into many URLs.
+    if (fixed !== null && fixed !== undefined) {
+      to.pathname = fixed;
+      to.search = "";
+    }
     return new Response(null, { status: 301, headers: { location: to.href } });
   }
 

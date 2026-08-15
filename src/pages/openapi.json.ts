@@ -108,6 +108,43 @@ export const GET: APIRoute = () => {
           },
         },
       },
+      "/api/widget": {
+        get: {
+          operationId: "getWidget",
+          summary: "A city's reading, shaped for showing on another site",
+          description:
+            "The payload behind /embed.js, and a stable contract in its own right. Smaller than " +
+            "getComfort and pre-decided: band names and hex colours travel with the numbers, " +
+            "because a caller rendering this inside its own stylesheet cannot read ours. Units " +
+            "are named, never formatted — the caller knows its own language. A missing reading " +
+            "is omitted rather than sent as zero.",
+          parameters: [
+            {
+              name: "place",
+              in: "query",
+              required: false,
+              schema: { type: "string", examples: ["turkey/gazipasa"] },
+              description: "`<country>/<city>` as it appears in the URL. Either this or lat+lon.",
+            },
+            { name: "lat", in: "query", required: false, schema: { type: "number" } },
+            {
+              name: "lon",
+              in: "query",
+              required: false,
+              schema: { type: "number" },
+              description: "With lat: resolves to the nearest city that has a page, and names it.",
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Name, country, canonical URL, AQI, comfort, readings and sensor count",
+              content: { "application/json": { schema: { type: "object" } } },
+            },
+            "400": { description: "Neither place nor a valid lat/lon" },
+            "404": { description: "No city there" },
+          },
+        },
+      },
       "/api/cities.geojson": {
         get: {
           operationId: "getCities",

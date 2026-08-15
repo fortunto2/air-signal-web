@@ -19,6 +19,7 @@
 import { comfortFrom, scoresFrom, type Comfort } from "./signals";
 import { fetchReadings, storedReadings, type Extras } from "./live";
 import { core } from "./core";
+import { saveCityReadings, type CityRow } from "./db";
 
 // ── the things Rust knows that the score does not say ───────────────────────
 
@@ -210,4 +211,48 @@ export function isStale(updatedAt: string | null): boolean {
   const t = Date.parse(updatedAt);
   if (!Number.isFinite(t)) return true;
   return Date.now() - t > FRESH_FOR_MINUTES * 60_000;
+}
+
+/**
+ * Bring a stale row up to date in place, and write it back without holding up the response.
+ *
+ * Three callers now want this — the city page, the A2A endpoint and the widget API — and it had
+ * been copied twice already. A third copy is where they start to disagree: the A2A one had quietly
+ * lost the write-back, so an agent warming a cold city paid the half second and threw the result
+ * away, leaving the next visitor to pay it again.
+ *
+ * Mutates `row` because every caller immediately hands it to `cityView`, and returning a copy would
+ * mean each of them remembering to use the copy. Returns whether anything changed, for callers that
+ * care.
+ */
+export async function warmCity(
+  row: CityRow,
+  waitUntil?: (promise: Promise<unknown>) => void,
+): Promise<boolean> {
+  if (!isStale(row.updated_at)) return false;
+
+  const fresh = await computeComfort(row.lat, row.lon);
+  if (!fresh) return false;
+
+  row.comfort = fresh.total;
+  row.worst_signal = (fresh.worst ?? null) as typeof row.worst_signal;
+  row.signals_json = JSON.stringify(fresh.scores);
+  row.readings_json = JSON.stringify(fresh.readings);
+  row.updated_at = new Date().toISOString();
+
+  const write = saveCityReadings(row.id, {
+    comfort: fresh.total,
+    worstSignal: fresh.worst ?? null,
+    signals: fresh.scores as Record<string, number>,
+    readings: fresh.readings,
+  }).catch(() => {
+    // A failed write costs the next visitor one recomputation. It is not worth a 500.
+  });
+
+  // Without a `waitUntil` the caller is somewhere that has none — await, rather than detach a
+  // promise the isolate may be killed before it finishes.
+  if (waitUntil) waitUntil(write);
+  else await write;
+
+  return true;
 }

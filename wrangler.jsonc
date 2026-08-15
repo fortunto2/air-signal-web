@@ -38,10 +38,18 @@
     // Both answer, neither ranks: src/middleware.ts 301s them to the canonical host. `www` is the
     // habit everyone has, and `air.miralinka.com` is where the Next version lived — pointing it
     // here rather than leaving it on Vercel is what transfers its history instead of competing
-    // with it as a duplicate.
+    // with it as a duplicate. It lands on Gazipaşa, the town its parent site is about.
     { "pattern": "www.airsignal.app", "custom_domain": true }
-    // `air.miralinka.com` belongs here too — the middleware already 301s it — but Cloudflare
-    // refuses to attach a custom domain over an existing DNS record, and that hostname still has
-    // the A records pointing at Vercel. Delete those in the dashboard, then add the route back.
+    // `air.miralinka.com` belongs here too — src/middleware.ts already 301s it to Gazipaşa, the
+    // town its parent site is about — but Cloudflare refuses to attach a custom domain over an
+    // existing DNS record:
+    //
+    //   Hostname 'air.miralinka.com' already has externally managed DNS records (A, CNAME, etc).
+    //   Delete them first or try a different hostname. [code: 100117]
+    //
+    // and that hostname is still a CNAME to `447977cad7031e50.vercel-dns-017.com` in the
+    // miralinka.com zone. Delete that record, then add the line back. Left commented rather than
+    // present-and-failing, because a route that cannot attach makes every deploy exit non-zero and
+    // the real failure stops being visible.
   ]
 }

@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getCity, getNearbyCities, search } from "../lib/db";
-import { computeComfort, isStale } from "../lib/comfort-server";
+import { computeComfort, warmCity } from "../lib/comfort-server";
 import { cityView } from "../lib/view";
 import { SITE, abs, paths } from "../lib/site";
 
@@ -168,17 +168,10 @@ async function answerAbout(text: string): Promise<{ text: string; data: Record<s
   }
 
   // Same on-demand path a visitor triggers, so an agent asking about a cold city warms it for the
-  // next reader rather than getting an older answer than a browser would.
-  if (isStale(row.updated_at)) {
-    const fresh = await computeComfort(row.lat, row.lon);
-    if (fresh) {
-      row.comfort = fresh.total;
-      row.worst_signal = (fresh.worst ?? null) as typeof row.worst_signal;
-      row.signals_json = JSON.stringify(fresh.scores);
-      row.readings_json = JSON.stringify(fresh.readings);
-      row.updated_at = new Date().toISOString();
-    }
-  }
+  // next reader rather than getting an older answer than a browser would. It used to recompute
+  // without storing the result, which meant every agent question about a cold city paid the half
+  // second again and left nothing behind.
+  await warmCity(row);
 
   const v = cityView(row, []);
   return {
