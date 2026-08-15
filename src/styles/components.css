@@ -1223,3 +1223,20 @@ a {
   gap: 8px;
   align-items: center;
 }
+
+/*
+ * The home page's h1. Modest on purpose.
+ *
+ * It sits above an instrument panel whose numbers are the point, and a headline set at heading
+ * size would fight them for the one screen the page gets to make its argument. So it reads as a
+ * standfirst and carries the heading semantics — which is what was missing, not a bigger font.
+ */
+.lede-h1 {
+  font-size: clamp(15px, 2.1vw, 18px);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--ink-2);
+  max-width: 54ch;
+  margin: 0 0 16px;
+}

@@ -23,6 +23,7 @@ export const GET: APIRoute = () => {
         "service-meta": [
           { href: abs("/.well-known/agent-card.json"), type: "application/json", title: "A2A agent card" },
           { href: abs("/llms.txt"), type: "text/plain", title: "llms.txt" },
+          { href: abs("/llms-full.txt"), type: "text/plain", title: "llms-full.txt" },
         ],
         license: [
           { href: "https://opendatacommons.org/licenses/odbl/", title: "Sensor.Community and OpenStreetMap data: ODbL" },

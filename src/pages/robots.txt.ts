@@ -41,6 +41,7 @@ export const GET: APIRoute = () => {
     ...AGENTS.flatMap((agent) => [`User-agent: ${agent}`, "Allow: /", ""]),
     "# Entry points for agents:",
     "#   /llms.txt                    what this site is and how it is computed",
+    "#   /llms-full.txt               the whole guide, so following the index is not needed",
     "#   Accept: text/markdown        any page, as Markdown instead of HTML",
     "#   /openapi.json                the HTTP API, described. No key.",
     "#   /a2a                         A2A over JSON-RPC 2.0, method message/send",

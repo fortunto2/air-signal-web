@@ -14,7 +14,7 @@ import LiveCity from "../components/LiveCity.tsx";
 import MyPlace from "../components/MyPlace.tsx";
 import { getComfortExtremes, getLastIngest, getSitemapCounts } from "../lib/db";
 import { cityView, ago } from "../lib/view";
-import { SITE, paths } from "../lib/site";
+import { SIGNALS, SITE, abs, paths } from "../lib/site";
 
 const [{ best, worst }, counts, lastIngest] = await Promise.all([
   getComfortExtremes(6),
@@ -41,6 +41,59 @@ const schema = [
     description,
     offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
   },
+  /*
+   * The corpus, described once at the root.
+   *
+   * City pages each declare their own `Dataset`, which says what one place measured. Nothing said
+   * what the whole thing is — so a model asked "where can I get global PM2.5 with an open licence"
+   * had to infer it from ten thousand individual readings. This is the answer stated plainly:
+   * scale, sources, licence, and the door to fetch it through.
+   *
+   * The counts come from the same query the sitemap uses, so this cannot claim coverage the site
+   * does not have.
+   */
+  {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    name: `${SITE.name} — live air quality and outdoor comfort`,
+    url: SITE.origin,
+    description:
+      `PM2.5 and PM10 from ${counts.stations.toLocaleString("en-US")} Sensor.Community devices, ` +
+      `merged with an atmospheric model and scored on fourteen environmental signals for ` +
+      `${counts.cities.toLocaleString("en-US")} cities. Updated daily, and on demand when a page ` +
+      `is opened.`,
+    license: "https://opendatacommons.org/licenses/odbl/",
+    isAccessibleForFree: true,
+    creator: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+    temporalCoverage: lastIngest ? `../${lastIngest}` : undefined,
+    variableMeasured: SIGNALS.map((s) => ({ "@type": "PropertyValue", name: s.name })),
+    isBasedOn: [
+      { "@type": "Dataset", name: "Sensor.Community", url: "https://sensor.community/" },
+      { "@type": "Dataset", name: "Open-Meteo", url: "https://open-meteo.com/" },
+      { "@type": "Dataset", name: "USGS earthquakes", url: "https://earthquake.usgs.gov/" },
+      { "@type": "Dataset", name: "NOAA SWPC", url: "https://www.swpc.noaa.gov/" },
+    ],
+    distribution: [
+      {
+        "@type": "DataDownload",
+        encodingFormat: "application/json",
+        contentUrl: abs("/api/widget?place=turkey/gazipasa"),
+        description: "One city, ready to render. No key.",
+      },
+      {
+        "@type": "DataDownload",
+        encodingFormat: "application/geo+json",
+        contentUrl: abs("/api/stations.geojson"),
+        description: "Every community sensor as GeoJSON points.",
+      },
+      {
+        "@type": "DataDownload",
+        encodingFormat: "text/markdown",
+        contentUrl: abs("/index.md"),
+        description: "Any page also answers as Markdown by appending .md.",
+      },
+    ],
+  },
 ];
 
 const stamp = ago(lastIngest);
@@ -56,6 +109,21 @@ const stamp = ago(lastIngest);
   <main class="wrap" style="padding-top:22px" id="main">
     <div class="app">
       <Bar search={`Search ${counts.cities.toLocaleString("en-US")} cities`} />
+
+      {/*
+        The one heading on the page, and it was missing entirely.
+
+        Every city page had an h1; the page they all hang off started at h2, so the document a
+        crawler read opened with "Colour belongs to the data" — a design statement — and a reader
+        navigating by heading found nothing at all at the top. The brand mark is not a substitute:
+        it is a link back to here, and the fallback branch used to spell it as an h1, which says
+        the page is about our name rather than about what it measures.
+
+        Deliberately says "air quality" first and then refuses it, because that is the argument.
+      */}
+      <h1 class="lede-h1">
+        Live air quality — and the thirteen other signals that decide what it is like outside
+      </h1>
 
       {
         heroView ? (
@@ -100,11 +168,7 @@ const stamp = ago(lastIngest);
           </div>
         ) : (
           <div style="padding:34px 20px">
-            <h1>
-              {SITE.brand.head}
-              <span style="color:var(--accent)">{SITE.brand.tail}</span>
-            </h1>
-            <p class="lede" style="margin-top:14px">{description}</p>
+            <p class="lede">{description}</p>
             {/*
               The comfort pass has not run yet — the model upstream has a daily ceiling and the
               scores arrive with the next scheduled ingest. The sensors are already here, so say
