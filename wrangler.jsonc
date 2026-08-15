@@ -39,17 +39,15 @@
     // habit everyone has, and `air.miralinka.com` is where the Next version lived — pointing it
     // here rather than leaving it on Vercel is what transfers its history instead of competing
     // with it as a duplicate. It lands on Gazipaşa, the town its parent site is about.
-    { "pattern": "www.airsignal.app", "custom_domain": true }
-    // `air.miralinka.com` belongs here too — src/middleware.ts already 301s it to Gazipaşa, the
-    // town its parent site is about — but Cloudflare refuses to attach a custom domain over an
-    // existing DNS record:
+    { "pattern": "www.airsignal.app", "custom_domain": true },
+    // Where the Next version lived, and the only page Google had ever indexed for the words "air
+    // signal" — a dead app answering "City not found" at position 8. It 301s to Gazipaşa rather
+    // than to the home page: it belongs to a site about one stretch of the Turkish coast, and a
+    // global front page answers a question its visitors did not ask.
     //
-    //   Hostname 'air.miralinka.com' already has externally managed DNS records (A, CNAME, etc).
-    //   Delete them first or try a different hostname. [code: 100117]
-    //
-    // and that hostname is still a CNAME to `447977cad7031e50.vercel-dns-017.com` in the
-    // miralinka.com zone. Delete that record, then add the line back. Left commented rather than
-    // present-and-failing, because a route that cannot attach makes every deploy exit non-zero and
-    // the real failure stops being visible.
+    // Attaching this needed the Vercel CNAME deleted from the miralinka.com zone first; Cloudflare
+    // refuses a custom domain over an existing record with code 100117. If that error comes back,
+    // something has recreated the record.
+    { "pattern": "air.miralinka.com", "custom_domain": true }
   ]
 }
