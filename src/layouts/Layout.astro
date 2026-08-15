@@ -1,5 +1,5 @@
 ---
-import { SITE, DEFAULT_LANG, LANGS, abs } from "../lib/site";
+import { SITE, DEFAULT_LANG, LANGS, abs, paths } from "../lib/site";
 import "../styles/tokens.css";
 import "../styles/components.css";
 
@@ -19,9 +19,26 @@ interface Props {
   noindex?: boolean;
   /** When the numbers on the page were computed. Rendered in the footer, honestly. */
   updatedAt?: Date | null;
+  /**
+   * Whether to show the "put this on your site" strip above the footer.
+   *
+   * Off for a page that already makes the offer better. A city page carries the snippet for its own
+   * city, pre-filled — asking again ten centimetres below it, in weaker and more general terms, is
+   * two requests where the page had earned one.
+   */
+  pitch?: boolean;
 }
 
-const { title, description, path, schema = [], canonicalTo, noindex, updatedAt } = Astro.props;
+const {
+  title,
+  description,
+  path,
+  schema = [],
+  canonicalTo,
+  noindex,
+  updatedAt,
+  pitch = true,
+} = Astro.props;
 const canonical = abs(canonicalTo ?? path);
 
 /**
@@ -109,6 +126,32 @@ const graph = [
   <body>
     <a class="skip" href="#main">Skip to the readings</a>
     <slot />
+
+    {/*
+      The one thing this site asks for, asked on every page.
+
+      Nothing links here — Google had crawled none of sixty-odd thousand pages, and a page nobody
+      links to is one it has no reason to fetch twice. The measurement is the only thing here that
+      another site wants, so it is the only thing worth trading for a link.
+
+      Above the footer rather than inside it, because a request buried among licence credits is a
+      request nobody reads. One line, one link, no colour: the page's saturated pixels stay
+      reserved for measurements, which is the argument the whole design rests on.
+    */}
+    {
+      // Not on the page it points at, which would be a link to where the reader already is.
+      pitch && path !== paths.embed() && (
+        <aside class="wrap">
+          <a class="pitch" href={paths.embed()}>
+            <span class="pitch-say">
+              <strong>Put live air quality on your own site.</strong> One line of HTML, no key, no
+              signup — for any city here.
+            </span>
+            <span class="pitch-go">Get the code →</span>
+          </a>
+        </aside>
+      )
+    }
 
     <footer class="wrap foot">
       <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:baseline">

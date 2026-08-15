@@ -1,0 +1,264 @@
+---
+/**
+ * The widget, explained — and the page the footer banner points every visitor at.
+ *
+ * It exists for two reasons, and the second is the one that pays. First: the per-city block is a
+ * `<details>` that only opens if someone thinks to click it, which is the wrong place to explain
+ * options, licensing and the API. Second: "free air quality widget for my website" is a question
+ * people actually type, and this site had no page that answered it — the measurement is the only
+ * thing here another site wants, so the page offering it should be findable on its own.
+ *
+ * Every example on this page is rendered by the real script against the real API. A hand-drawn
+ * preview would be a promise; this breaks when the widget breaks, which is the only way anyone
+ * would find out.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import { getComfortExtremes, getSitemapCounts } from "../lib/db";
+import { SITE, abs, paths } from "../lib/site";
+
+const [{ best }, counts] = await Promise.all([getComfortExtremes(3), getSitemapCounts()]);
+
+// A real city with real sensors, so the examples on this page are measurements rather than a
+// placeholder that would quietly rot into a 404 the day someone renamed a slug.
+const sample = best[0];
+const place = sample ? `${sample.country_slug}/${sample.slug}` : "turkey/gazipasa";
+const sampleName = sample?.name ?? "Gazipaşa";
+const samplePath = sample ? paths.city(sample.country_slug, sample.slug) : "/turkey/gazipasa";
+
+const description =
+  "Put live air quality on your own site: one line of HTML, no key, no signup. PM2.5 and AQI " +
+  "from community sensors for 62,000 cities, as a widget or as JSON.";
+
+const bar = `<a href="${abs(samplePath)}" data-airsignal="${place}">Air quality in ${sampleName}</a>
+<script async src="${abs("/embed.js")}"><\/script>`;
+
+const card = `<a href="${abs(samplePath)}" data-airsignal="${place}" data-airsignal-variant="card">Air quality in ${sampleName}</a>`;
+
+const coords = `<a href="${SITE.origin}" data-airsignal="36.27, 32.31">Air quality nearby</a>`;
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: "Put live air quality on your website",
+    description,
+    url: abs("/embed"),
+    author: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+  },
+  /*
+   * The questions people ask before pasting a script tag onto their own site, answered where they
+   * are also visible on the page — markup describing text a reader cannot see is against Google's
+   * guidelines, and would be a strange way to open a page about being trustworthy enough to embed.
+   */
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "Is the air quality widget free?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "Yes. No key, no signup, no limit stated anywhere. The underlying data is open — " +
+            "Sensor.Community under ODbL and Open-Meteo — and charging for a view of it would be " +
+            "a strange thing to do.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Does it slow my page down?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "The script is about 4 KB, loads with async so it never blocks rendering, and makes " +
+            "one request that is cached at the edge for ten minutes. The reading is written into " +
+            "a link that is already in your HTML, so nothing moves on the page when it arrives.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "What happens if the script fails or JavaScript is off?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "The snippet is an ordinary link. Without the script it reads as a link and still " +
+            "works; with it, it becomes a live bar. Nothing on your page breaks either way.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Where does the data come from?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "PM2.5 and PM10 from Sensor.Community devices near the place, reconciled against the " +
+            "Open-Meteo atmospheric model where the two disagree. Where there are no sensors the " +
+            "answer is modelled, and the widget says so.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Can I get the numbers as JSON instead?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "Yes, at /api/widget?place=country/city or with lat and lon. It returns AQI, comfort, " +
+            "and the readings in their own units, with CORS open. The full API is described at " +
+            "/openapi.json.",
+        },
+      },
+    ],
+  },
+];
+---
+
+<Layout title={`Free air quality widget for your website — ${SITE.name}`} description={description} path="/embed" schema={schema}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">For your site</div>
+        <h1 style="font-size:27px;margin:5px 0 0">Put live air quality on your own page</h1>
+        <p class="lede" style="margin-top:12px;font-size:15.5px">
+          One line of HTML. No key, no signup, no account. It works for any of the
+          <span class="num">{counts.cities.toLocaleString("en-US")}</span> cities on this site, and
+          for any coordinate on Earth.
+        </p>
+      </div>
+
+      <section style="padding:20px;border-top:1px solid var(--line-soft)">
+        <div class="eyebrow" style="margin-bottom:10px">The inline bar</div>
+        <div class="embed-demo">
+          <a href={samplePath} data-airsignal={place}>Air quality in {sampleName}</a>
+        </div>
+        <pre class="embed-code" style="margin-top:12px"><code>{bar}</code></pre>
+        <div class="embed-actions" style="margin-top:12px">
+          <button class="seg" type="button" data-copy>Copy</button>
+        </div>
+        <p style="margin-top:12px;font-size:14px;color:var(--ink-2);max-width:64ch">
+          The script tag goes in once, anywhere on the page. Every link with
+          <code>data-airsignal</code> on it becomes a bar.
+        </p>
+      </section>
+
+      <section style="padding:20px;border-top:1px solid var(--line-soft)">
+        <div class="eyebrow" style="margin-bottom:10px">The card, for a sidebar</div>
+        <div class="embed-demo">
+          <a href={samplePath} data-airsignal={place} data-airsignal-variant="card">
+            Air quality in {sampleName}
+          </a>
+        </div>
+        <pre class="embed-code" style="margin-top:12px"><code>{card}</code></pre>
+      </section>
+
+      <section style="padding:20px;border-top:1px solid var(--line-soft)">
+        <div class="eyebrow" style="margin-bottom:10px">By coordinate, if you do not know the slug</div>
+        <div class="embed-demo">
+          <a href={SITE.origin} data-airsignal="36.27, 32.31">Air quality nearby</a>
+        </div>
+        <pre class="embed-code" style="margin-top:12px"><code>{coords}</code></pre>
+        <p style="margin-top:12px;font-size:14px;color:var(--ink-2);max-width:64ch">
+          It resolves to the nearest city that has a page and names it, so your visitor sees a place
+          rather than a pair of numbers.
+        </p>
+      </section>
+
+      <section style="padding:20px;border-top:1px solid var(--line-soft)">
+        <div class="eyebrow" style="margin-bottom:12px">Options</div>
+        <dl class="opt">
+          <dt><code>data-airsignal</code></dt>
+          <dd><code>country/city</code> as it appears in the URL, or <code>lat, lon</code>.</dd>
+
+          <dt><code>data-airsignal-variant</code></dt>
+          <dd><code>bar</code> (default) or <code>card</code>.</dd>
+
+          <dt><code>data-airsignal-theme</code></dt>
+          <dd>
+            <code>auto</code> (default, follows the reader's system setting), <code>light</code> or
+            <code>dark</code>. Only the numbers change colour — everything else inherits your
+            typography on purpose.
+          </dd>
+
+          <dt><code>href</code></dt>
+          <dd>
+            Yours wins; one is filled in only if you leave it out. Keeping it is the point: the
+            reading is why you paste it, the link is what we get for it.
+          </dd>
+        </dl>
+      </section>
+
+      <section style="padding:20px;border-top:1px solid var(--line-soft)">
+        <div class="eyebrow" style="margin-bottom:10px">Or just the numbers</div>
+        <p style="font-size:14px;color:var(--ink-2);max-width:64ch;margin:0 0 12px">
+          If you would rather render it yourself, the same payload is JSON with CORS open. Band
+          names and hex colours travel with the numbers, because a caller drawing this inside its
+          own stylesheet cannot read ours. Units are named but never formatted — you know your own
+          language, we do not.
+        </p>
+        <pre class="embed-code"><code>GET {abs(`/api/widget?place=${place}`)}
+GET {abs("/api/widget?lat=36.27&lon=32.31")}</code></pre>
+        <p style="margin-top:12px;font-size:14px">
+          <a href="/openapi.json">The whole API, described</a> · <a href={paths.howItWorks()}>how the
+          score is computed</a>
+        </p>
+      </section>
+
+      <section style="padding:20px;border-top:1px solid var(--line-soft)">
+        <div class="eyebrow" style="margin-bottom:12px">Questions</div>
+        <dl class="opt">
+          <dt>Is it free?</dt>
+          <dd>
+            Yes. No key, no signup. The underlying data is open — Sensor.Community under ODbL and
+            Open-Meteo — and charging for a view of it would be a strange thing to do.
+          </dd>
+
+          <dt>Will it slow my page down?</dt>
+          <dd>
+            About 4 KB, loaded <code>async</code> so it never blocks rendering, and one request
+            cached at the edge for ten minutes. The reading is written into a link already in your
+            HTML, so nothing on the page moves when it arrives.
+          </dd>
+
+          <dt>What if the script fails, or JavaScript is off?</dt>
+          <dd>
+            The snippet is an ordinary link. Without the script it reads as a link and still works.
+            Nothing on your page breaks either way.
+          </dd>
+
+          <dt>Where do the numbers come from?</dt>
+          <dd>
+            PM2.5 and PM10 from Sensor.Community devices near the place, reconciled against the
+            Open-Meteo model where the two disagree. Where there are no sensors the answer is
+            modelled, and the widget says so rather than pretending.
+          </dd>
+
+          <dt>What do I owe for using it?</dt>
+          <dd>
+            Keep the link. The data is ODbL, which asks that its source be credited, and the
+            <code>airsignal.app ↗</code> mark in the widget is how that is discharged.
+          </dd>
+        </dl>
+      </section>
+    </div>
+  </main>
+</Layout>
+
+<script is:inline>
+  document.querySelectorAll("[data-copy]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const code = button.closest("section")?.querySelector("code")?.textContent ?? "";
+      try {
+        await navigator.clipboard.writeText(code);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select and copy";
+      }
+      setTimeout(() => (button.textContent = "Copy"), 2400);
+    });
+  });
+</script>
+
+<script is:inline async src="/embed.js"></script>

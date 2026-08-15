@@ -86,6 +86,11 @@ export const paths = {
   ranking: () => `/ranking`,
   howItWorks: () => `/how-it-works`,
   /**
+   * The widget, explained. Note this is `/embed` and the script is `/embed.js` — two routes, and
+   * the static page wins over `[country].astro` the same way `/map` and `/ranking` do.
+   */
+  embed: () => `/embed`,
+  /**
    * The guide. `/guide` is the index; `/guide/<signal>` is one signal explained at length.
    *
    * Note the shape: a signal's article lives under the guide, not at the root. A reader arriving

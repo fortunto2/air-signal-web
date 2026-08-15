@@ -178,12 +178,16 @@ const schema = [
 ];
 ---
 
+{/* `pitch={false}`: the <Embed> block near the bottom already offers this city's own snippet,
+    pre-filled. The footer strip would ask again ten centimetres below it, in weaker and more
+    general terms — two requests where the page had earned one. */}
 <Layout
   title={v.title}
   description={v.description}
   path={v.path}
   schema={schema}
   updatedAt={v.updatedAt}
+  pitch={false}
 >
   <main class="wrap" style="padding-top:22px" id="main">
     <div class="app">

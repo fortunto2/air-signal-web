@@ -18,6 +18,9 @@ export const GET: APIRoute = async () => {
     { loc: paths.howItWorks(), priority: "0.7" },
     { loc: paths.ranking(), priority: "0.8" },
     { loc: paths.map(), priority: "0.8" },
+    // The one page here that asks the reader for something. It answers a question people type
+    // ("free air quality widget for my website"), so it earns a place beside the guide.
+    { loc: paths.embed(), priority: "0.7" },
     { loc: "/", priority: "1.0" },
   ];
 

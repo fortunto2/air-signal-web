@@ -11,7 +11,7 @@
  * Collapsed by default: a `<details>` costs one line of chrome on a page whose argument is that the
  * only saturated pixels are measurements, and it opens without a script.
  */
-import { abs } from "../lib/site";
+import { abs, paths } from "../lib/site";
 
 interface Props {
   /** `turkey/gazipasa` — what the widget will ask for. */
@@ -51,9 +51,7 @@ const snippet = `<a href="${abs(path)}" data-airsignal="${place}">Air quality in
 
     <div class="embed-actions">
       <button class="seg" type="button" data-copy>Copy</button>
-      <a class="seg" href="/how-it-works#embed" style="text-decoration:none">
-        Options &amp; API
-      </a>
+      <a class="seg" href={paths.embed()} style="text-decoration:none"> Options &amp; API </a>
     </div>
   </div>
 </details>
