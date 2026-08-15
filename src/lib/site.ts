@@ -18,6 +18,16 @@ export const SITE = {
   analytics: { src: "https://analytics.superduperai.co/sda.js", source: "airsignal" },
 } as const;
 
+/**
+ * The city every embed example is drawn from when a page has no better one of its own.
+ *
+ * Stuttgart, and not arbitrarily: Sensor.Community started there as OK Lab Stuttgart, and it has
+ * twenty devices — so the example is a dense real measurement rather than a lone sensor on someone's
+ * balcony. A constant rather than "whatever ranks first today", because an example that changes
+ * under the reader is one they cannot check against what they just pasted.
+ */
+export const EMBED_SAMPLE = { place: "germany/stuttgart", name: "Stuttgart" } as const;
+
 /** Languages, English first. `ru` and `tr` land once the English tree is stable. */
 export const LANGS = ["en"] as const;
 export const DEFAULT_LANG = "en";

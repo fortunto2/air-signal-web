@@ -13,15 +13,25 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import Spectrum from "../components/Spectrum.astro";
-import { getCitiesInCountry, getCountry, parseSignals } from "../lib/db";
+import { getCitiesInCountry, getCountry, getDensestCity, parseSignals } from "../lib/db";
 import { SITE, abs, aqiBand, comfortBand, paths, pm25Aqi, pmBand } from "../lib/site";
 
 const country = await getCountry(Astro.params.country!);
 if (!country) return new Response(null, { status: 404 });
 
-// Sensor cities first, then by population. 400 is where a page stops being a list and
+// Two independent queries, so they go together — awaiting them in sequence would put a second
+// round trip on the critical path of all 156 country pages for no reason.
+//
+// `cities`: sensor cities first, then by population. 400 is where a page stops being a list and
 // starts being a data dump; the note below says how many were left out.
-const cities = await getCitiesInCountry(country.id, 400);
+//
+// `pitchCity`: the embed strip's badge, drawn from this country rather than the site-wide default —
+// a reader on /germany should see a German number, and the strongest one the country has. See
+// getDensestCity for why this is its own query and not a max over the list.
+const [cities, pitchCity] = await Promise.all([
+  getCitiesInCountry(country.id, 400),
+  getDensestCity(country.id),
+]);
 
 // The list is ordered sensor-cities-first by comfort, so both extremes are almost always already
 // in it. Looking them up here costs a map build; fetching them cost two queries and a round trip
@@ -99,6 +109,8 @@ const schema = [
   path={paths.country(country.slug)}
   schema={schema}
   updatedAt={country.updated_at ? new Date(country.updated_at) : null}
+  pitchPlace={pitchCity ? `${country.slug}/${pitchCity.slug}` : undefined}
+  pitchName={pitchCity?.name}
 >
   <main class="wrap" style="padding-top:22px" id="main">
     <div class="app">

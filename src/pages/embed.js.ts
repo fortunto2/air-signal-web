@@ -50,9 +50,18 @@ export const GET: APIRoute = () => {
     el.textContent = [
       ".airsignal{display:inline-flex;align-items:center;gap:.6em;flex-wrap:wrap;",
       "font:inherit;font-size:.9em;line-height:1.35;text-decoration:none;color:inherit;",
+      // max-width, and it is not cosmetic: without it the bar is as wide as its longest line of
+      // text, so a long city name in a 320px sidebar pushes the host's whole page sideways. A
+      // widget that can do that to somebody else's site is a bug on their site, not ours to shrug
+      // at — and it is the one failure they would never trace back to us.
+      "max-width:100%;box-sizing:border-box;",
       "padding:.35em .6em;border:1px solid rgba(128,128,128,.28);border-radius:.5em;vertical-align:middle}",
       ".airsignal:hover{border-color:rgba(128,128,128,.5)}",
       ".airsignal-card{display:flex;flex-direction:column;align-items:flex-start;gap:.3em;padding:.7em .85em}",
+      // Tighter than the bar in every dimension: it has to survive being dropped into a heading or
+      // a table cell without changing that row's height.
+      ".airsignal-badge{gap:.4em;padding:.15em .45em;font-size:.82em;border-radius:.35em}",
+      ".airsignal-badge-place{opacity:.72}",
       ".airsignal-n{font-variant-numeric:tabular-nums;font-weight:600}",
       ".airsignal-dim{opacity:.62}",
       ".airsignal-place{font-weight:600}",
@@ -73,9 +82,55 @@ export const GET: APIRoute = () => {
     return typeof v === "number" ? v.toFixed(digits === undefined ? 1 : digits) : null;
   }
 
+  // What a raw reading is called and what it is measured in. AQI and comfort are not here: they
+  // are indices, they carry their own band, and they are handled above.
+  var UNITS = {
+    pm25: { label: "PM2.5", unit: " µg/m³", digits: 1 },
+    pm10: { label: "PM10", unit: " µg/m³", digits: 1 },
+    temperature: { label: "Temp", unit: "°C", digits: 0 },
+    wind: { label: "Wind", unit: " m/s", digits: 1 },
+    wave: { label: "Waves", unit: " m", digits: 1 },
+    sea_temp: { label: "Sea", unit: "°C", digits: 0 },
+    uv: { label: "UV", unit: "", digits: 1 },
+    humidity: { label: "Humidity", unit: "%", digits: 0 },
+  };
+
+  /**
+   * The one number a badge shows.
+   *
+   * Colour only where a band exists — that is AQI and comfort. A site rule this borrows rather than
+   * invents: a colour here means a band, so painting humidity green would be inventing a judgement
+   * about 68% that nobody made. Raw readings render in whatever colour the host page uses for text.
+   */
+  function pick(data, want) {
+    if (want === "comfort" && data.comfort) {
+      return {
+        text: data.comfort.value + "/100",
+        band: data.comfort.band,
+        title: "Comfort " + data.comfort.value + " out of 100 (" + data.comfort.word + ")",
+      };
+    }
+    if (UNITS[want]) {
+      var v = (data.readings || {})[want];
+      if (typeof v !== "number") return null;
+      var u = UNITS[want];
+      var shown = v.toFixed(u.digits) + u.unit;
+      return { text: shown, band: null, title: u.label + " " + shown };
+    }
+    if (data.aqi) {
+      return {
+        text: String(data.aqi.value),
+        band: data.aqi.band,
+        title: "Air quality index " + data.aqi.value + " (" + data.aqi.label + ")",
+      };
+    }
+    return null;
+  }
+
   function render(node, data) {
     var tone = dark(node) ? "dark" : "light";
-    var card = node.getAttribute("data-airsignal-variant") === "card";
+    var variant = node.getAttribute("data-airsignal-variant") || "bar";
+    var card = variant === "card";
     var doc = document.createDocumentFragment();
 
     function span(cls, text, color) {
@@ -84,6 +139,38 @@ export const GET: APIRoute = () => {
       if (color) s.style.color = color;
       s.textContent = text;
       return s;
+    }
+
+    /*
+     * The badge. One place, one number, and nothing else.
+     *
+     * It exists because the bar is still a sentence, and a sentence does not fit in a sidebar
+     * heading, a table cell or a nav. \`data-airsignal-show\` chooses which number, because the
+     * question differs by site: a cycling club wants AQI, a beach blog wants the waves, and a
+     * greenhouse wants the humidity.
+     *
+     * The mark is an arrow rather than a wordmark at this size — the destination is the link's own
+     * href, the title spells out the credit, and eight characters of "airsignal.app" in a badge
+     * this small would be most of the badge.
+     */
+    if (variant === "badge") {
+      var one = pick(data, node.getAttribute("data-airsignal-show") || "aqi");
+      if (!one) return;
+
+      doc.appendChild(span("airsignal-badge-place", data.name));
+      doc.appendChild(span("airsignal-n", one.text, one.band ? BAND[one.band][tone] : null));
+      doc.appendChild(span("airsignal-mark", "↗"));
+
+      node.textContent = "";
+      node.appendChild(doc);
+      node.className = (node.className ? node.className + " " : "") + "airsignal airsignal-badge";
+      // The words the badge had no room for. Also what a screen reader announces, so the number is
+      // never read out as a bare digit with no idea what it measures.
+      if (!node.getAttribute("title")) {
+        node.setAttribute("title", one.title + " in " + data.name + " — airsignal.app");
+      }
+      node.setAttribute(MOUNTED, "1");
+      return;
     }
 
     // Built with createElement rather than innerHTML on purpose: the payload carries a city name

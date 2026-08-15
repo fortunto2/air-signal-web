@@ -176,6 +176,32 @@ export async function getCitiesInCountry(countryId: number, limit = 200): Promis
   return results ?? [];
 }
 
+/**
+ * The country's densest city — the one with the most community devices.
+ *
+ * Its only caller is the embed strip's badge, and it is a query rather than a scan of the list the
+ * page already has because that list is capped at 400 rows and ordered by comfort. Picking the max
+ * from it gave Germany's example as Bremen (15 devices) while Stuttgart sat at 20 outside the
+ * window, and Turkey's as Etlik, a suburb with one. An example advertising the widget should be
+ * the strongest measurement the country has, not whichever town was pleasant this morning.
+ *
+ * Returns null where a country has no devices at all, which is most of the map outside Europe.
+ */
+export async function getDensestCity(countryId: number): Promise<CityRow | null> {
+  return (
+    (await DB()
+      .prepare(
+        `SELECT c.*, co.slug AS country_slug, co.name AS country
+           FROM cities c JOIN countries co ON co.id = c.country_id
+          WHERE c.country_id = ?1 AND c.station_count > 0
+          ORDER BY c.station_count DESC
+          LIMIT 1`,
+      )
+      .bind(countryId)
+      .first<CityRow>()) ?? null
+  );
+}
+
 // ── cities ──────────────────────────────────────────────────────────────────
 
 /**

@@ -1246,43 +1246,93 @@ a {
 /*
  * The one thing the site asks for, on every page above the footer.
  *
- * Near-neutral on purpose. Every convention for a banner like this — a coloured bar, a filled
+ * Open rather than collapsed, and it earns the extra centimetre: the badge is live, the snippet is
+ * the one that drew it, and the button copies that snippet. A reader decides without clicking.
+ *
+ * Near-neutral by construction. Every convention for a strip like this — a coloured bar, a filled
  * button — would put the most saturated pixels on the page onto an advertisement, on a site whose
- * entire argument is that colour belongs to the data. So it is a hairline box that reads as part
- * of the furniture until it is hovered.
+ * argument is that colour belongs to the data. The badge's number is the only colour here, and it
+ * is a measurement.
  */
 .pitch {
-  display: flex;
-  gap: 14px;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin: 28px 0 0;
-  padding: 13px 16px;
+  margin: 30px auto 0;
+  padding: 14px 16px 15px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink-2);
   font-size: 14px;
-  text-decoration: none;
 }
-.pitch:hover,
-.pitch:focus-visible {
-  border-color: var(--ink-3);
+.pitch-head {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-bottom: 11px;
 }
-.pitch strong {
+.pitch-head strong {
   color: var(--ink);
   font-weight: 600;
 }
-.pitch-say {
-  max-width: 68ch;
+.pitch-dim {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.pitch-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* Never wider than the strip, whichever variant the script decides to draw. */
+.pitch-demo {
+  text-decoration: none;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+}
+/*
+ * The snippet, one line, clipped rather than wrapped.
+ *
+ * It is 180 characters and it is not here to be read — it is here to prove the button copies
+ * something real. Wrapping it would turn a strip into a paragraph of angle brackets; the full text
+ * is on /embed, and the clipboard has all of it either way.
+ */
+.pitch-code {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+.pitch-copy {
+  flex: none;
 }
 .pitch-go {
+  flex: none;
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.04em;
   color: var(--accent);
   white-space: nowrap;
+  text-decoration: none;
+}
+.pitch-go:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 620px) {
+  /* The snippet is the first thing to go: on a phone it is an unreadable sliver between two
+     controls, and the button beside it still copies the whole of it. */
+  .pitch-code {
+    display: none;
+  }
 }
 
 /* Definition lists on /embed: an option, then what it does. */

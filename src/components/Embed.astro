@@ -8,8 +8,11 @@
  * twice. A widget somebody wants on their own site is a link they place because it is useful to
  * them, which is the only kind worth having.
  *
- * Collapsed by default: a `<details>` costs one line of chrome on a page whose argument is that the
- * only saturated pixels are measurements, and it opens without a script.
+ * Open, not collapsed. It began as a closed `<details>` on the reasoning that a page whose argument
+ * is restraint should not shout — but a request nobody sees is not restraint, it is a request that
+ * does not exist. The live widget, the snippet that produced it and the button that copies it now
+ * sit on the page, and a reader decides without having to click something to find out what is on
+ * offer. The `<details>` element stays because it still lets them fold it away.
  */
 import { abs, paths } from "../lib/site";
 
@@ -26,7 +29,7 @@ const snippet = `<a href="${abs(path)}" data-airsignal="${place}">Air quality in
 <script async src="${abs("/embed.js")}"><\/script>`;
 ---
 
-<details class="embed">
+<details class="embed" open>
   <summary>
     <span class="eyebrow">Put this reading on your site</span>
     <span class="embed-hint">free, no key, one line</span>
@@ -43,8 +46,10 @@ const snippet = `<a href="${abs(path)}" data-airsignal="${place}">Air quality in
       this is the thing itself, and if the widget breaks the demo breaks with it — which is the
       only way anyone would find out.
     -->
-    <div class="embed-demo">
+    <div class="embed-demo" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
       <a href={path} data-airsignal={place}>Air quality in {name}</a>
+      {/* The compact one beside it, so the choice is visible rather than described. */}
+      <a href={path} data-airsignal={place} data-airsignal-variant="badge">AQI in {name}</a>
     </div>
 
     <pre class="embed-code"><code>{snippet}</code></pre>

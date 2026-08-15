@@ -1,5 +1,5 @@
 ---
-import { SITE, DEFAULT_LANG, LANGS, abs, paths } from "../lib/site";
+import { SITE, DEFAULT_LANG, LANGS, EMBED_SAMPLE, abs, paths } from "../lib/site";
 import "../styles/tokens.css";
 import "../styles/components.css";
 
@@ -27,6 +27,15 @@ interface Props {
    * two requests where the page had earned one.
    */
   pitch?: boolean;
+  /**
+   * Which city the strip's live badge shows, as `country/city`.
+   *
+   * A page that is about a place passes its own — a reader on /germany sees Stuttgart's number,
+   * not a town they have never heard of, and the example stops looking like a stock photo.
+   * Everything else falls back to the constant.
+   */
+  pitchPlace?: string;
+  pitchName?: string;
 }
 
 const {
@@ -38,7 +47,15 @@ const {
   noindex,
   updatedAt,
   pitch = true,
+  pitchPlace = EMBED_SAMPLE.place,
+  pitchName = EMBED_SAMPLE.name,
 } = Astro.props;
+
+// The snippet the button copies, and the one that produced the badge beside it. Built here so the
+// two cannot describe different things — the whole failure mode of a "copy this" box.
+const pitchSnippet =
+  `<a href="${abs(`/${pitchPlace}`)}" data-airsignal="${pitchPlace}" data-airsignal-variant="badge">Air in ${pitchName}</a>` +
+  `<script async src="${abs("/embed.js")}"><\/script>`;
 const canonical = abs(canonicalTo ?? path);
 
 /**
@@ -135,23 +152,68 @@ const graph = [
       another site wants, so it is the only thing worth trading for a link.
 
       Above the footer rather than inside it, because a request buried among licence credits is a
-      request nobody reads. One line, one link, no colour: the page's saturated pixels stay
-      reserved for measurements, which is the argument the whole design rests on.
+      request nobody reads. And open, not collapsed: the first version was one line and a link to a
+      page that explained it, which asks the reader to take two steps on faith before seeing
+      anything. Here the badge is live, the snippet is the one that produced it, and the button
+      copies it — the whole transaction fits above the footer, and nobody has to click to find out
+      what is being offered.
+
+      Near-neutral by construction. The badge is the only coloured thing in the strip, and its
+      colour is a measurement, which is the argument the whole design rests on.
     */}
     {
       // Not on the page it points at, which would be a link to where the reader already is.
       pitch && path !== paths.embed() && (
-        <aside class="wrap">
-          <a class="pitch" href={paths.embed()}>
-            <span class="pitch-say">
-              <strong>Put live air quality on your own site.</strong> One line of HTML, no key, no
-              signup — for any city here.
-            </span>
-            <span class="pitch-go">Get the code →</span>
-          </a>
+        <aside class="wrap pitch">
+          <div class="pitch-head">
+            <strong>Put live air quality on your own site.</strong>
+            <span class="pitch-dim">One line of HTML. No key, no signup.</span>
+          </div>
+
+          <div class="pitch-row">
+            {/*
+              The real script, the real API, the real snippet below it. A picture of a badge would
+              be a promise; this is the thing, and it breaks when the widget breaks.
+            */}
+            <a class="pitch-demo" href={`/${pitchPlace}`} data-airsignal={pitchPlace} data-airsignal-variant="badge">
+              Air quality in {pitchName}
+            </a>
+            <code class="pitch-code" id="pitch-code">{pitchSnippet}</code>
+            <button class="seg pitch-copy" type="button" data-pitch-copy>Copy</button>
+            <a class="pitch-go" href={paths.embed()}>More variants &amp; API →</a>
+          </div>
         </aside>
       )
     }
+
+    <script is:inline>
+      // Four lines rather than an island: shipping a framework to call one clipboard method would
+      // cost the visitor more than the widget it is advertising.
+      document.querySelector("[data-pitch-copy]")?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        const code = document.getElementById("pitch-code")?.textContent ?? "";
+        try {
+          await navigator.clipboard.writeText(code);
+          button.textContent = "Copied";
+        } catch {
+          // Refused without a gesture on some browsers, and always over plain http. Select it so
+          // the reader can copy it themselves rather than press a button that quietly lied.
+          const node = document.getElementById("pitch-code");
+          if (node) {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          }
+          button.textContent = "Select and copy";
+        }
+        setTimeout(() => (button.textContent = "Copy"), 2400);
+      });
+    </script>
+
+    {/* Only where the strip is, so no other page pays for a script it does not use. */}
+    {pitch && path !== paths.embed() && <script is:inline async src="/embed.js" />}
 
     <footer class="wrap foot">
       <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:baseline">

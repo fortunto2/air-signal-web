@@ -37,6 +37,17 @@ const card = `<a href="${abs(samplePath)}" data-airsignal="${place}" data-airsig
 
 const coords = `<a href="${SITE.origin}" data-airsignal="36.27, 32.31">Air quality nearby</a>`;
 
+/** The four worth demonstrating: two indices that carry a colour, two raw readings that do not. */
+const SHOW = [
+  { key: "aqi", label: "AQI" },
+  { key: "comfort", label: "Comfort" },
+  { key: "pm25", label: "PM2.5" },
+  { key: "temperature", label: "Temperature" },
+] as const;
+
+const badge = `<a href="${abs(samplePath)}" data-airsignal="${place}"
+   data-airsignal-variant="badge" data-airsignal-show="pm25">PM2.5 in ${sampleName}</a>`;
+
 const schema = [
   {
     "@context": "https://schema.org",
@@ -155,6 +166,29 @@ const schema = [
       </section>
 
       <section style="padding:20px;border-top:1px solid var(--line-soft)">
+        <div class="eyebrow" style="margin-bottom:10px">The badge — one number</div>
+        <p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);max-width:64ch">
+          For a sidebar heading, a table cell or a nav, where the bar is still too much of a
+          sentence. Pick which number with <code>data-airsignal-show</code>:
+        </p>
+        <div class="embed-demo" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          {SHOW.map((s) => (
+            <a href={samplePath} data-airsignal={place} data-airsignal-variant="badge" data-airsignal-show={s.key}>
+              {s.label} in {sampleName}
+            </a>
+          ))}
+        </div>
+        <pre class="embed-code" style="margin-top:12px"><code>{badge}</code></pre>
+        <p style="margin-top:12px;font-size:14px;color:var(--ink-2);max-width:64ch">
+          Accepts <code>aqi</code> (default), <code>comfort</code>, <code>pm25</code>,
+          <code>pm10</code>, <code>temperature</code>, <code>wind</code>, <code>wave</code>,
+          <code>sea_temp</code>, <code>uv</code>, <code>humidity</code>. Only AQI and comfort are
+          coloured — a colour on this site means a band, and there is no band for 68 % humidity to
+          be judged against. A reading with no measurement is left as the link you wrote.
+        </p>
+      </section>
+
+      <section style="padding:20px;border-top:1px solid var(--line-soft)">
         <div class="eyebrow" style="margin-bottom:10px">By coordinate, if you do not know the slug</div>
         <div class="embed-demo">
           <a href={SITE.origin} data-airsignal="36.27, 32.31">Air quality nearby</a>
@@ -173,7 +207,14 @@ const schema = [
           <dd><code>country/city</code> as it appears in the URL, or <code>lat, lon</code>.</dd>
 
           <dt><code>data-airsignal-variant</code></dt>
-          <dd><code>bar</code> (default) or <code>card</code>.</dd>
+          <dd><code>bar</code> (default), <code>card</code>, or <code>badge</code>.</dd>
+
+          <dt><code>data-airsignal-show</code></dt>
+          <dd>
+            Badge only — which number it shows. <code>aqi</code> (default), <code>comfort</code>,
+            <code>pm25</code>, <code>pm10</code>, <code>temperature</code>, <code>wind</code>,
+            <code>wave</code>, <code>sea_temp</code>, <code>uv</code>, <code>humidity</code>.
+          </dd>
 
           <dt><code>data-airsignal-theme</code></dt>
           <dd>
