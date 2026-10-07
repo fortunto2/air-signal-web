@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "astro";
 import { SITE, paths } from "./lib/site";
+import { cacheKey, edgeLookup, edgeStore } from "./lib/edge-cache";
 
 /**
  * Three jobs, all of which exist because the site is server-rendered.
@@ -135,33 +136,46 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   // Note: a trailing slash never reaches here. The router rejects it before middleware runs, so
   // the forgiving redirect lives in src/pages/404.astro, which *is* reached.
 
+  // What the request is for, before any of it is produced: the twin's Markdown or the page's HTML.
+  // Decided up front because the cache key has to say which, and the key is checked first.
+  const twin = markdownPath(path);
+  const accept = context.request.headers.get("accept") ?? "";
+  const markdownQ = quality(accept, "text/markdown");
+  const wantsMarkdown = twin !== null && markdownQ > 0 && markdownQ >= quality(accept, "text/html");
+
+  // The edge cache. Pages are a pure function of a database that changes once a day, so a hit is
+  // the whole answer; the `s-maxage` each page already sets is the TTL. See src/lib/edge-cache.ts
+  // for why the CDN never did this on its own.
+  const key = cacheKey(context.url, wantsMarkdown);
+  if (context.request.method === "GET") {
+    const hit = await edgeLookup(key);
+    if (hit) return hit;
+  }
+  const cf = context.locals.cfContext;
+  const waitUntil = cf ? cf.waitUntil.bind(cf) : undefined;
+
   // A direct hit on the twin. Same facts at a second address is the shape of a duplicate, so keep
   // it out of the index and let the page it mirrors do the ranking. A .md file has nowhere to put
   // a robots meta tag, which is why this is a header.
   if (path.endsWith(".md")) {
     const direct = await next();
-    const marked = withHeaders(direct, PAGE_CACHE);
+    const marked = withHeaders(direct, direct.status >= 400 ? NO_CACHE : PAGE_CACHE);
     marked.headers.set("x-robots-tag", "noindex");
-    return marked;
+    return edgeStore(key, marked, waitUntil);
   }
 
-  const twin = markdownPath(path);
-  if (twin) {
-    const accept = context.request.headers.get("accept") ?? "";
-    const markdownQ = quality(accept, "text/markdown");
-    if (markdownQ > 0 && markdownQ >= quality(accept, "text/html")) {
-      // `rewrite`, not `fetch`. Fetching our own origin from inside the Worker is a real network
-      // hop back through the edge, and in the local runtime it fails outright with an internal
-      // error. `rewrite` re-runs the router in-process and keeps the visitor's URL — which is also
-      // what we want for SEO, since the response is served at the page's own canonical address.
-      const md = await context.rewrite(twin);
-      // Falling back to HTML is the honest answer when there is no twin: a 404 would claim the
-      // page does not exist, which is not what happened. Deliberately NOT marked noindex — this
-      // response is served at the page's own canonical URL.
-      if (md.status === 200) return withHeaders(md);
-    }
+  if (wantsMarkdown) {
+    // `rewrite`, not `fetch`. Fetching our own origin from inside the Worker is a real network
+    // hop back through the edge, and in the local runtime it fails outright with an internal
+    // error. `rewrite` re-runs the router in-process and keeps the visitor's URL — which is also
+    // what we want for SEO, since the response is served at the page's own canonical address.
+    const md = await context.rewrite(twin!);
+    // Falling back to HTML is the honest answer when there is no twin: a 404 would claim the
+    // page does not exist, which is not what happened. Deliberately NOT marked noindex — this
+    // response is served at the page's own canonical URL.
+    if (md.status === 200) return edgeStore(key, withHeaders(md), waitUntil);
   }
 
   const response = await next();
-  return withHeaders(response, response.status >= 400 ? NO_CACHE : PAGE_CACHE);
+  return edgeStore(key, withHeaders(response, response.status >= 400 ? NO_CACHE : PAGE_CACHE), waitUntil);
 };
