@@ -24,6 +24,10 @@ export interface CrewMapProps {
   wind: { time: string; dir_deg: number; kmh: number }[];
   /** "HH:MM" of the shift's first and last hour, to pick the wind that matters. */
   shift: { start: number; end: number };
+  /** More places on the same map (the grid view): a pin each, coloured by their worst hour. */
+  others?: { lat: number; lon: number; name: string; band: "good" | "fair" | "bad" }[];
+  /** Map height in CSS pixels; the page's own default otherwise. */
+  height?: number;
 }
 
 const R = 6371;
@@ -76,6 +80,15 @@ function meanWind(wind: CrewMapProps["wind"], shift: CrewMapProps["shift"]) {
   const kmh = Math.hypot(x, y) / use.length;
   const from = (deg(Math.atan2(x, y)) + 360) % 360;
   return { from, kmh, hours: use.length };
+}
+
+/** The shift's hours as individual winds, for the hour-by-hour cones. */
+function hourWinds(wind: CrewMapProps["wind"], shift: CrewMapProps["shift"]) {
+  const rows = wind.filter((w) => {
+    const h = Number(w.time.slice(11, 13));
+    return h >= shift.start && h < shift.end;
+  });
+  return (rows.length ? rows : wind).map((w) => ({ from: w.dir_deg, kmh: w.kmh, hour: w.time.slice(11, 16) }));
 }
 
 function plume(fire: [number, number], w: { from: number; kmh: number }): GeoJSON.Polygon {
@@ -131,12 +144,16 @@ export default function CrewMap(p: CrewMapProps) {
     m.addControl(new NavigationControl({ showCompass: false }), "top-right");
 
     const plumes: GeoJSON.Feature[] = [];
+    const hourly: GeoJSON.Feature[] = [];
     let inside: { km: number; dir: string } | null = null;
     if (w) {
+      const hws = hourWinds(p.wind, p.shift);
       for (const { f, km } of near) {
         const hit = reaches(f, place, w);
         plumes.push({ type: "Feature", geometry: plume(f, w), properties: { hit } });
         if (hit && !inside) inside = { km, dir: compass(bearing(place, f)) };
+        // Only fires that matter get the hour-by-hour fan; 150 km × 10 h of cones is a smear.
+        if (km <= 100) for (const hw of hws) hourly.push({ type: "Feature", geometry: plume(f, hw), properties: { hour: hw.hour } });
       }
     }
     const fires: GeoJSON.Feature[] = near.map(({ f, km }) => ({
@@ -158,6 +175,8 @@ export default function CrewMap(p: CrewMapProps) {
     );
 
     m.on("load", () => {
+      m.addSource("hourly", { type: "geojson", data: { type: "FeatureCollection", features: hourly } });
+      m.addLayer({ id: "hourly", type: "fill", source: "hourly", paint: { "fill-color": "#F2A23A", "fill-opacity": 0.06 } });
       m.addSource("plumes", { type: "geojson", data: { type: "FeatureCollection", features: plumes } });
       m.addLayer({
         id: "plumes",
@@ -176,6 +195,12 @@ export default function CrewMap(p: CrewMapProps) {
       const pins: GeoJSON.Feature[] = [
         { type: "Feature", geometry: { type: "Point", coordinates: [p.lon, p.lat] }, properties: { kind: "place", label: p.name } },
       ];
+      for (const o of p.others ?? [])
+        pins.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [o.lon, o.lat] },
+          properties: { kind: o.band, label: o.name },
+        });
       if (p.monitor)
         pins.push({
           type: "Feature",
@@ -189,7 +214,11 @@ export default function CrewMap(p: CrewMapProps) {
         source: "pins",
         paint: {
           "circle-radius": ["case", ["==", ["get", "kind"], "place"], 8, 6],
-          "circle-color": ["case", ["==", ["get", "kind"], "place"], "#3D74C4", "#2E9E5B"],
+          "circle-color": [
+            "match", ["get", "kind"],
+            "place", "#3D74C4", "monitor", "#2E9E5B", "good", "#5A9E4B", "fair", "#E0A020", "bad", "#D7263D",
+            "#3D74C4",
+          ],
           "circle-stroke-color": "#fff",
           "circle-stroke-width": 2,
         },
@@ -204,6 +233,7 @@ export default function CrewMap(p: CrewMapProps) {
       // Fit the place, the monitor and the fires that matter (within 100 km), never the whole state.
       const pts: [number, number][] = [[p.lon, p.lat]];
       if (p.monitor) pts.push([p.monitor.lon, p.monitor.lat]);
+      for (const o of p.others ?? []) pts.push([o.lon, o.lat]);
       for (const { f, km } of near) if (km <= 100) pts.push([f[1], f[0]]);
       if (pts.length > 1) {
         const lons = pts.map((q) => q[0]);
@@ -219,7 +249,7 @@ export default function CrewMap(p: CrewMapProps) {
 
   return (
     <div className="crew-map">
-      <div ref={holder} className="crew-map-canvas" aria-label="Map of fires, the monitor and smoke plumes around the place" />
+      <div ref={holder} className="crew-map-canvas" style={p.height ? { height: p.height } : undefined} aria-label="Map of fires, the monitor and smoke plumes around the place" />
       <p className="crew-map-note">{note}</p>
     </div>
   );

@@ -1,0 +1,311 @@
+---
+/**
+ * The same forecast for a utility: Silicon Valley Clean Energy's thirteen communities on one map,
+ * with the fires around them, the hour smoke or heat arrives in each, and what that does to the
+ * grid they serve. An example for a CCA, built on public data only; nothing here is SVCE's.
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import CrewMap from "../../components/CrewMap.tsx";
+import { SITE, abs } from "../../lib/site";
+import { crewDefaultDate, crewPlanAt, parseShift, type CrewAnswer, type CrewPlace } from "../../lib/crew";
+import power from "../../data/svce-power.json";
+
+const CITIES: CrewPlace[] = [
+  ["Sunnyvale", 37.3688, -122.0363],
+  ["Mountain View", 37.3861, -122.0839],
+  ["Cupertino", 37.323, -122.0322],
+  ["Los Altos", 37.3852, -122.1141],
+  ["Los Altos Hills", 37.3797, -122.1375],
+  ["Saratoga", 37.2638, -122.023],
+  ["Monte Sereno", 37.2363, -121.9925],
+  ["Los Gatos", 37.2358, -121.9624],
+  ["Campbell", 37.2872, -121.95],
+  ["Milpitas", 37.4323, -121.8996],
+  ["Morgan Hill", 37.1305, -121.6544],
+  ["Gilroy", 37.0058, -121.5683],
+  ["San Martin (county)", 37.085, -121.6102],
+].map(([name, lat, lon]) => ({ name: name as string, town: name as string, state: "California", lat: lat as number, lon: lon as number, approximate: false }));
+
+// 07:00–21:00: the working day and the 16–21 peak price in one window.
+const shift = parseShift("07-21");
+const date = crewDefaultDate();
+Astro.response.headers.set("cache-control", "public, max-age=0, s-maxage=1800");
+
+const answers = await Promise.all(CITIES.map((c) => crewPlanAt(c, date, shift).catch(() => null)));
+type Row = { city: CrewPlace; a: CrewAnswer | null };
+const rows: Row[] = CITIES.map((city, i) => ({ city, a: answers[i] ?? null }));
+const ok = rows.filter((r): r is Row & { a: CrewAnswer } => r.a !== null);
+
+const band = (a: CrewAnswer): "good" | "fair" | "bad" => {
+  const aqi = a.plan.peak_aqi ?? 0;
+  const f = a.plan.peak_temp_f ?? 0;
+  return aqi >= 151 || f >= 95 ? "bad" : aqi >= 101 || f >= 80 ? "fair" : "good";
+};
+const clock = (t: string | null) => (t ? t.slice(11, 16) : "–");
+const meanWind = (a: CrewAnswer) => {
+  if (!a.wind.length) return null;
+  let x = 0;
+  let y = 0;
+  for (const w of a.wind) {
+    x += w.kmh * Math.sin((w.dir_deg * Math.PI) / 180);
+    y += w.kmh * Math.cos((w.dir_deg * Math.PI) / 180);
+  }
+  const kmh = Math.hypot(x, y) / a.wind.length;
+  const from = ((Math.atan2(x, y) * 180) / Math.PI + 360) % 360;
+  return { kmh: Math.round(kmh), from: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(from / 45) % 8] };
+};
+
+// One map: the first city as the anchor, the rest as pins, the fires as a union.
+const anchor = ok[0] ?? null;
+const seen = new Set<string>();
+const fires: [number, number][] = [];
+for (const r of ok) for (const f of r.a.fires_near) { const k = f.join(","); if (!seen.has(k)) { seen.add(k); fires.push(f); } }
+const alertsAll = [...new Set(ok.flatMap((r) => r.a.alerts.map((x) => x.event)))];
+
+const n = {
+  cities: ok.length,
+  hot: ok.filter((r) => (r.a.plan.peak_temp_f ?? 0) >= 80).length,
+  smoke: ok.filter((r) => r.a.plan.bms.recirculate_at).length,
+  fire50: ok.filter((r) => r.a.plan.confidence.fire && r.a.plan.confidence.fire.nearest_km <= 50).length,
+  launch: ok.filter((r) => r.a.dispatch.sensor === "launch").length,
+  fallback: ok.filter((r) => r.a.fallback).length,
+  fires: fires.length,
+};
+const plants = (power as { kind: string; name: string; source: string; mw: string; lat: number; lon: number }[]).filter((p) => p.kind === "plant");
+const subs = (power as { kind: string }[]).filter((p) => p.kind === "substation").length;
+const solar = plants.filter((p) => p.source === "solar").length;
+
+const description =
+  "Fire and heat days for Silicon Valley Clean Energy's thirteen communities on one map: the fires around them, " +
+  "the hour smoke or heat arrives in each, the pre-cool window before the 4–9 pm peak price, and what smoke does " +
+  "to solar. An example for a community choice aggregator, public data only.";
+---
+
+<Layout title={`Fire and heat days for a utility — ${SITE.name}`} description={description} path="/crew/grid">
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">For a utility · example: Silicon Valley Clean Energy’s 13 communities · {date}</div>
+        <h1 style="font-size:27px;margin:5px 0 0">Fire and heat days, city by city</h1>
+        <p class="lede" style="margin-top:12px;font-size:15.5px;max-width:72ch">
+          The same forecast that plans a crew’s shift, read for the grid: where the fires are, which city is
+          downwind, the hour windows shut and air conditioners run longer, the cheap hours to pre-cool before
+          the 4–9 pm peak price. Public data only; the utility’s own assets would replace the OpenStreetMap
+          layer here.
+        </p>
+      </div>
+
+      <div class="grid-stats">
+        <div><b class="num">{n.cities}</b><span>cities planned</span></div>
+        <div><b class={`num fg-${n.hot ? "fair" : "good"}`}>{n.hot}</b><span>reach 80 °F: pre-cool 13–16</span></div>
+        <div><b class={`num fg-${n.smoke ? "bad" : "good"}`}>{n.smoke}</b><span>get a smoke hour today</span></div>
+        <div><b class={`num fg-${n.fire50 ? "bad" : "good"}`}>{n.fire50}</b><span>have a satellite fire within 50 km</span></div>
+        <div><b class="num">{n.fires}</b><span>VIIRS detections within 150 km, 24 h</span></div>
+        <div><b class="num">{alertsAll.length}</b><span>{alertsAll.length ? `NWS: ${alertsAll.join(", ")}` : "NWS alerts active"}</span></div>
+      </div>
+
+      {anchor && (
+        <div class="crew-block" id="map">
+          <div class="eyebrow">Where the smoke goes</div>
+          <CrewMap
+            client:only="react"
+            lat={anchor.a.place.lat}
+            lon={anchor.a.place.lon}
+            name={anchor.a.place.name}
+            fires={fires}
+            monitor={null}
+            wind={anchor.a.wind}
+            shift={anchor.a.shift}
+            height={520}
+            others={ok.slice(1).map((r) => ({ lat: r.a.place.lat, lon: r.a.place.lon, name: r.a.place.name, band: band(r.a) }))}
+          />
+          <p class="crew-legend">
+            Pins: cities, coloured by their worst hour (green under the rules, amber at 80 °F or AQI 101, red at 95 °F or AQI 151). Red dots: NASA VIIRS fire detections, 24 h. Orange: downwind cones from each fire, one per hour of the day from that hour’s wind, and the day’s mean darker.
+          </p>
+        </div>
+      )}
+
+      <div class="crew-block">
+        <div class="eyebrow">City by city · 07:00–21:00</div>
+        <table class="grid-table">
+          <thead>
+            <tr><th>City</th><th>Peak AQI</th><th>Peak °F</th><th>Nearest fire</th><th>Wind</th><th>Pre-cool</th><th>Windows shut</th><th>Sensor</th><th>Plan</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(({ city, a }) =>
+              a ? (
+                <tr>
+                  <td>{city.name}</td>
+                  <td class={`num fg-${(a.plan.peak_aqi ?? 0) >= 151 ? "bad" : (a.plan.peak_aqi ?? 0) >= 101 ? "fair" : "good"}`}>{a.plan.peak_aqi ?? "–"}</td>
+                  <td class={`num fg-${(a.plan.peak_temp_f ?? 0) >= 95 ? "bad" : (a.plan.peak_temp_f ?? 0) >= 80 ? "fair" : "good"}`}>{a.plan.peak_temp_f === null ? "–" : Math.floor(a.plan.peak_temp_f)}</td>
+                  <td class={a.plan.confidence.fire && a.plan.confidence.fire.nearest_km <= 50 ? "fg-bad" : ""}>
+                    {a.plan.confidence.fire ? `${Math.round(a.plan.confidence.fire.nearest_km)} km ${a.plan.confidence.fire.direction}` : "none in 200 km"}
+                  </td>
+                  <td>{(() => { const w = meanWind(a); return w ? `${w.from} ${w.kmh} km/h` : "–"; })()}</td>
+                  <td>{a.home.precool ? `${a.home.precool.start}:00–${a.home.precool.end}:00` : "not needed"}</td>
+                  <td class={a.home.close_windows_at ? "fg-bad" : ""}>{a.home.close_windows_at ? `from ${clock(a.home.close_windows_at)}` : "open"}</td>
+                  <td class={a.dispatch.sensor === "launch" ? "fg-bad" : ""}>{a.dispatch.sensor === "launch" ? `launch ${a.dispatch.bearing_deg}°` : "standby"}</td>
+                  <td><a href={`/crew?place=${encodeURIComponent(`${city.lat},${city.lon}`)}&shift=07-17`}>open</a></td>
+                </tr>
+              ) : (
+                <tr><td>{city.name}</td><td colspan="8" class="fg-fair">forecast did not answer</td></tr>
+              ),
+            )}
+          </tbody>
+        </table>
+        {n.fallback > 0 && (
+          <p class="crew-legend">
+            {n.fallback} of {n.cities} plans hold the nearest monitor’s reading because the forecast service is rate-limited right now; temperatures and wind are the National Weather Service forecast.
+          </p>
+        )}
+      </div>
+
+      <div class="crew-block">
+        <div class="eyebrow">What a fire day does to this grid</div>
+        <div class="grid-facts">
+          <div>
+            <b>Solar drops, and the forecast misses it.</b>
+            <p>In the first two weeks of September 2020, smoke cut CAISO’s solar generation about 30% below the July average. Hour-ahead forecasts over-predicted solar by 10–50% because they did not see the smoke. The smoke hour on this page is that missing input.</p>
+            <span class="cite">EIA, Today in Energy, 30 Sep 2020 · Juliano et al., Environ. Res. Lett. 2022</span>
+          </div>
+          <div>
+            <b>Load goes up where windows shut.</b>
+            <p>A house that cannot ventilate at night runs its air conditioner longer the next afternoon, inside the 4–9 pm peak. Pre-cooling in the 13–16 window moves that load to cheaper, cleaner hours. Rules, not an optimisation: a load model and a pilot would put a number on it.</p>
+            <span class="cite">PG&amp;E E-TOU-C, peak 4–9 pm every day; SVCE bills generation on the same schedule</span>
+          </div>
+          <div>
+            <b>Shutoffs hit the foothill towns.</b>
+            <p>PG&amp;E’s October 2019 Public Safety Power Shutoffs listed Morgan Hill, Cupertino, Los Gatos, Saratoga, Milpitas, Sunnyvale and Los Altos; about 6,400 Morgan Hill customers lost power. Before a shutoff, home batteries should hold charge rather than discharge to a flexibility event: two programs that need one signal.</p>
+            <span class="cite">SCC ARES/RACES PSPS log, 9–11 Oct 2019 · Morgan Hill Times</span>
+          </div>
+          <div>
+            <b>The utility already aggregates devices.</b>
+            <p>SVCE and Peninsula Clean Energy contracted Lunar Energy’s Gridshare to aggregate up to 25 MW of customer-sited batteries, heat-pump water heaters, thermostats and building systems over five years. That platform executes events; the JSON behind this page (<code>home</code>, <code>alerts</code>, <code>wind</code>, <code>dispatch</code>) is a trigger it does not have.</p>
+            <span class="cite">SVCE, Nov 2025 · 270,000 customers in 13 communities, SVCE Community Resilience Framework 2023</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="crew-block">
+        <div class="eyebrow">Assets on the map · OpenStreetMap, as a placeholder for the utility’s own list</div>
+        <p style="margin-top:8px;max-width:70ch;font-size:14px">
+          {plants.length} power plants ({solar} solar) and {subs} substations are mapped in OpenStreetMap inside the bounding box of these cities.
+          {plants.length ? ` Named plants: ${plants.filter((p) => p.name).slice(0, 8).map((p) => p.name).join(", ")}${plants.filter((p) => p.name).length > 8 ? "…" : ""}.` : " The Overpass query did not answer at build time; the layer is empty until it does."}
+          {" "}A utility would replace this with its interconnected solar, batteries and critical loads; each one then gets the same hour, bearing and cone as a city.
+        </p>
+        <p class="crew-legend">
+          The whole table as JSON, one city at a time: <a href={abs("/api/crew?place=Los%20Gatos&shift=07-21")}>/api/crew?place=Los Gatos&amp;shift=07-21</a> · every endpoint: <a href={abs("/api")}>/api</a>
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .grid-stats {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    padding: 8px 20px 18px;
+  }
+  .grid-stats div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 14px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+  }
+  .grid-stats b {
+    font-size: 26px;
+    font-weight: 560;
+  }
+  .grid-stats span {
+    font-size: 12.5px;
+    color: var(--ink-3);
+  }
+  .crew-block {
+    padding: 18px 20px 20px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .crew-legend {
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--ink-3);
+    max-width: 80ch;
+  }
+  .crew-legend a,
+  .grid-table a {
+    color: var(--accent);
+  }
+  :global(.crew-map) {
+    margin-top: 10px;
+  }
+  :global(.crew-map-canvas) {
+    height: 520px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-soft);
+    overflow: hidden;
+  }
+  :global(.crew-map-note) {
+    margin-top: 10px;
+    max-width: 70ch;
+    font-size: 14px;
+  }
+  .grid-table {
+    width: 100%;
+    margin-top: 10px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  .grid-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--ink-3);
+    padding: 6px 8px 6px 0;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .grid-table td {
+    padding: 7px 8px 7px 0;
+    border-bottom: 1px solid var(--line-soft);
+    white-space: nowrap;
+  }
+  .grid-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 10px;
+  }
+  .grid-facts div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .grid-facts b {
+    font-size: 15px;
+  }
+  .grid-facts p {
+    font-size: 14px;
+    max-width: 60ch;
+  }
+  .grid-facts .cite {
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  @media (max-width: 760px) {
+    .grid-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .grid-facts {
+      grid-template-columns: 1fr;
+    }
+    .grid-table {
+      display: block;
+      overflow-x: auto;
+    }
+  }
+</style>
