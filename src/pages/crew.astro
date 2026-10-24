@@ -105,9 +105,9 @@ const determination = (() => {
 })();
 
 const description =
-  "Smoke and heat shift plan for outdoor crews in California: enter a place and a shift, get the " +
-  "hour Cal/OSHA requires N95s (§5141.1, AQI 151) or shade and water (§3395, 80°F), from an hourly " +
-  "forecast with the EPA NowCast.";
+  "Smoke and heat shift plan for farm, contractor and utility line crews in California: enter a place " +
+  "and a shift, get the hour Cal/OSHA requires N95s (§5141.1, AQI 151) or shade and water (§3395, 80°F), " +
+  "from an hourly forecast with the EPA NowCast, and a record of how the AQI was determined.";
 
 const schema = [
   {
@@ -131,9 +131,10 @@ const schema = [
         <div class="eyebrow">For crews · California</div>
         <h1 style="font-size:27px;margin:5px 0 0">The hour Cal/OSHA’s smoke and heat rules start on your shift</h1>
         <p class="lede no-print" style="margin-top:12px;font-size:15.5px">
-          Cal/OSHA wants N95s handed out once the air hits AQI 151, and shade and water at 80°F.
-          Type where the crew works and when the shift runs, and you get the hour each rule starts
-          and the clear window for the heavy work.
+          Cal/OSHA wants N95s handed out once the air hits AQI 151, and shade and water at 80°F,
+          for a farm, contractor or utility line crew alike. Type where the crew works and when the
+          shift runs, and you get the hour each rule starts, the clear window for the heavy work,
+          and a record of how the AQI was determined.
         </p>
       </div>
 
@@ -281,6 +282,38 @@ const schema = [
               />
               <p class="crew-legend">
                 Red dots: NASA VIIRS fire detections, last 24 h. Green: the AirNow monitor the plan was checked against. Orange: three hours of the shift’s mean wind downwind of each fire, a cone, not a dispersion model; darker when it covers this place.
+              </p>
+            </div>
+            <div class="crew-block" id="record">
+              <div class="eyebrow">After a fire: the reading and the record</div>
+              {answer.dispatch.sensor === "launch" ? (
+                <div class="crew-task crew-task-launch">
+                  <svg class="crew-bearing" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style={`transform:rotate(${answer.dispatch.bearing_deg ?? 0}deg)`}>
+                    <path d="M12 2 L18 14 L12 11 L6 14 Z" fill="currentColor" />
+                    <path d="M12 11 V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  </svg>
+                  <div>
+                    <b>Sensor task: launch</b>
+                    <span class="crew-task-where">bearing <span class="num">{answer.dispatch.bearing_deg ?? "–"}°</span>, <span class="num">{answer.dispatch.distance_km ?? "–"}</span> km</span>
+                    <p>{answer.dispatch.reason}.</p>
+                  </div>
+                </div>
+              ) : (
+                <div class="crew-task crew-task-standby">
+                  <svg class="crew-bearing" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style={`transform:rotate(${answer.dispatch.bearing_deg ?? 0}deg)`}>
+                    <path d="M12 2 L18 14 L12 11 L6 14 Z" fill="currentColor" />
+                    <path d="M12 11 V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  </svg>
+                  <span>
+                    Sensor: standby{answer.dispatch.distance_km !== null ? <>, nearest fire <span class="num">{answer.dispatch.distance_km}</span> km</> : ", no fire within about 200 km"}
+                  </span>
+                </div>
+              )}
+              <p>
+                <b>How the AQI was determined (§5141.1(c)):</b> {determination} Worksite instrument (Appendix A: 0.3–2.5 µm, used per the manufacturer, error accounted for): a node or a drone reports its PM2.5 through <code>POST /api/crew/report</code> and the next plan is corrected by it like by any AirNow monitor; the record prints with the plan.
+              </p>
+              <p class="crew-legend">
+                §5141.1 requires N95s at AQI 151+ and respirators above 500; it does not forbid the work. The employer determines the AQI; this page records how.
               </p>
             </div>
             <div class="crew-block">
@@ -926,6 +959,52 @@ const schema = [
   }
   .crew-block .crew-legend {
     padding: 4px 0 0;
+  }
+  /* The sensor task: loud when a satellite sees fire within 50 km, quiet otherwise. */
+  .crew-task {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 10px;
+    max-width: 66ch;
+  }
+  .crew-task-launch {
+    padding: 12px 14px;
+    border: 1px solid var(--s-poor);
+    border-left-width: 4px;
+    border-radius: var(--radius);
+    color: var(--s-poor);
+  }
+  .crew-task-launch b {
+    display: block;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.15;
+  }
+  .crew-task-launch .crew-task-where {
+    display: block;
+    margin-top: 2px;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .crew-task-launch p {
+    margin-top: 6px;
+    color: var(--ink-2);
+    font-size: 13.5px;
+  }
+  .crew-task-launch .crew-bearing {
+    flex: none;
+    margin-top: 4px;
+  }
+  .crew-task-standby {
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--ink-3);
+  }
+  .crew-task-standby .crew-bearing {
+    flex: none;
+    opacity: 0.6;
   }
   .crew-print {
     font: inherit;
