@@ -1,17 +1,19 @@
 import type { APIRoute } from "astro";
 import { REPORT_KINDS, addCrewReport, countRecentReports, handleCrewReport, type ReportKind } from "../../../lib/db";
-import { crewDate, crewDefaultDate, crewPlan, evidenceFor, parseShift, senderHash, siteKey } from "../../../lib/crew";
+import { crewDate, crewDefaultDate, crewPlan, evidenceFor, parseShift, reportedFrom, senderHash, siteKey } from "../../../lib/crew";
 
 /**
  * A worker's report, or the crew lead marking one handled. Takes the /crew page's plain form POST
  * (and answers with a redirect back to it) or JSON from the app (and answers with JSON).
  *
- *   {place, date?, shift?, kind, note?}        → {id, created_at, status: "open"}
+ *   {place, date?, shift?, kind, note?,
+ *    lat?, lon?, accuracy_m?, heading_deg?, sky?} → {id, created_at, status: "open"}
+ *   (where it was made and which way the camera faced go into the evidence, rounded to ~100 m)
  *   {place, date?, action: "handle", id, note?} → {id, status: "handled"}
  */
 export const POST: APIRoute = async ({ request, clientAddress }) => {
   const isJson = (request.headers.get("content-type") ?? "").includes("application/json");
-  let body: Record<string, string>;
+  let body: Record<string, any>;
   try {
     body = isJson
       ? await request.json()
@@ -51,7 +53,11 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return reply(isJson, { error: "too many reports from this device in 10 minutes" }, 429);
   }
 
-  const made = await addCrewReport({ site, date, kind, note, evidence: evidenceFor(answer), sender });
+  const from = reportedFrom(
+    { lat: body.lat, lon: body.lon, accuracy_m: body.accuracy_m, heading_deg: body.heading_deg, sky: (body as Record<string, unknown>).sky },
+    answer.plan.confidence.fire,
+  );
+  const made = await addCrewReport({ site, date, kind, note, evidence: { ...evidenceFor(answer), from }, sender });
   if (!isJson) return Response.redirect(new URL(back(`&sent=${made.id}`), request.url), 303);
   return reply(true, { ...made, status: "open" }, 201);
 };

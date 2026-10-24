@@ -9,7 +9,7 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import { SITE, abs, aqiBand, paths } from "../lib/site";
-import { REPORT_LABELS, crewDate, crewDefaultDate, crewPlan, parseShift, siteKey, type CrewAnswer } from "../lib/crew";
+import { REPORT_LABELS, describeFrom, crewDate, crewDefaultDate, crewPlan, parseShift, siteKey, type CrewAnswer } from "../lib/crew";
 import { REPORT_KINDS, listCrewReports, type CrewReport } from "../lib/db";
 
 const DEFAULT_PLACE = "Sacramento";
@@ -215,12 +215,16 @@ const schema = [
                 <input type="hidden" name="place" value={place} />
                 <input type="hidden" name="date" value={date} />
                 <input type="hidden" name="shift" value={shiftRaw} />
+                <input type="hidden" name="lat" data-geo="lat" />
+                <input type="hidden" name="lon" data-geo="lon" />
+                <input type="hidden" name="accuracy_m" data-geo="acc" />
                 <p>Air got worse, someone feels sick, or something the rules require is missing? Tell the crew lead. No name needed. The report carries the forecast, the satellite fire check and the monitor reading for this hour.</p>
                 <div class="crew-kinds">
                   {REPORT_KINDS.map((k, i) => (
                     <label><input type="radio" name="kind" value={k} checked={i === 0} required /> {REPORT_LABELS[k]}</label>
                   ))}
                 </div>
+                <label class="crew-geo"><input type="checkbox" data-geo-ask /> Add where I am (rounded to about 100 m)</label>
                 <div class="crew-report-row">
                   <input name="note" maxlength="280" placeholder="Optional: where, what you see (no names)" />
                   <button type="submit">Send report</button>
@@ -233,6 +237,10 @@ const schema = [
                       <span class="num">{localTime(r.created_at)}</span>
                       <span>
                         <b>{REPORT_LABELS[r.kind] ?? r.kind}</b>{r.note ? ` · ${r.note}` : ""}
+                        {(() => {
+                          const d = describeFrom(r.evidence_json ? JSON.parse(r.evidence_json)?.from : null);
+                          return d ? <span class="crew-handled"><br />{d}</span> : null;
+                        })()}
                         {r.status === "handled" && r.handled_at && (
                           <span class="crew-handled"> · handled {localTime(r.handled_at)}{r.handled_note ? `: ${r.handled_note}` : ""}</span>
                         )}
@@ -314,6 +322,22 @@ const schema = [
     </div>
   </main>
 </Layout>
+
+<script is:inline>
+  // Location only when the worker ticks the box, and only into the form; nothing is sent until Send.
+  document.querySelector("[data-geo-ask]")?.addEventListener("change", (e) => {
+    if (!e.target.checked || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        document.querySelector('[data-geo="lat"]').value = p.coords.latitude;
+        document.querySelector('[data-geo="lon"]').value = p.coords.longitude;
+        document.querySelector('[data-geo="acc"]').value = p.coords.accuracy;
+      },
+      () => { e.target.checked = false; },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+</script>
 
 <script is:inline define:vars={{ skyPlace: place }}>
   // Progressive: without JavaScript the section is just a hint. The photo is shrunk to 768 px in
@@ -432,6 +456,12 @@ const schema = [
   .crew-fire {
     color: var(--s-poor);
     font-weight: 520;
+  }
+  .crew-geo {
+    display: block;
+    margin-top: 10px;
+    font-size: 13.5px;
+    color: var(--ink-2);
   }
   .crew-sky {
     display: flex;

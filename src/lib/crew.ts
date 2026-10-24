@@ -284,6 +284,54 @@ export function evidenceFor(answer: CrewAnswer, at = nowHour()) {
   };
 }
 
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+const compass = (deg: number) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8]!;
+
+/**
+ * Where the report was made and which way the camera faced, from the phone (or the page's
+ * geolocation). Rounded to 3 decimals, about 100 m: enough to put it on a block of the field, not
+ * enough to follow a person. A heading within 45° of the nearest satellite fire is called out,
+ * because "the haze is in the direction of the fire" is the sentence a crew lead acts on.
+ */
+export function reportedFrom(
+  raw: { lat?: unknown; lon?: unknown; accuracy_m?: unknown; heading_deg?: unknown; sky?: unknown },
+  fire: CrewPlan["confidence"]["fire"],
+) {
+  const num = (v: unknown) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+  const lat = num(raw.lat);
+  const lon = num(raw.lon);
+  const heading = num(raw.heading_deg);
+  const accuracy = num(raw.accuracy_m);
+  const where =
+    Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+      ? { lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, accuracy_m: Number.isFinite(accuracy) ? Math.round(accuracy) : null }
+      : null;
+  let facing: { heading_deg: number; compass: string; toward_fire: boolean | null } | null = null;
+  if (Number.isFinite(heading)) {
+    const h = ((heading % 360) + 360) % 360;
+    const fireDeg = fire ? COMPASS.indexOf(fire.direction) * 45 : -1;
+    const diff = fireDeg >= 0 ? Math.abs(((h - fireDeg + 540) % 360) - 180) : null;
+    facing = { heading_deg: Math.round(h), compass: compass(h), toward_fire: diff === null ? null : diff <= 45 };
+  }
+  // A sky-check result the phone attaches: kept as given, small fields only.
+  const s = raw.sky && typeof raw.sky === "object" ? (raw.sky as Record<string, unknown>) : null;
+  const sky = s
+    ? { smoke: Number(s.smoke) || 0, smoke_call: String(s.smoke_call ?? ""), verdict: String(s.verdict ?? "").slice(0, 200) }
+    : null;
+  return where || facing || sky ? { where, facing, sky } : null;
+}
+
+/** A report's place in words: "36.748, -119.772 · facing 210° SW, toward the fire". */
+export function describeFrom(from: ReturnType<typeof reportedFrom> | null | undefined): string | null {
+  if (!from) return null;
+  const parts: string[] = [];
+  if (from.where) parts.push(`${from.where.lat.toFixed(3)}, ${from.where.lon.toFixed(3)}`);
+  if (from.facing)
+    parts.push(`facing ${from.facing.heading_deg}° ${from.facing.compass}${from.facing.toward_fire ? ", toward the nearest fire" : ""}`);
+  if (from.sky?.smoke_call) parts.push(`sky check: smoke ${Math.round(from.sky.smoke * 100)}%`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /** A salted, daily-rotating hash of the sender: enough to rate-limit, useless to identify. */
 export async function senderHash(ip: string): Promise<string> {
   const data = new TextEncoder().encode(`${ip}|${crewDate(0)}|crew-air`);

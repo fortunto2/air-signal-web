@@ -848,6 +848,8 @@ export interface CrewReport {
   kind: ReportKind;
   note: string | null;
   evidence_json: string | null;
+  /** Rate-limit hash; never sent to clients (api/crew/reports.ts strips it). */
+  sender?: string;
   status: "open" | "handled";
   handled_at: string | null;
   handled_note: string | null;
