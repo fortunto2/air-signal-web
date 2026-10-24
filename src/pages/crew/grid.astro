@@ -120,8 +120,12 @@ const description =
             wind={anchor.a.wind}
             shift={anchor.a.shift}
             height={520}
+            fitKm={35}
             others={ok.slice(1).map((r) => ({ lat: r.a.place.lat, lon: r.a.place.lon, name: r.a.place.name, band: band(r.a) }))}
           />
+          <p class="crew-legend">
+            A satellite sees heat, not smoke: refinery flares, landfills and industrial parks in the Bay Area show up as VIIRS detections most days, which is why every city here can have a “fire” within 50 km on a clear day. The detection is a reason to take a reading, not proof of smoke; the sensor task and the sky check exist for that.
+          </p>
           <p class="crew-legend">
             Pins: cities, coloured by their worst hour (green under the rules, amber at 80 °F or AQI 101, red at 95 °F or AQI 151). Red dots: NASA VIIRS fire detections, 24 h. Orange: downwind cones from each fire, one per hour of the day from that hour’s wind, and the day’s mean darker.
           </p>

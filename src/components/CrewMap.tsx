@@ -28,6 +28,8 @@ export interface CrewMapProps {
   others?: { lat: number; lon: number; name: string; band: "good" | "fair" | "bad" }[];
   /** Map height in CSS pixels; the page's own default otherwise. */
   height?: number;
+  /** Fires within this many km of the place take part in the initial framing (100 by default). */
+  fitKm?: number;
 }
 
 const R = 6371;
@@ -234,7 +236,7 @@ export default function CrewMap(p: CrewMapProps) {
       const pts: [number, number][] = [[p.lon, p.lat]];
       if (p.monitor) pts.push([p.monitor.lon, p.monitor.lat]);
       for (const o of p.others ?? []) pts.push([o.lon, o.lat]);
-      for (const { f, km } of near) if (km <= 100) pts.push([f[1], f[0]]);
+      for (const { f, km } of near) if (km <= (p.fitKm ?? 100)) pts.push([f[1], f[0]]);
       if (pts.length > 1) {
         const lons = pts.map((q) => q[0]);
         const lats = pts.map((q) => q[1]);
