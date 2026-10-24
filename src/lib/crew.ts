@@ -85,6 +85,39 @@ export interface CrewAnswer {
   alerts: { event: string; onset: string | null; ends: string | null }[];
   /** The same day for a home or a building's agent: the price peak and the hours to act before it. */
   home: HomeSignal;
+  /** A task for a sensor node (fixed, or a drone outside the fire's TFR) when a satellite sees fire nearby. */
+  dispatch: Dispatch;
+}
+
+/**
+ * The satellite trigger as a task: a VIIRS detection within 30 km means the model's smoke is a guess
+ * and a ground reading is worth going for. The node answers through POST /api/crew/report with its
+ * PM2.5, and the next plan is corrected by that reading like by any AirNow monitor.
+ */
+export interface Dispatch {
+  sensor: "launch" | "standby";
+  bearing_deg: number | null;
+  distance_km: number | null;
+  detections_50km: number;
+  reason: string;
+}
+
+const DISPATCH_KM = 30;
+
+function dispatchFor(plan: CrewPlan): Dispatch {
+  const f = plan.confidence.fire;
+  const go = !!f && f.nearest_km <= DISPATCH_KM;
+  return {
+    sensor: go ? "launch" : "standby",
+    bearing_deg: f ? (f.bearing_deg ?? null) : null,
+    distance_km: f ? Math.round(f.nearest_km) : null,
+    detections_50km: f?.within_50km ?? 0,
+    reason: go
+      ? `VIIRS fire ${Math.round(f!.nearest_km)} km ${f!.direction}: sample PM2.5 toward it, outside the fire's TFR, and report`
+      : f
+        ? `nearest VIIRS fire ${Math.round(f.nearest_km)} km ${f.direction}, beyond ${DISPATCH_KM} km`
+        : "no VIIRS fire within about 200 km in the last 24 h",
+  };
 }
 
 /**
@@ -473,7 +506,7 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
     );
   }
   const plan = out as CrewPlan;
-  return { place: at, date, shift, plan, alerts, home: homeSignal(plan), ...(fallback ? { fallback } : {}) };
+  return { place: at, date, shift, plan, alerts, home: homeSignal(plan), dispatch: dispatchFor(plan), ...(fallback ? { fallback } : {}) };
 }
 
 /**

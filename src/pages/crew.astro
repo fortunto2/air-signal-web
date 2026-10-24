@@ -274,7 +274,7 @@ const schema = [
                   : "No smoke hour: windows can stay open overnight."}
               </p>
               <p class="crew-legend no-print">
-                Same day as JSON for a building system or a home agent (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>): <a href={apiUrl}>{apiUrl}</a>
+                Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: launch, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
               </p>
             </div>
             <div class="crew-block no-print" id="sky">
