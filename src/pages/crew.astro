@@ -238,6 +238,12 @@ const schema = [
                   ))}
                 </div>
                 <label class="crew-geo"><input type="checkbox" data-geo-ask /> Add where I am (rounded to about 100 m)</label>
+                <details class="crew-sends" open>
+                  <summary>What is sent, and to whom</summary>
+                  <p><b>To:</b> this page for {answer?.place.name ?? place}, {dayLabel(date)}. The crew lead sees it here, and so does anyone who has this page’s link. Nothing goes to an agency, union or employer’s system unless someone chooses to forward it.</p>
+                  <p><b>Sent:</b> the kind you pick, your note, the time, and this hour’s forecast, the nearest satellite fire and the nearest air monitor reading.<span data-geo-line hidden> Also where you are, rounded to about 100 m.</span></p>
+                  <p><b>Not sent:</b> your name, phone, email or photo. Your IP is not stored; a one-way code made from it is kept 2 days to stop spam. <a href="/crew/privacy">Privacy</a></p>
+                </details>
                 <div class="crew-report-row">
                   <input name="note" maxlength="280" placeholder="Optional: where, what you see (no names)" />
                   <button type="submit">Send report</button>
@@ -327,7 +333,7 @@ const schema = [
           <li><span class="num">95°F</span><span>High-heat procedures: pre-shift meeting, someone watching the crew.</span><span class="cite">T8 §3395</span></li>
         </ol>
         <p class="crew-legend">
-          This is a planning aid, not legal advice. The rules live in one data file per state, and
+          This is a planning aid, not legal advice (<a href="/crew/privacy">privacy and terms</a>). The rules live in one data file per state, and
           the code is open: <a href={REPO}>{REPO.replace("https://", "")}</a>. Built at the Stanford
           Cleantech Hackathon, October 2026.
         </p>
@@ -374,6 +380,7 @@ const schema = [
     if (!e.target.checked || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (p) => {
+        document.querySelector("[data-geo-line]")?.removeAttribute("hidden");
         document.querySelector('[data-geo="lat"]').value = p.coords.latitude;
         document.querySelector('[data-geo="lon"]').value = p.coords.longitude;
         document.querySelector('[data-geo="acc"]').value = p.coords.accuracy;
@@ -519,6 +526,25 @@ const schema = [
     background: var(--surface);
     color: var(--ink-2);
     cursor: pointer;
+  }
+  .crew-sends {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--ground);
+    font-size: 13.5px;
+  }
+  .crew-sends summary {
+    cursor: pointer;
+    font-weight: 560;
+  }
+  .crew-sends p {
+    margin-top: 6px;
+    max-width: 75ch;
+  }
+  .crew-sends a {
+    color: var(--accent);
   }
   .crew-geo {
     display: block;

@@ -874,6 +874,18 @@ export async function addCrewReport(r: {
   sender: string;
 }): Promise<{ id: number; created_at: string }> {
   const created_at = new Date().toISOString();
+  // The privacy page promises the rate-limit hash is gone after 2 days: an IPv4 hash with a fixed salt
+  // can be brute-forced, so it is pseudonymous data and kept no longer than the limit needs.
+  // And raw reports older than 24 months are deleted (the page says so); counts by county survive
+  // only in the published aggregates.
+  await DB().batch([
+    DB()
+      .prepare("UPDATE crew_reports SET sender = '' WHERE sender != '' AND created_at < ?1")
+      .bind(new Date(Date.now() - 2 * 86_400_000).toISOString()),
+    DB()
+      .prepare("DELETE FROM crew_reports WHERE created_at < ?1")
+      .bind(new Date(Date.now() - 730 * 86_400_000).toISOString()),
+  ]);
   const row = await DB()
     .prepare(
       `INSERT INTO crew_reports (site, date, created_at, kind, note, evidence_json, sender)

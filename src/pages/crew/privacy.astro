@@ -1,0 +1,69 @@
+---
+/**
+ * Crew Air privacy policy. The text lives in src/content/crew/privacy.md, copied from the hackathon
+ * repo's legal/ folder, so the page and the App Store answers are written from one document.
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import { SITE } from "../../lib/site";
+import { Content as Privacy } from "../../content/crew/privacy.md";
+import { Content as Terms } from "../../content/crew/terms.md";
+---
+
+<Layout title={`Crew Air privacy and terms — ${SITE.name}`} description="What Crew Air collects (no accounts, no tracking), how long it keeps it, and the terms of use." path="/crew/privacy" pitch={false}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+      <article class="legal">
+        <Privacy />
+        <hr />
+        <Terms />
+      </article>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .legal {
+    padding: 24px 20px 40px;
+    max-width: 78ch;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .legal :global(h1) {
+    font-size: 26px;
+    margin: 8px 0 6px;
+  }
+  .legal :global(h2) {
+    font-size: 18px;
+    margin: 22px 0 6px;
+  }
+  .legal :global(p),
+  .legal :global(ul) {
+    margin: 8px 0;
+  }
+  .legal :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 10px 0;
+    display: block;
+    overflow-x: auto;
+  }
+  .legal :global(th),
+  .legal :global(td) {
+    text-align: left;
+    vertical-align: top;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .legal :global(a) {
+    color: var(--accent);
+    word-break: break-word;
+  }
+  .legal :global(hr) {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 28px 0;
+  }
+</style>
