@@ -120,6 +120,32 @@ function wasm_comfort_score(json) {
 exports.wasm_comfort_score = wasm_comfort_score;
 
 /**
+ * A crew's shift plan from an hourly forecast: the rulebook's actions at the hour each starts,
+ * the clear window for heavy work, and the BMS signal for the same day.
+ *
+ * Input: `{"hours":[{"time":"2026-10-24T13:00","pm25":80,"temp_c":28}],"date":"2026-10-24",
+ * "start":7,"end":17}`, optionally `"rulebook":{...}`; California's is the default. Hours
+ * should start a day early so the NowCast has its history. Returns `crew::ShiftPlan`.
+ * @param {string} json
+ * @returns {string}
+ */
+function wasm_crew_plan(json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_crew_plan(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+exports.wasm_crew_plan = wasm_crew_plan;
+
+/**
  * Is this a real event, or one sensor having a bad day?
  *
  * The question every air map gets wrong. A single device reading high is noise; seven devices

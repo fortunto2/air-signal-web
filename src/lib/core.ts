@@ -37,6 +37,7 @@ export interface AirqExtras {
   wasm_bearing(lat1: number, lon1: number, lat2: number, lon2: number): number;
   wasm_moon_phase(year: number, month: number, day: number): number;
   wasm_merge(json: string): string;
+  wasm_crew_plan(json: string): string;
 }
 
 let ready = false;

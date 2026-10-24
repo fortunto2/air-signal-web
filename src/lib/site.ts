@@ -100,6 +100,8 @@ export const paths = {
    * the static page wins over `[country].astro` the same way `/map` and `/ranking` do.
    */
   embed: () => `/embed`,
+  /** Smoke and heat shift plans for outdoor crews, Cal/OSHA. Static, so it wins over `[country]`. */
+  crew: () => `/crew`,
   /**
    * The guide. `/guide` is the index; `/guide/<signal>` is one signal explained at length.
    *

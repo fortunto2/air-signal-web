@@ -21,6 +21,7 @@ export const GET: APIRoute = async () => {
     // The one page here that asks the reader for something. It answers a question people type
     // ("free air quality widget for my website"), so it earns a place beside the guide.
     { loc: paths.embed(), priority: "0.7" },
+    { loc: paths.crew(), priority: "0.8" },
     { loc: "/", priority: "1.0" },
   ];
 

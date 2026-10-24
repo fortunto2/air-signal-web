@@ -1,0 +1,431 @@
+---
+/**
+ * Crews: a smoke and heat shift plan for outdoor work in California.
+ *
+ * A plain GET form, rendered on the server, so the plan is in the HTML for a reader with no
+ * JavaScript and for a crawler alike. The maths is `airq-core` (`crew.rs`) through `lib/crew.ts`;
+ * this file only lays it out. With no `place` the page plans Sacramento, so it is never empty.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import { SITE, abs, aqiBand, paths } from "../lib/site";
+import { crewDate, crewDefaultDate, crewPlan, parseShift, type CrewAnswer } from "../lib/crew";
+
+const DEFAULT_PLACE = "Sacramento";
+const REPO = "https://github.com/fortunto2/stanford-cleantech-2026";
+
+const qs = Astro.url.searchParams;
+const place = qs.get("place")?.trim() || DEFAULT_PLACE;
+const days = [0, 1, 2].map((d) => crewDate(d));
+const date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefaultDate();
+const shift = parseShift(qs.get("shift"));
+const shiftRaw = `${String(shift.start).padStart(2, "0")}-${String(shift.end).padStart(2, "0")}`;
+
+let answer: CrewAnswer | null = null;
+let failure: string | null = null;
+try {
+  answer = await crewPlan(place, date, shift);
+  if (!answer) failure = `We could not find “${place}”. Try a city or town name.`;
+} catch (e) {
+  failure = "The forecast service did not answer. Try again in a minute.";
+  Astro.response.status = 502;
+}
+
+const plan = answer?.plan;
+const clock = (t: string) => t.slice(11, 16);
+const dayLabel = (d: string) =>
+  new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }).format(
+    new Date(`${d}T12:00:00Z`),
+  );
+const heatBand = (f: number | undefined) =>
+  f === undefined ? "quiet" : f >= 95 ? "bad" : f >= 80 ? "fair" : "good";
+const apiUrl = answer
+  ? `/api/crew?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`
+  : "/api/crew?place=Fresno&shift=07-17";
+
+const pageUrl = abs(`${paths.crew()}?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`);
+const madeAt = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", dateStyle: "medium", timeStyle: "short" }).format(new Date());
+
+const description =
+  "Smoke and heat shift plan for outdoor crews in California: enter a place and a shift, get the " +
+  "hour Cal/OSHA requires N95s (§5141.1, AQI 151) or shade and water (§3395, 80°F), from an hourly " +
+  "forecast with the EPA NowCast.";
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: `${SITE.name} for crews`,
+    description,
+    url: abs(paths.crew()),
+    applicationCategory: "BusinessApplication",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  },
+];
+---
+
+<Layout title={`Smoke and heat shift plan for outdoor crews — ${SITE.name}`} description={description} path={paths.crew()} schema={schema} pitch={false}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">For crews · California</div>
+        <h1 style="font-size:27px;margin:5px 0 0">The hour Cal/OSHA’s smoke and heat rules start on your shift</h1>
+        <p class="lede no-print" style="margin-top:12px;font-size:15.5px">
+          Cal/OSHA wants N95s handed out once the air hits AQI 151, and shade and water at 80°F.
+          Type where the crew works and when the shift runs, and you get the hour each rule starts
+          and the clear window for the heavy work.
+        </p>
+      </div>
+
+      <form class="crew-form no-print" method="get" action={paths.crew()}>
+        <label>
+          <span class="eyebrow">Place</span>
+          <input name="place" value={place} placeholder="Fresno" autocomplete="address-level2" required />
+        </label>
+        <label>
+          <span class="eyebrow">Day</span>
+          <select name="date">
+            {days.map((d) => <option value={d} selected={d === date}>{dayLabel(d)}</option>)}
+          </select>
+        </label>
+        <label>
+          <span class="eyebrow">Shift</span>
+          <input name="shift" value={shiftRaw} pattern="\d{1,2}-\d{1,2}" title="start-end hour, e.g. 07-17" />
+        </label>
+        <button type="submit">Plan the shift</button>
+      </form>
+
+      {failure && <p class="crew-note" role="alert">{failure}</p>}
+
+      {
+        answer && plan && (
+          <>
+            <div class="crew-head">
+              <div>
+                <div class="eyebrow">{dayLabel(date)} · {shiftRaw.replace("-", ":00–")}:00</div>
+                <h2 style="margin-top:4px">{answer.place.name}</h2>
+              </div>
+              <div class="crew-peaks">
+                <button class="crew-print no-print" type="button" onclick="window.print()">Print / Save PDF</button>
+                <span>
+                  <span class="eyebrow">Peak AQI</span>
+                  <b class={`num fg-${aqiBand(plan.peak_aqi)}`}>{plan.peak_aqi ?? "–"}</b>
+                </span>
+                <span>
+                  <span class="eyebrow">Peak</span>
+                  <b class={`num fg-${heatBand(plan.peak_temp_f ?? undefined)}`}>
+                    {plan.peak_temp_f === null ? "–" : `${Math.floor(plan.peak_temp_f)}°F`}
+                  </b>
+                </span>
+              </div>
+            </div>
+
+            <ol class="crew-actions">
+              {plan.actions.length === 0 && (
+                <li>
+                  <span class="num">all day</span>
+                  <span>No smoke or heat thresholds crossed. Normal shift.</span>
+                  <span />
+                </li>
+              )}
+              {plan.actions.map((a) => (
+                <li>
+                  <span class="num">{clock(a.time)}</span>
+                  <span>{a.text}</span>
+                  <span class="cite">{a.cite}</span>
+                </li>
+              ))}
+            </ol>
+
+            <div class="crew-hours" role="table" aria-label="Hourly forecast for the shift">
+              {plan.hours.map((h) => (
+                <div role="row">
+                  <span role="cell" class="num t">{clock(h.time)}</span>
+                  <span role="cell" class={`num scale-${aqiBand(h.metrics.us_aqi_pm25 ?? null)} chipcell`}>
+                    {h.metrics.us_aqi_pm25 ?? "–"}
+                  </span>
+                  <span role="cell" class={`num fg-${heatBand(h.metrics.temp_f)}`}>
+                    {h.metrics.temp_f === undefined ? "–" : `${Math.floor(h.metrics.temp_f)}°`}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p class="crew-legend">Top: PM2.5 AQI (NowCast). Bottom: air temperature, °F.</p>
+
+            <div class="crew-block">
+              <div class="eyebrow">Building ventilation</div>
+              <p>
+                {plan.bms.recirculate_at
+                  ? `Close outside-air dampers at ${clock(plan.bms.recirculate_at)} and recirculate through MERV 13 or better${plan.bms.resume_at ? `; open them again at ${clock(plan.bms.resume_at)}` : " for the rest of the day"}. Outdoor AQI peaks at ${plan.bms.peak_aqi}.`
+                  : `Outdoor AQI stays under ${plan.bms.threshold_aqi} (peak ${plan.bms.peak_aqi ?? "–"}). Normal ventilation.`}
+              </p>
+              <p class="crew-legend no-print">
+                Same plan as JSON for a building system: <a href={apiUrl}>{apiUrl}</a>
+              </p>
+            </div>
+            <div class="crew-signoff print-only">
+              <div class="eyebrow">Pre-shift briefing</div>
+              <p>Given by ______________________ at ________ · Water, shade and N95 location: ______________________</p>
+              <table>
+                <thead><tr><th>Name</th><th>Signature</th><th>Name</th><th>Signature</th></tr></thead>
+                <tbody>{Array.from({ length: 6 }, () => <tr><td /><td /><td /><td /></tr>)}</tbody>
+              </table>
+              <p class="crew-legend">Forecast made {madeAt} PT from {pageUrl}. A planning aid, not legal advice.</p>
+            </div>
+          </>
+        )
+      }
+
+      <div class="crew-block no-print">
+        <h2>Why our AQI can be higher than your weather app's</h2>
+        <p>
+          The AQI in a forecast feed is usually a 24-hour average; Open-Meteo’s is. Cal/OSHA goes by
+          the current AQI, which the EPA calculates as a NowCast weighted toward the last few hours.
+          Smoke that rolls in at noon barely moves a daily average before evening. With the NowCast, an hour at 100 µg/m³
+          after eleven clean ones already reads AQI 149, where the daily figure shows about 55.
+        </p>
+        <p>
+          The smoke forecast comes from CAMS, a model with grid cells about 40 km wide, and it runs
+          low right next to a fire. If you can see smoke, trust your eyes and a local sensor over this page.
+        </p>
+      </div>
+
+      <div class="crew-block no-print">
+        <h2>The rules, as we read them</h2>
+        <ol class="crew-actions">
+          <li><span class="num">AQI 151</span><span>N95s available for voluntary use, crew told about the smoke, exposure cut where you can (55.5 µg/m³ PM2.5).</span><span class="cite">T8 §5141.1</span></li>
+          <li><span class="num">AQI 500+</span><span>Respirators required; above the scale, so the rule works on concentration: 500.5 µg/m³.</span><span class="cite">T8 §5141.1, App. A</span></li>
+          <li><span class="num">80°F</span><span>Shade up, water close by.</span><span class="cite">T8 §3395</span></li>
+          <li><span class="num">95°F</span><span>High-heat procedures: pre-shift meeting, someone watching the crew.</span><span class="cite">T8 §3395</span></li>
+        </ol>
+        <p class="crew-legend">
+          This is a planning aid, not legal advice. The rules live in one data file per state, and
+          the code is open: <a href={REPO}>{REPO.replace("https://", "")}</a>. Built at the Stanford
+          Cleantech Hackathon, October 2026.
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .crew-form {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 0.7fr auto;
+    gap: 12px;
+    align-items: end;
+    padding: 14px 20px 20px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .crew-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .crew-form input,
+  .crew-form select,
+  .crew-form button {
+    font: inherit;
+    font-size: 15px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+    min-width: 0;
+  }
+  .crew-form button {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--surface);
+    font-weight: 560;
+    cursor: pointer;
+  }
+  .crew-note {
+    padding: 14px 20px;
+    color: var(--s-poor);
+  }
+  .crew-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    gap: 16px;
+    padding: 18px 20px 10px;
+  }
+  .crew-peaks {
+    display: flex;
+    gap: 22px;
+  }
+  .crew-peaks > span {
+    display: flex;
+    flex-direction: column;
+    align-items: end;
+  }
+  .crew-peaks b {
+    font-size: 26px;
+    font-weight: 560;
+  }
+  .crew-actions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .crew-actions li {
+    display: grid;
+    grid-template-columns: 76px 1fr auto;
+    gap: 14px;
+    padding: 11px 20px;
+    border-bottom: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+  .crew-actions .num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .cite {
+    font-size: 12px;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .crew-hours {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(44px, 1fr);
+    gap: 3px;
+    padding: 16px 20px 4px;
+    overflow-x: auto;
+  }
+  .crew-hours [role="row"] {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+  }
+  .crew-hours .t {
+    color: var(--ink-3);
+  }
+  .chipcell {
+    width: 100%;
+    text-align: center;
+    padding: 6px 0;
+    border-radius: var(--radius);
+    color: #fff;
+  }
+  .crew-legend {
+    padding: 4px 20px 0;
+    font-size: 12.5px;
+    color: var(--ink-3);
+  }
+  .crew-legend a,
+  .crew-block a {
+    color: var(--accent);
+    word-break: break-all;
+  }
+  .crew-block {
+    padding: 18px 20px 20px;
+    border-top: 1px solid var(--line-soft);
+    margin-top: 14px;
+  }
+  .crew-block p {
+    margin-top: 8px;
+    max-width: 66ch;
+    font-size: 14px;
+  }
+  .crew-block .crew-legend {
+    padding: 4px 0 0;
+  }
+  .crew-print {
+    font: inherit;
+    font-size: 13px;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink-2);
+    cursor: pointer;
+    align-self: center;
+  }
+  .print-only {
+    display: none;
+  }
+  .crew-signoff table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .crew-signoff th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--ink-3);
+    padding: 4px 6px;
+  }
+  .crew-signoff td {
+    border-bottom: 1px solid #999;
+    height: 9mm;
+  }
+  /* One sheet a foreman can pin up or file: the plan, the hours, a sign-off for the briefing. */
+  @media print {
+    @page {
+      size: letter;
+      margin: 12mm;
+    }
+    :global(body > :not(main)),
+    :global(.bar),
+    .no-print {
+      display: none !important;
+    }
+    :global(body),
+    :global(.app) {
+      background: #fff !important;
+      color: #000;
+      border: 0 !important;
+      box-shadow: none !important;
+    }
+    :global(.wrap) {
+      padding: 0 !important;
+      max-width: none !important;
+    }
+    .print-only {
+      display: block;
+      padding: 14px 20px;
+      break-inside: avoid;
+    }
+    .crew-hours {
+      overflow: visible;
+    }
+    .crew-hours,
+    .crew-peaks b {
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+    .crew-block a {
+      color: inherit;
+    }
+  }
+  @media (max-width: 640px) {
+    .crew-form {
+      grid-template-columns: 1fr 1fr;
+    }
+    .crew-form label:first-child,
+    .crew-form button {
+      grid-column: 1 / -1;
+    }
+    .crew-actions li {
+      grid-template-columns: 58px 1fr;
+    }
+    .crew-actions .cite {
+      grid-column: 2;
+    }
+    .crew-head {
+      flex-direction: column;
+      align-items: start;
+    }
+  }
+</style>

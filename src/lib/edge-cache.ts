@@ -14,8 +14,8 @@
  * the question.
  */
 
-/** Query params some page reads (`ranking`, `countries`). Any other param is dropped from the key. */
-const PAGE_PARAMS = new Set(["sort", "thin"]);
+/** Query params some page reads (`ranking`, `countries`, `crew`). Any other param is dropped from the key. */
+const PAGE_PARAMS = new Set(["sort", "thin", "place", "date", "shift"]);
 
 type WaitUntil = (promise: Promise<unknown>) => void;
 
