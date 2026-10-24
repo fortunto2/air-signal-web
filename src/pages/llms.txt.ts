@@ -96,7 +96,9 @@ problem is illegal (Labor Code §6310).
 
 - \`${abs("/crew")}\` — the shift plan page; \`${abs("/crew/privacy")}\` — what is collected
 - \`GET ${abs("/api/crew")}?place=Fresno&shift=07-17\` — the plan by the hour, the rule actions, checks
-  (NASA VIIRS fire within 50 km, AirNow monitor within 25 km) and a BMS signal. \`place\` may be \`lat,lon\`.
+  (NASA VIIRS fire within 50 km, AirNow monitor within 25 km), active NWS alerts, a BMS signal
+  (\`plan.bms\`) and a home signal (\`home\`: pre-cool hours before the 16–21 E-TOU-C peak price, the
+  smoke hour to shut windows). \`place\` may be \`lat,lon\`.
 - \`GET ${abs("/api/crew/places")}?q=fres\` — place suggestions
 - \`POST ${abs("/api/sky-check")}?place=…\` — raw \`image/jpeg\` body; a vision model's smoke call on a
   photo of the sky, compared with the forecast. Black out faces before sending.

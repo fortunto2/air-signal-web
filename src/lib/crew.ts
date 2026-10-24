@@ -81,6 +81,58 @@ export interface CrewAnswer {
   /** Set when Open-Meteo was down and the plan was built from the fallbacks instead. */
   fallback?: { air: "monitor"; monitor: string; temp: "open-meteo" | "nws" | "none"; reason: string };
   plan: CrewPlan;
+  /** Active National Weather Service alerts for the point (Red Flag Warning, Heat Advisory, …). */
+  alerts: { event: string; onset: string | null; ends: string | null }[];
+  /** The same day for a home or a building's agent: the price peak and the hours to act before it. */
+  home: HomeSignal;
+}
+
+/**
+ * What a home energy agent needs from this forecast. PG&E's E-TOU-C peak is 16:00–21:00 every day
+ * (SVCE and the other CCAs bill generation on the same schedule), so the cheap hours to cool a house
+ * are the ones before it. Rules, not an optimisation: no load model, no price in dollars.
+ */
+export interface HomeSignal {
+  /** PG&E E-TOU-C: peak price 16:00–21:00 every day, including weekends. */
+  peak_price: { start: number; end: number; tariff: string };
+  /** Pre-cool when the day reaches the heat rule's 80 °F; the window ends when the peak price starts. */
+  precool: { start: number; end: number } | null;
+  /** The smoke hour from the building signal: windows shut, HVAC on recirculate. */
+  close_windows_at: string | null;
+  open_windows_at: string | null;
+  reason: string;
+}
+
+const TOU_PEAK = { start: 16, end: 21, tariff: "PG&E E-TOU-C" };
+
+function homeSignal(plan: CrewPlan): HomeSignal {
+  const hot = (plan.peak_temp_f ?? 0) >= 80;
+  const smoke = plan.bms.recirculate_at;
+  return {
+    peak_price: TOU_PEAK,
+    precool: hot ? { start: 13, end: TOU_PEAK.start } : null,
+    close_windows_at: smoke,
+    open_windows_at: plan.bms.resume_at,
+    reason: [
+      hot ? `peak ${Math.floor(plan.peak_temp_f!)} °F: cool the house 13:00–16:00, before the ${TOU_PEAK.start}:00–${TOU_PEAK.end}:00 peak price` : "under 80 °F: no pre-cooling needed",
+      smoke ? `smoke: windows shut and HVAC on recirculate from ${smoke.slice(11, 16)}` : "no smoke hour",
+    ].join("; "),
+  };
+}
+
+/** Active NWS alerts at a point: Red Flag Warnings, heat advisories, air quality alerts. Free, no key. */
+async function nwsAlerts(lat: number, lon: number): Promise<CrewAnswer["alerts"]> {
+  const fc = await cached(
+    `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`,
+    600,
+    (t) => JSON.parse(t),
+    { "User-Agent": "airsignal.app (info@superduperai.co)", Accept: "application/geo+json" },
+  );
+  return (fc?.features ?? []).map((f: any) => ({
+    event: String(f.properties?.event ?? "Alert"),
+    onset: f.properties?.onset ?? null,
+    ends: f.properties?.ends ?? f.properties?.expires ?? null,
+  }));
 }
 
 /**
@@ -371,11 +423,12 @@ export async function crewPlan(place: string, date: string, shift: Shift): Promi
 export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Promise<CrewAnswer> {
   // A day of history so the first shift hour has the 12 hours a NowCast needs.
   const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
-  const [aqR, wxR, fires, ground] = await Promise.all([
+  const [aqR, wxR, fires, ground, alerts] = await Promise.all([
     json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`).catch((e: Error) => e),
     json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m`).catch((e: Error) => e),
     fetchFires(),
     fetchGround(at.lat, at.lon),
+    nwsAlerts(at.lat, at.lon),
   ]);
   let hours: { time: string; pm25: number | null; temp_c: number | null }[];
   let fallback: CrewAnswer["fallback"];
@@ -419,7 +472,8 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
       n.replace(/; the model had [\d.]+\..*$/, "; the plan holds this reading for every hour."),
     );
   }
-  return { place: at, date, shift, plan: out as CrewPlan, ...(fallback ? { fallback } : {}) };
+  const plan = out as CrewPlan;
+  return { place: at, date, shift, plan, alerts, home: homeSignal(plan), ...(fallback ? { fallback } : {}) };
 }
 
 /**

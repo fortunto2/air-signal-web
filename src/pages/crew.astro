@@ -203,6 +203,11 @@ const schema = [
                     : "No VIIRS fire detections within about 200 km in the last 24 h."}
                 </p>
               ) : null}
+              <p class={answer.alerts.some((a) => /Red Flag|Heat|Air Quality|Smoke/i.test(a.event)) ? "crew-fire" : ""}>
+                {answer.alerts.length
+                  ? `National Weather Service alerts here now: ${answer.alerts.map((a) => a.event + (a.ends ? ` until ${a.ends.slice(5, 16).replace("T", " ")}` : "")).join("; ")}.`
+                  : "No National Weather Service alerts for this place right now (Red Flag Warning, Heat Advisory, Air Quality Alert)."}
+              </p>
             </div>
 
             <ol class="crew-actions">
@@ -232,10 +237,23 @@ const schema = [
                   <span role="cell" class={`num fg-${heatBand(h.metrics.temp_f)}`}>
                     {h.metrics.temp_f === undefined ? "–" : `${Math.floor(h.metrics.temp_f)}°`}
                   </span>
+                  {(() => {
+                    const hour = Number(h.time.slice(11, 13));
+                    const peak = hour >= answer.home.peak_price.start && hour < answer.home.peak_price.end;
+                    const cool = answer.home.precool && hour >= answer.home.precool.start && hour < answer.home.precool.end;
+                    return (
+                      <span role="cell" class={`tou ${peak ? "tou-peak" : cool ? "tou-cool" : ""}`} title={peak ? "Peak price" : cool ? "Pre-cool" : "Off-peak"}>
+                        {peak ? "peak" : cool ? "cool" : ""}
+                      </span>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
-            <p class="crew-legend">Top: PM2.5 AQI (NowCast). Bottom: air temperature, °F.</p>
+            <p class="crew-legend">
+              Top: PM2.5 AQI (NowCast). Middle: air temperature, °F. Bar: electricity price, {answer.home.peak_price.tariff} peak{" "}
+              {answer.home.peak_price.start}:00–{answer.home.peak_price.end}:00 every day{answer.home.precool ? "; “cool” marks the cheap hours to pre-cool a house before it" : ""}.
+            </p>
 
             <div class="crew-block">
               <div class="eyebrow">Building ventilation</div>
@@ -244,8 +262,19 @@ const schema = [
                   ? `Close outside-air dampers at ${clock(plan.bms.recirculate_at)} and recirculate through MERV 13 or better${plan.bms.resume_at ? `; open them again at ${clock(plan.bms.resume_at)}` : " for the rest of the day"}. Outdoor AQI peaks at ${plan.bms.peak_aqi}.`
                   : `Outdoor AQI stays under ${plan.bms.threshold_aqi} (peak ${plan.bms.peak_aqi ?? "–"}). Normal ventilation.`}
               </p>
+            </div>
+            <div class="crew-block">
+              <div class="eyebrow">Home</div>
+              <p>
+                {answer.home.precool
+                  ? `Cool the house ${answer.home.precool.start}:00–${answer.home.precool.end}:00, before the ${answer.home.peak_price.start}:00–${answer.home.peak_price.end}:00 peak price, then hold. `
+                  : `Under 80 °F: no pre-cooling needed; the peak price runs ${answer.home.peak_price.start}:00–${answer.home.peak_price.end}:00. `}
+                {answer.home.close_windows_at
+                  ? `Smoke: windows shut and HVAC on recirculate from ${clock(answer.home.close_windows_at)}${answer.home.open_windows_at ? ` to ${clock(answer.home.open_windows_at)}` : " for the rest of the day"}; a closed house runs the air conditioner longer, so the pre-cooling matters more.`
+                  : "No smoke hour: windows can stay open overnight."}
+              </p>
               <p class="crew-legend no-print">
-                Same plan as JSON for a building system: <a href={apiUrl}>{apiUrl}</a>
+                Same day as JSON for a building system or a home agent (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>): <a href={apiUrl}>{apiUrl}</a>
               </p>
             </div>
             <div class="crew-block no-print" id="sky">
@@ -805,6 +834,24 @@ const schema = [
   }
   .crew-hours .t {
     color: var(--ink-3);
+  }
+  .tou {
+    width: 100%;
+    height: 16px;
+    line-height: 16px;
+    border-radius: 3px;
+    background: var(--line-soft);
+    font-size: 10px;
+    text-align: center;
+    color: var(--ink-3);
+  }
+  .tou-peak {
+    background: var(--accent);
+    color: #fff;
+  }
+  .tou-cool {
+    background: #3d74c4;
+    color: #fff;
   }
   .chipcell {
     width: 100%;
