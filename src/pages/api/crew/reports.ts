@@ -10,7 +10,9 @@ export const GET: APIRoute = async ({ url }) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("date") ?? "") ? url.searchParams.get("date")! : crewDefaultDate();
   const at = await geocode(place).catch(() => null);
   if (!at) return new Response(JSON.stringify({ error: `place not found: ${place}` }), { status: 404, headers });
-  const reports = (await listCrewReports(siteKey(at.name), date)).map(({ evidence_json, ...r }) => ({
+  // `sender` stays server-side: a daily hash is not a name, but it would let anyone link one phone's
+  // reports to each other, and it exists only for the rate limit.
+  const reports = (await listCrewReports(siteKey(at.name), date)).map(({ evidence_json, sender: _sender, ...r }) => ({
     ...r,
     evidence: evidence_json ? JSON.parse(evidence_json) : null,
   }));
