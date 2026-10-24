@@ -78,6 +78,8 @@ export interface CrewAnswer {
   place: CrewPlace;
   date: string;
   shift: { start: number; end: number };
+  /** Set when Open-Meteo was down and the plan was built from the fallbacks instead. */
+  fallback?: { air: "monitor"; monitor: string; temp: "open-meteo" | "nws" | "none"; reason: string };
   plan: CrewPlan;
 }
 
@@ -89,13 +91,23 @@ export interface CrewAnswer {
  */
 const memo = new Map<string, { until: number; value: Promise<unknown> }>();
 const MEMO_MAX = 16;
-function cached<T>(url: string, ttl: number, parse: (text: string) => T): Promise<T | null> {
+/** Why the last fetch of a URL failed, so an error names the status instead of just "unavailable". */
+const failures = new Map<string, string>();
+
+function cached<T>(url: string, ttl: number, parse: (text: string) => T, headers?: Record<string, string>): Promise<T | null> {
   const now = Date.now();
   const hit = memo.get(url);
   if (hit && hit.until > now) return hit.value as Promise<T | null>;
-  const value = fetch(url, { signal: AbortSignal.timeout(8000), cf: { cacheTtl: ttl, cacheEverything: true } } as RequestInit)
-    .then(async (res) => (res.ok ? parse(await res.text()) : null))
-    .catch(() => null);
+  const value = fetch(url, { headers, signal: AbortSignal.timeout(8000), cf: { cacheTtl: ttl, cacheEverything: true } } as RequestInit)
+    .then(async (res) => {
+      if (res.ok) return parse(await res.text());
+      failures.set(url, `HTTP ${res.status} ${(await res.text()).slice(0, 120)}`);
+      return null;
+    })
+    .catch((e) => {
+      failures.set(url, String(e));
+      return null;
+    });
   memo.set(url, { until: now + ttl * 1000, value });
   value.then((v) => {
     if (v === null) memo.set(url, { until: Date.now() + 60_000, value });
@@ -109,7 +121,7 @@ function cached<T>(url: string, ttl: number, parse: (text: string) => T): Promis
 /** JSON from an upstream; throws when it is unavailable, so a plan never silently lacks a forecast. */
 async function json(url: string, ttl = 600): Promise<any> {
   const out = await cached(url, ttl, (t) => JSON.parse(t));
-  if (out === null) throw new Error(`${new URL(url).hostname} unavailable`);
+  if (out === null) throw new Error(`${new URL(url).hostname} unavailable (${failures.get(url) ?? "no answer"})`);
   return out;
 }
 
@@ -200,7 +212,7 @@ function localHour(utc: string): string {
  * AirNow posts an hour's file roughly an hour later and fills it in over the next one, so files are
  * searched newest first, up to four hours back, for one where a nearby monitor has a value. Keyless; the hourly file is ~1 MB and cached at the edge.
  */
-async function fetchGround(lat: number, lon: number) {
+async function fetchGround(lat: number, lon: number, maxKm = 25) {
   // All four candidate hours are requested at once (each is shared per isolate and edge-cached), then
   // read newest first: worst case one round trip instead of four sequential 8-second waits.
   const files = [1, 2, 3, 4].map((back) => {
@@ -212,9 +224,9 @@ async function fetchGround(lat: number, lon: number) {
     const monitors = await file;
     if (!monitors) continue;
     const near = monitors
-      .filter((m) => Math.abs(m.lat - lat) < 0.4 && Math.abs(m.lon - lon) < 0.5)
+      .filter((m) => Math.abs(m.lat - lat) < maxKm / 60 && Math.abs(m.lon - lon) < maxKm / 50)
       .map((m) => ({ ...m, km: km(lat, lon, m.lat, m.lon) }))
-      .filter((m) => m.km <= 25)
+      .filter((m) => m.km <= maxKm)
       .sort((a, b) => a.km - b.km)
       .slice(0, 3);
     // The newest file fills in over the next hour: a monitor can be listed with no value yet.
@@ -334,6 +346,22 @@ export function parseShift(raw: string | null): { start: number; end: number } {
   return start < end && end <= 24 ? { start, end } : { start: 7, end: 17 };
 }
 
+/** Hourly temperature (°C) by local hour from the National Weather Service: US only, free, no key. */
+async function nwsTemps(lat: number, lon: number): Promise<Map<string, number | null>> {
+  const out = new Map<string, number | null>();
+  const get = (url: string) =>
+    cached(url, 3600, (t) => JSON.parse(t), { "User-Agent": "airsignal.app (info@superduperai.co)", Accept: "application/geo+json" });
+  const point = await get(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
+  const url = point?.properties?.forecastHourly;
+  const fc = url ? await get(url) : null;
+  for (const p of fc?.properties?.periods ?? []) {
+    const f = Number(p.temperature);
+    const c = p.temperatureUnit === "F" ? ((f - 32) * 5) / 9 : f;
+    out.set(localHour(new Date(p.startTime).toISOString()), Math.round(c * 10) / 10);
+  }
+  return out;
+}
+
 export async function crewPlan(place: string, date: string, shift: Shift): Promise<CrewAnswer | null> {
   const at = await geocode(place);
   return at ? crewPlanAt(at, date, shift) : null;
@@ -343,20 +371,41 @@ export async function crewPlan(place: string, date: string, shift: Shift): Promi
 export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Promise<CrewAnswer> {
   // A day of history so the first shift hour has the 12 hours a NowCast needs.
   const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
-  const [aq, wx, fires, ground] = await Promise.all([
-    json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`),
-    json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m`),
+  const [aqR, wxR, fires, ground] = await Promise.all([
+    json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`).catch((e: Error) => e),
+    json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m`).catch((e: Error) => e),
     fetchFires(),
     fetchGround(at.lat, at.lon),
   ]);
-  const temp = new Map<string, number | null>(
-    (wx.hourly.time as string[]).map((t, i) => [t, wx.hourly.temperature_2m[i]]),
-  );
-  const hours = (aq.hourly.time as string[]).map((time, i) => ({
-    time,
-    pm25: aq.hourly.pm2_5[i] ?? null,
-    temp_c: temp.get(time) ?? null,
-  }));
+  let hours: { time: string; pm25: number | null; temp_c: number | null }[];
+  let fallback: CrewAnswer["fallback"];
+  if (!(aqR instanceof Error) && !(wxR instanceof Error)) {
+    const temp = new Map<string, number | null>(
+      (wxR.hourly.time as string[]).map((t, i) => [t, wxR.hourly.temperature_2m[i]]),
+    );
+    hours = (aqR.hourly.time as string[]).map((time, i) => ({
+      time,
+      pm25: aqR.hourly.pm2_5[i] ?? null,
+      temp_c: temp.get(time) ?? null,
+    }));
+  } else {
+    // Open-Meteo shares a daily limit across Cloudflare's egress IPs and can refuse a whole day.
+    // A safety tool must still answer: the air holds at the nearest monitor's reading (persistence,
+    // said on the page), the temperature comes from the National Weather Service.
+    const reason = String(aqR instanceof Error ? aqR.message : (wxR as Error).message);
+    const held = ground ?? (await fetchGround(at.lat, at.lon, 100));
+    if (!held) throw new Error(`${reason}; no ground monitor within 100 km to fall back on`);
+    const temp: Map<string, number | null> =
+      wxR instanceof Error
+        ? await nwsTemps(at.lat, at.lon)
+        : new Map((wxR.hourly.time as string[]).map((t, i) => [t, wxR.hourly.temperature_2m[i]]));
+    const t0 = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 36 * 3_600_000;
+    hours = Array.from({ length: 36 + 80 }, (_, k) => {
+      const time = localHour(new Date(t0 + k * 3_600_000).toISOString());
+      return { time, pm25: held.pm25, temp_c: temp.get(time) ?? null };
+    });
+    fallback = { air: "monitor", monitor: `${held.nearest}, ${held.nearest_km} km`, temp: !(wxR instanceof Error) ? "open-meteo" : temp.size ? "nws" : "none", reason };
+  }
   // Only detections that could matter: the US list runs to tens of thousands in fire season, and the
   // engine looks no further than ~2° anyway.
   const near = fires.filter(([la, lo]) => Math.abs(la - at.lat) < 2 && Math.abs(lo - at.lon) < 2.5);
@@ -364,7 +413,13 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
     core().wasm_crew_plan(JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground })),
   );
   if (out.error) throw new Error(out.error);
-  return { place: at, date, shift, plan: out as CrewPlan };
+  // With no forecast the "model" is the monitor itself; comparing them would claim a check that never ran.
+  if (fallback) {
+    out.confidence.notes = (out.confidence.notes as string[]).map((n) =>
+      n.replace(/; the model had [\d.]+\..*$/, "; the plan holds this reading for every hour."),
+    );
+  }
+  return { place: at, date, shift, plan: out as CrewPlan, ...(fallback ? { fallback } : {}) };
 }
 
 /**

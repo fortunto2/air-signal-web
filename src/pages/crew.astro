@@ -57,7 +57,9 @@ try {
       listCrewReports(siteKey(at), date).catch(() => [] as CrewReport[]),
     ]);
 } catch (e) {
-  failure = "The forecast service did not answer. Try again in a minute.";
+  failure = /no ground monitor/.test(String(e))
+    ? "The air forecast service is down right now and there is no ground monitor within 100 km of this place. Try the nearest town in the valley."
+    : "The forecast service did not answer. Try again in a minute.";
   Astro.response.status = 502;
 }
 
@@ -128,8 +130,10 @@ const schema = [
       <form class="crew-form no-print" method="get" action={paths.crew()}>
         <label>
           <span class="eyebrow">Place</span>
-          <input name="place" list="crew-places" data-place value={place} placeholder="Fresno" autocomplete="address-level2" required />
-          <datalist id="crew-places"></datalist>
+          <span class="crew-place">
+            <input name="place" data-place value={place} placeholder="Fresno, or a town near the field" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="crew-places" required />
+            <span class="results" id="crew-places" role="listbox" hidden></span>
+          </span>
           <button type="button" class="crew-locate" data-locate>Use my location</button>
         </label>
         <label>
@@ -178,6 +182,14 @@ const schema = [
               </div>
             </div>
 
+            {answer.fallback && (
+              <p class="crew-note">
+                The air forecast service is down right now, so this plan holds the air at the nearest
+                ground monitor’s latest reading ({answer.fallback.monitor}) instead of
+                forecasting it{answer.fallback.temp === "nws" ? "; temperatures are the National Weather Service forecast" : answer.fallback.temp === "none" ? "; no temperature forecast was available" : ""}.
+                Check again before the afternoon.
+              </p>
+            )}
             {answer.place.state && answer.place.state !== "California" && (
               <p class="crew-note">These are California’s rules. {answer.place.state} may have its own; complaints there go to {agenciesFor(answer.place)[0]!.name}.</p>
             )}
@@ -395,20 +407,51 @@ const schema = [
 <script is:inline>
   // Place search: suggestions as you type, and "Use my location" plans for where you stand.
   const placeInput = document.querySelector("[data-place]");
+  // Same list and keys as the search in the bar; picking a place plans it straight away.
   const list = document.getElementById("crew-places");
-  let t;
+  let t, ac, hits = [], cursor = 0;
+  const show = (on) => { list.hidden = !on; placeInput.setAttribute("aria-expanded", String(on)); };
+  const pick = (h) => { placeInput.value = h.value; show(false); placeInput.form.requestSubmit(); };
+  const draw = (q, busy) => {
+    list.replaceChildren(...hits.map((h, i) => {
+      const a = document.createElement("a");
+      a.className = i === cursor ? "hit is-on" : "hit";
+      a.setAttribute("role", "option");
+      a.href = "#";
+      a.innerHTML = '<span class="hit-name"></span><span class="hit-detail"></span>';
+      a.children[0].textContent = h.name;
+      a.children[1].textContent = h.detail;
+      a.addEventListener("mousedown", (e) => { e.preventDefault(); pick(h); });
+      return a;
+    }));
+    if (!hits.length) list.replaceChildren(Object.assign(document.createElement("div"), { className: "hit-empty", textContent: busy ? "Searching…" : `Nothing matches “${q}”. Try the nearest town.` }));
+    show(true);
+  };
   placeInput?.addEventListener("input", () => {
-    clearTimeout(t);
+    clearTimeout(t); ac?.abort();
     const q = placeInput.value.trim();
-    if (q.length < 2) return;
+    if (q.length < 2 || /^-?\d/.test(q)) return show(false);
+    hits = []; draw(q, true);
     t = setTimeout(async () => {
+      ac = new AbortController();
       try {
-        const r = await fetch(`/api/crew/places?q=${encodeURIComponent(q)}`);
+        const r = await fetch(`/api/crew/places?q=${encodeURIComponent(q)}`, { signal: ac.signal });
         const { places } = await r.json();
-        list.replaceChildren(...places.map((p) => Object.assign(document.createElement("option"), { value: `${p.name}, ${p.detail.split(", ").pop()}`, label: p.detail })));
+        hits = places.map((p) => ({ name: p.name, detail: p.detail, value: `${p.name}, ${p.detail.split(", ").pop()}` }));
+        cursor = 0; draw(q, false);
       } catch {}
-    }, 200);
+    }, 180);
   });
+  placeInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") return show(false);
+    if (list.hidden || !hits.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      cursor = (cursor + (e.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
+      draw(placeInput.value.trim(), false);
+    } else if (e.key === "Enter") { e.preventDefault(); pick(hits[cursor]); }
+  });
+  placeInput?.addEventListener("blur", () => setTimeout(() => show(false), 150));
   document.querySelector("[data-locate]")?.addEventListener("click", (e) => {
     const b = e.currentTarget;
     if (!navigator.geolocation) return;
@@ -484,6 +527,8 @@ const schema = [
 </script>
 
 <style>
+  .crew-place { position: relative; display: block; }
+  .crew-place .results :global(.hit-name) { font-size: 16px; }
   .crew-form {
     display: grid;
     grid-template-columns: 1.6fr 1.2fr 0.7fr 0.7fr auto;
