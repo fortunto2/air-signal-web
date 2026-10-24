@@ -43,6 +43,8 @@ export interface CrewPlan {
       stations: number;
       nearest: string;
       nearest_km: number;
+      nearest_lat?: number;
+      nearest_lon?: number;
       model_pm25: number;
       divergence: number;
       factor: number;
@@ -190,6 +192,8 @@ export async function fetchGround(lat: number, lon: number) {
       stations: near.length,
       nearest: near[0]!.name,
       nearest_km: Math.round(near[0]!.km * 10) / 10,
+      nearest_lat: near[0]!.lat,
+      nearest_lon: near[0]!.lon,
     };
   }
   return null;
