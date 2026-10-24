@@ -420,7 +420,7 @@ export function complaintText(
     `Hazard: outdoor work without the ${rule}.`,
     `Employer: [employer name]. Worksite: [worksite address], ${evidence?.place?.name ?? report.site}${from?.where ? ` (${from.where.lat}, ${from.where.lon})` : ""}.`,
     `When: ${pt(report.created_at)} PT.`,
-    `What happened: ${REPORT_LABELS[report.kind] ?? report.kind}${report.note ? ` - ${report.note}` : ""}. Reported to the crew lead at ${pt(report.created_at)}${handled}.`,
+    `What happened: ${REPORT_LABELS[report.kind] ?? report.kind}${report.note ? ` - ${report.note.replace(/[.\s]+$/, "")}` : ""}. Reported to the crew lead at ${pt(report.created_at)}${handled}.`,
     air.length ? `Air data: ${air.join("; ")}.` : null,
     `Workers exposed: [number]. Protections missing: [N95s / shade / water / breaks / information].`,
     `I [want / do not want] my name kept confidential.`,
