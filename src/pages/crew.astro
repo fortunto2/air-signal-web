@@ -94,6 +94,15 @@ const apiUrl = answer
 
 const pageUrl = abs(`${paths.crew()}?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`);
 const madeAt = ptTime(new Date().toISOString());
+// The printed record of how the AQI was determined, for the employer's file (§5141.1(c), Appendix A).
+const determination = (() => {
+  if (!answer || !plan) return "";
+  const g = plan.confidence.ground;
+  const fire = plan.confidence.fire && plan.confidence.fire.nearest_km <= 50 ? ` VIIRS fire ${Math.round(plan.confidence.fire.nearest_km)} km ${plan.confidence.fire.direction}: a worksite reading is advised.` : "";
+  if (answer.fallback) return `Held at the AirNow monitor ${answer.fallback.monitor} (latest reading); forecast service unavailable.${fire}`;
+  const check = g ? `, checked against AirNow monitor ${g.nearest}, ${g.nearest_km} km (${g.pm25} µg/m³ at ${g.time.slice(11, 16)})` : ", no AirNow monitor within 25 km";
+  return `Forecast PM2.5 (Open-Meteo CAMS) as an EPA NowCast${check}.${fire}`;
+})();
 
 const description =
   "Smoke and heat shift plan for outdoor crews in California: enter a place and a shift, get the " +
@@ -379,7 +388,9 @@ const schema = [
             </div>
 
             <div class="crew-signoff print-only">
-              <div class="eyebrow">Pre-shift briefing</div>
+              <div class="eyebrow">How the AQI was determined · §5141.1(c)</div>
+              <p>{determination} Worksite instrument (Appendix A: 0.3–2.5 µm, used per the manufacturer, error accounted for): model ______________ reading ______ µg/m³ at ______ by ______________. The determination is the employer’s; where a reading and the forecast disagree, the worse applies.</p>
+              <div class="eyebrow" style="margin-top:10px">Pre-shift briefing</div>
               <p>Given by ______________________ at ________ · Water, shade and N95 location: ______________________</p>
               <table>
                 <thead><tr><th>Name</th><th>Signature</th><th>Name</th><th>Signature</th></tr></thead>
