@@ -276,10 +276,11 @@ const schema = [
                               <input type="hidden" name="note" value="" />
                               <button type="submit">Mark handled</button>
                             </form>
-                            {ageMin(r.created_at) >= ESCALATE_AFTER_MIN ? (
-                              <a href={`/crew/escalate?report=${r.id}&place=${encodeURIComponent(place)}&date=${date}`}>Take it further</a>
-                            ) : (
-                              <span>escalate in {ESCALATE_AFTER_MIN - ageMin(r.created_at)} min</span>
+                            <a class="crew-complaint" href={`/crew/escalate?report=${r.id}&place=${encodeURIComponent(place)}&date=${date}`}>
+                              {ageMin(r.created_at) >= ESCALATE_AFTER_MIN ? "Not handled: prepare a complaint" : "Prepare a Cal/OSHA complaint"}
+                            </a>
+                            {ageMin(r.created_at) < ESCALATE_AFTER_MIN && (
+                              <span>usually after {ESCALATE_AFTER_MIN} min ({ESCALATE_AFTER_MIN - ageMin(r.created_at)} left)</span>
                             )}
                           </span>
                         ) : (
@@ -684,6 +685,11 @@ const schema = [
     padding: 3px 8px;
     font-size: 12px;
     cursor: pointer;
+  }
+  .crew-complaint {
+    font-weight: 600;
+    color: var(--s-poor) !important;
+    white-space: nowrap;
   }
   .crew-handled {
     color: var(--ink-3);
