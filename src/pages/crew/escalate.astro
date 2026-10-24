@@ -9,7 +9,7 @@
 import Layout from "../../layouts/Layout.astro";
 import Bar from "../../components/Bar.astro";
 import { SITE, paths } from "../../lib/site";
-import { REPORT_LABELS, complaintText, describeFrom } from "../../lib/crew";
+import { REPORT_LABELS, agenciesFor, complaintText, describeFrom } from "../../lib/crew";
 import { getCrewReport } from "../../lib/db";
 
 Astro.response.headers.set("cache-control", "no-store");
@@ -19,6 +19,7 @@ const evidence = report?.evidence_json ? JSON.parse(report.evidence_json) : null
 const m = evidence?.metrics ?? {};
 
 const complaint = report ? complaintText(report, evidence) : "";
+const agencies = agenciesFor(evidence?.place);
 const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.get("place") ?? "")}&date=${Astro.url.searchParams.get("date") ?? ""}#reports`;
 ---
 
@@ -55,12 +56,12 @@ const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.
       {
         report && (
           <div class="esc-block">
-            <div class="eyebrow">Prepare a Cal/OSHA complaint</div>
-            <p class="esc-soon">Fill the [brackets], then copy it into Cal/OSHA's online form or an email to your district office. We send nothing.</p>
+            <div class="eyebrow">Prepare a complaint to {agencies[0]!.name}</div>
+            <p class="esc-soon">Fill the [brackets], then copy it into the agency's form or an email to its local office. We send nothing.</p>
             <textarea class="esc-text" rows="12" data-complaint>{complaint}</textarea>
             <div class="esc-acts">
               <button type="button" data-copy>Copy</button>
-              <a href="https://www.dir.ca.gov/dosh/Complaint.htm" target="_blank" rel="noopener">Open the Cal/OSHA form</a>
+              <a href={agencies[0]!.url} target="_blank" rel="noopener">Open the {agencies[0]!.name} form</a>
             </div>
           </div>
         )
@@ -69,10 +70,12 @@ const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.
       <div class="esc-block">
         <div class="eyebrow">Where it can go</div>
         <ol class="esc-options">
-          <li>
-            <b>Cal/OSHA complaint</b>, anonymous if you want, and firing you for it is illegal (Labor Code §6310).
-            <a href="https://www.dir.ca.gov/dosh/Complaint.htm">dir.ca.gov/dosh/Complaint.htm</a>
-          </li>
+          {agencies.map((g) => (
+            <li>
+              <b>{g.name}</b>: {g.how} Firing or punishing you for a safety complaint is illegal.{" "}
+              <a href={g.url} target="_blank" rel="noopener">{g.url.replace("https://", "")}</a>
+            </li>
+          ))}
           <li><b>A union or worker center</b>, for example the United Farm Workers. <span class="esc-soon">Not connected yet: this will forward the report once they agree to receive it.</span> <a href="https://ufw.org/">ufw.org</a></li>
           <li><b>Free legal aid</b>, for example California Rural Legal Assistance. <span class="esc-soon">Not connected yet.</span> <a href="https://crla.org/">crla.org</a></li>
         </ol>

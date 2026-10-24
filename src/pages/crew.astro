@@ -9,7 +9,7 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import { SITE, abs, aqiBand, paths } from "../lib/site";
-import { REPORT_LABELS, describeFrom, crewDate, crewDefaultDate, crewPlan, parseShift, siteKey, type CrewAnswer } from "../lib/crew";
+import { REPORT_LABELS, agenciesFor, describeFrom, crewDate, crewDefaultDate, crewPlan, parseShift, siteKey, type CrewAnswer } from "../lib/crew";
 import { REPORT_KINDS, listCrewReports, type CrewReport } from "../lib/db";
 
 const DEFAULT_PLACE = "Sacramento";
@@ -153,6 +153,9 @@ const schema = [
               </div>
             </div>
 
+            {answer.place.state && answer.place.state !== "California" && (
+              <p class="crew-note">These are California’s rules. {answer.place.state} may have its own; complaints there go to {agenciesFor(answer.place)[0]!.name}.</p>
+            )}
             <div class="crew-check">
               <span class={`crew-level fg-${LEVEL[plan.confidence.level].band}`}>{LEVEL[plan.confidence.level].label}</span>
               {plan.confidence.notes.map((n) => <p class={n.startsWith("Active fire") ? "crew-fire" : ""}>{n}</p>)}

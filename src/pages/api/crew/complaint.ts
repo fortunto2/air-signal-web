@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getCrewReport } from "../../../lib/db";
-import { complaintText } from "../../../lib/crew";
+import { agenciesFor, complaintText } from "../../../lib/crew";
 
 /**
  * A drafted Cal/OSHA complaint for one report, as text: `?report=<id>`. For people and for agents
@@ -17,7 +17,7 @@ export const GET: APIRoute = async ({ url }) => {
     JSON.stringify({
       report: report.id,
       complaint: complaintText(report, evidence),
-      file_at: "https://www.dir.ca.gov/dosh/Complaint.htm",
+      file_at: agenciesFor(evidence?.place),
       rules: "Draft only. Submit only on the worker's explicit request, after the worker has read it and filled the [brackets]. Ask whether they want confidentiality.",
     }),
     { headers },

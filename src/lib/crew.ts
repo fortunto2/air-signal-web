@@ -62,7 +62,7 @@ export interface CrewPlan {
 }
 
 export interface CrewAnswer {
-  place: { name: string; lat: number; lon: number };
+  place: { name: string; lat: number; lon: number; state?: string | null };
   date: string;
   shift: { start: number; end: number };
   plan: CrewPlan;
@@ -241,7 +241,7 @@ export async function geocode(place: string): Promise<CrewAnswer["place"] | null
   const hits: any[] = r.results ?? [];
   const g = hits.find((x) => x.admin1 === "California") ?? hits[0];
   if (!g) return null;
-  return { name: [g.name, g.admin1].filter(Boolean).join(", "), lat: g.latitude, lon: g.longitude };
+  return { name: [g.name, g.admin1].filter(Boolean).join(", "), lat: g.latitude, lon: g.longitude, state: g.admin1 ?? null };
 }
 
 /** Today in California, as `YYYY-MM-DD`, plus `offset` days. */
@@ -414,7 +414,9 @@ export function complaintText(
     report.status === "open"
       ? `; not handled after ${age} minutes`
       : `; marked handled ${report.handled_at ? pt(report.handled_at) : ""}${report.handled_note ? ` (${report.handled_note})` : ""}`;
+  const file = agenciesFor(evidence?.place)[0]!;
   return [
+    `To: ${file.name} (${file.url}).`,
     `Hazard: outdoor work without the ${rule}.`,
     `Employer: [employer name]. Worksite: [worksite address], ${evidence?.place?.name ?? report.site}${from?.where ? ` (${from.where.lat}, ${from.where.lon})` : ""}.`,
     `When: ${pt(report.created_at)} PT.`,
@@ -426,4 +428,47 @@ export function complaintText(
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * Where a worker files a safety complaint, by state. California, Oregon and Washington run their own
+ * OSHA plans; elsewhere federal OSHA takes complaints. Data, like the rulebooks: a new state plan is a
+ * new entry, not new code. Federal OSHA is always listed too, since it covers federal worksites and
+ * every state without a plan.
+ */
+export interface Agency {
+  name: string;
+  url: string;
+  how: string;
+}
+
+const FEDERAL_OSHA: Agency = {
+  name: "Federal OSHA",
+  url: "https://www.osha.gov/workers/file-complaint",
+  how: "Online, by phone 1-800-321-6742, or at an area office. You can ask for your name to be kept confidential.",
+};
+
+export const STATE_AGENCIES: Record<string, Agency> = {
+  California: {
+    name: "Cal/OSHA",
+    url: "https://www.dir.ca.gov/dosh/Complaint.htm",
+    how: "Online or at a district office; anonymous if you want.",
+  },
+  Oregon: {
+    name: "Oregon OSHA",
+    url: "https://osha.oregon.gov/workers",
+    how: "Online form (English and Spanish) or the field office nearest the worksite.",
+  },
+  Washington: {
+    name: "Washington L&I (DOSH)",
+    url: "https://lni.wa.gov/workers-rights/workplace-complaints/safety-complaints",
+    how: "Call 1-800-423-7233 or send the DOSH complaint form; photos can be attached. Anonymous or confidential.",
+  },
+};
+
+/** The agencies for a place: its state's plan first when it has one, federal OSHA always. */
+export function agenciesFor(place: { name?: string; state?: string | null } | null | undefined): Agency[] {
+  const state = place?.state ?? (place?.name?.split(",")[1]?.trim() || null);
+  const own = state ? STATE_AGENCIES[state] : undefined;
+  return own ? [own, FEDERAL_OSHA] : [STATE_AGENCIES.California!, FEDERAL_OSHA];
 }
