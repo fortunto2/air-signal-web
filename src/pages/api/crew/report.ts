@@ -34,7 +34,14 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   // The plan is computed again here, not taken from the form: the evidence a report carries must be
   // what the sources said, not what a client claims they said. Today, all 24 hours, because a
   // report is about now, which may be outside the shift it is filed under.
-  const answer = await crewPlan(place, crewDate(0), { start: 0, end: 24 }).catch(() => null);
+  let answer;
+  try {
+    answer = await crewPlan(place, crewDate(0), { start: 0, end: 24 });
+  } catch (e) {
+    // An upstream minute (forecast timeout, rate limit) is not "no such place": say which, so the app
+    // keeps the report as unsent and retries instead of telling the worker their town does not exist.
+    return reply(isJson, { error: `forecast unavailable, try again: ${(e as Error).message}` }, 503);
+  }
   if (!answer) return reply(isJson, { error: `place not found: ${place}` }, 404);
   const site = siteKey(answer.place.name);
 
