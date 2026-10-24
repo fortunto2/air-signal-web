@@ -13,7 +13,7 @@
 
 import { core } from "./core";
 import { slug } from "./site";
-import { getNearbyCities } from "./db";
+import { getNearbyCities, type ReportKind } from "./db";
 
 export const CREW_TZ = "America/Los_Angeles";
 
@@ -37,7 +37,7 @@ export interface CrewPlan {
   peak_temp_f: number | null;
   confidence: {
     level: "sensor-confirmed" | "model-adjusted" | "model-only";
-    fire: { nearest_km: number; direction: string; within_50km: number } | null;
+    fire: { nearest_km: number; direction: string; bearing_deg?: number; within_50km: number } | null;
     ground: {
       time: string;
       pm25: number;
@@ -61,38 +61,56 @@ export interface CrewPlan {
   };
 }
 
+/**
+ * A place as data, not as a display string. `town` and `state` are what keys, agencies and wording are
+ * built from; `name` is only for showing. `approximate` marks a place derived from coordinates.
+ */
+export interface CrewPlace {
+  name: string;
+  town: string;
+  state: string | null;
+  lat: number;
+  lon: number;
+  approximate: boolean;
+}
+
 export interface CrewAnswer {
-  place: { name: string; lat: number; lon: number; state?: string | null };
+  place: CrewPlace;
   date: string;
   shift: { start: number; end: number };
   plan: CrewPlan;
 }
 
-async function json(url: string): Promise<any> {
-  // Cached at the edge: /crew is no-store (its reports are live), so the forecast must not be
-  // fetched again on every view. Ten minutes is far inside how often the models update.
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000), cf: { cacheTtl: 600, cacheEverything: true } } as RequestInit);
-  if (!res.ok) throw new Error(`${new URL(url).hostname} ${res.status}`);
-  return res.json();
+/**
+ * Every upstream read: cached by the Cloudflare edge for `ttl` seconds and per isolate too. The
+ * isolate cache holds the *promise*, so concurrent cold requests share one download of a 1 MB AirNow
+ * file; a failure is remembered for a minute so a missing newest file is not refetched per request;
+ * the map is capped, since AirNow URLs change every hour.
+ */
+const memo = new Map<string, { until: number; value: Promise<unknown> }>();
+const MEMO_MAX = 16;
+function cached<T>(url: string, ttl: number, parse: (text: string) => T): Promise<T | null> {
+  const now = Date.now();
+  const hit = memo.get(url);
+  if (hit && hit.until > now) return hit.value as Promise<T | null>;
+  const value = fetch(url, { signal: AbortSignal.timeout(8000), cf: { cacheTtl: ttl, cacheEverything: true } } as RequestInit)
+    .then(async (res) => (res.ok ? parse(await res.text()) : null))
+    .catch(() => null);
+  memo.set(url, { until: now + ttl * 1000, value });
+  value.then((v) => {
+    if (v === null) memo.set(url, { until: Date.now() + 60_000, value });
+  });
+  if (memo.size > MEMO_MAX) {
+    for (const [k, e] of memo) if (e.until <= now || memo.size > MEMO_MAX) memo.delete(k);
+  }
+  return value;
 }
 
-/** A shared upstream file: cached by the Cloudflare edge for `ttl` seconds, and per isolate too. */
-const memo = new Map<string, { at: number; value: unknown }>();
-async function shared<T>(url: string, ttl: number, parse: (text: string) => T): Promise<T | null> {
-  const hit = memo.get(url);
-  if (hit && Date.now() - hit.at < ttl * 1000) return hit.value as T;
-  try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(8000),
-      cf: { cacheTtl: ttl, cacheEverything: true },
-    } as RequestInit);
-    if (!res.ok) return null;
-    const value = parse(await res.text());
-    memo.set(url, { at: Date.now(), value });
-    return value;
-  } catch {
-    return null;
-  }
+/** JSON from an upstream; throws when it is unavailable, so a plan never silently lacks a forecast. */
+async function json(url: string, ttl = 600): Promise<any> {
+  const out = await cached(url, ttl, (t) => JSON.parse(t));
+  if (out === null) throw new Error(`${new URL(url).hostname} unavailable`);
+  return out;
 }
 
 function km(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -108,7 +126,7 @@ const FIRMS = [
 ];
 
 /** VIIRS detections over the US, last 24 h, both satellites. Low-confidence pixels are dropped. */
-export async function fetchFires(): Promise<[number, number][]> {
+async function fetchFires(): Promise<[number, number][]> {
   const parse = (text: string) => {
     const [head, ...rows] = text.trim().split("\n");
     const cols = (head ?? "").split(",");
@@ -123,7 +141,7 @@ export async function fetchFires(): Promise<[number, number][]> {
     }
     return out;
   };
-  const sets = await Promise.all(FIRMS.map((u) => shared(u, 1800, parse)));
+  const sets = await Promise.all(FIRMS.map((u) => cached(u, 1800, parse)));
   return sets.flatMap((s) => s ?? []);
 }
 
@@ -155,13 +173,24 @@ function parseAirNow(text: string): Monitor[] {
   return out;
 }
 
+const HOUR_PARTS = new Intl.DateTimeFormat("en-CA", {
+  timeZone: CREW_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",
+});
+const DAY = new Intl.DateTimeFormat("en-CA", { timeZone: CREW_TZ });
+const HOUR_NUM = new Intl.DateTimeFormat("en-US", { timeZone: CREW_TZ, hour: "numeric", hourCycle: "h23" });
+const PT = new Intl.DateTimeFormat("en-US", { timeZone: CREW_TZ, dateStyle: "medium", timeStyle: "short" });
+const PT_CLOCK = new Intl.DateTimeFormat("en-US", { timeZone: CREW_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** An ISO instant in California: "Oct 24, 2026, 1:58 AM". */
+export const ptTime = (iso: string) => PT.format(new Date(iso));
+/** An ISO instant as a California clock: "13:05". */
+export const ptClock = (iso: string) => PT_CLOCK.format(new Date(iso));
+/** Whole minutes since an ISO instant. */
+export const minutesSince = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 60_000);
+
 /** A UTC instant as the forecast's local hour, `2026-10-24T05:00`. */
 function localHour(utc: string): string {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: CREW_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",
-    }).formatToParts(new Date(utc)).map((x) => [x.type, x.value]),
-  );
+  const parts = Object.fromEntries(HOUR_PARTS.formatToParts(new Date(utc)).map((x) => [x.type, x.value]));
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`;
 }
 
@@ -171,12 +200,16 @@ function localHour(utc: string): string {
  * AirNow posts an hour's file roughly an hour later and fills it in over the next one, so files are
  * searched newest first, up to four hours back, for one where a nearby monitor has a value. Keyless; the hourly file is ~1 MB and cached at the edge.
  */
-export async function fetchGround(lat: number, lon: number) {
-  for (let back = 1; back <= 4; back++) {
+async function fetchGround(lat: number, lon: number) {
+  // All four candidate hours are requested at once (each is shared per isolate and edge-cached), then
+  // read newest first: worst case one round trip instead of four sequential 8-second waits.
+  const files = [1, 2, 3, 4].map((back) => {
     const t = new Date(Date.now() - back * 3_600_000).toISOString();
     const stamp = `${t.slice(0, 4)}${t.slice(5, 7)}${t.slice(8, 10)}${t.slice(11, 13)}`;
-    const url = `https://files.airnowtech.org/airnow/${t.slice(0, 4)}/${stamp.slice(0, 8)}/HourlyAQObs_${stamp}.dat`;
-    const monitors = await shared(url, 3600, parseAirNow);
+    return cached(`https://files.airnowtech.org/airnow/${t.slice(0, 4)}/${stamp.slice(0, 8)}/HourlyAQObs_${stamp}.dat`, 3600, parseAirNow);
+  });
+  for (const file of files) {
+    const monitors = await file;
     if (!monitors) continue;
     const near = monitors
       .filter((m) => Math.abs(m.lat - lat) < 0.4 && Math.abs(m.lon - lon) < 0.5)
@@ -200,29 +233,58 @@ export async function fetchGround(lat: number, lon: number) {
   return null;
 }
 
-/** A California place first: the rulebook is Cal/OSHA, and "Fresno" means the one in the valley. */
-/** `"36.748,-119.772"` → the coordinate, named after the nearest city we know, else the numbers. */
-async function fromCoordinates(place: string): Promise<CrewAnswer["place"] | null | undefined> {
-  const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(place);
-  if (!m) return undefined;
-  const lat = Number(m[1]);
-  const lon = Number(m[2]);
-  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-  const [near] = await getNearbyCities(lat, lon, 0.5, 1).catch(() => []);
-  const name = near ? `near ${near.name}` : `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
-  return { name, lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000 };
+interface Hit {
+  name: string;
+  admin1?: string;
+  admin2?: string;
+  latitude: number;
+  longitude: number;
 }
 
-/** Up to 8 US places matching what was typed, California first: the app's and page's place search. */
+/** US places matching a name, California first: the rulebook is Cal/OSHA, and "Fresno" means the valley. */
+async function searchUS(name: string): Promise<Hit[]> {
+  const r = await json(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20&countryCode=US`,
+    86_400,
+  );
+  const hits: Hit[] = r.results ?? [];
+  return hits.sort((a, b) => Number(b.admin1 === "California") - Number(a.admin1 === "California"));
+}
+
+const toPlace = (g: Hit, approximate = false, lat = g.latitude, lon = g.longitude): CrewPlace => ({
+  name: approximate ? `near ${g.name}` : [g.name, g.admin1].filter(Boolean).join(", "),
+  town: g.name,
+  state: g.admin1 ?? null,
+  lat,
+  lon,
+  approximate,
+});
+
+/**
+ * `"36.748,-119.772"` → that coordinate, named after the nearest city we know; its state comes from
+ * the geocoder hit for that name that lies closest to the point.
+ */
+async function fromCoordinates(place: string): Promise<CrewPlace | null | undefined> {
+  const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(place);
+  if (!m) return undefined;
+  const lat = Math.round(Number(m[1]) * 1000) / 1000;
+  const lon = Math.round(Number(m[2]) * 1000) / 1000;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const [near] = await getNearbyCities(lat, lon, 0.5, 1).catch(() => []);
+  if (!near) {
+    const name = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+    return { name, town: name, state: null, lat, lon, approximate: true };
+  }
+  const hits = await searchUS(near.name).catch(() => [] as Hit[]);
+  const closest = hits.sort((a, b) => km(lat, lon, a.latitude, a.longitude) - km(lat, lon, b.latitude, b.longitude))[0];
+  return toPlace(closest ?? { name: near.name, latitude: lat, longitude: lon }, true, lat, lon);
+}
+
+/** Up to 8 US places matching what was typed: the app's and page's place search. */
 export async function placeSuggestions(q: string): Promise<{ name: string; detail: string; lat: number; lon: number }[]> {
   const term = q.trim();
   if (term.length < 2) return [];
-  const r = await json(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(term)}&count=20&countryCode=US`,
-  );
-  const hits: any[] = r.results ?? [];
-  hits.sort((a, b) => Number(b.admin1 === "California") - Number(a.admin1 === "California"));
-  return hits.slice(0, 8).map((g) => ({
+  return (await searchUS(term)).slice(0, 8).map((g) => ({
     name: g.name,
     detail: [g.admin2, g.admin1].filter(Boolean).join(", "),
     lat: g.latitude,
@@ -230,31 +292,38 @@ export async function placeSuggestions(q: string): Promise<{ name: string; detai
   }));
 }
 
-export async function geocode(place: string): Promise<CrewAnswer["place"] | null> {
+/** A typed name ("Fresno", "Springfield, Illinois") or `lat,lon` → a place. A state after the comma wins. */
+export async function geocode(place: string): Promise<CrewPlace | null> {
   const coords = await fromCoordinates(place);
   if (coords !== undefined) return coords;
-  const name = place.split(",")[0]!.trim();
+  const [name, hint] = place.split(",").map((x) => x.trim());
   if (!name) return null;
-  const r = await json(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=10&countryCode=US`,
-  );
-  const hits: any[] = r.results ?? [];
-  const g = hits.find((x) => x.admin1 === "California") ?? hits[0];
-  if (!g) return null;
-  return { name: [g.name, g.admin1].filter(Boolean).join(", "), lat: g.latitude, lon: g.longitude, state: g.admin1 ?? null };
+  const hits = await searchUS(name);
+  const g = (hint && hits.find((x) => x.admin1?.toLowerCase() === hint.toLowerCase())) || hits[0];
+  return g ? toPlace(g) : null;
 }
 
 /** Today in California, as `YYYY-MM-DD`, plus `offset` days. */
 export function crewDate(offset = 0): string {
   const d = new Date(Date.now() + offset * 86_400_000);
-  return new Intl.DateTimeFormat("en-CA", { timeZone: CREW_TZ }).format(d);
+  return DAY.format(d);
 }
 
 /** Before noon in California the plan is for today; after it, for tomorrow's shift. */
 export function crewDefaultDate(): string {
-  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: CREW_TZ, hour: "numeric", hourCycle: "h23" }).format(new Date()));
+  const hour = Number(HOUR_NUM.format(new Date()));
   return crewDate(hour < 12 ? 0 : 1);
 }
+
+/** A `YYYY-MM-DD` from a request, or the default plan day. */
+export function parseDate(raw: string | null | undefined): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw ?? "") ? raw! : crewDefaultDate();
+}
+
+export type Shift = { start: number; end: number };
+export const ALL_DAY: Shift = { start: 0, end: 24 };
+/** `{start: 7, end: 17}` → `"07-17"`, the form links and the app use. */
+export const formatShift = (s: Shift) => `${String(s.start).padStart(2, "0")}-${String(s.end).padStart(2, "0")}`;
 
 /** `07-17` → `{start: 7, end: 17}`; anything malformed falls back to a day shift. */
 export function parseShift(raw: string | null): { start: number; end: number } {
@@ -265,9 +334,13 @@ export function parseShift(raw: string | null): { start: number; end: number } {
   return start < end && end <= 24 ? { start, end } : { start: 7, end: 17 };
 }
 
-export async function crewPlan(place: string, date: string, shift: { start: number; end: number }): Promise<CrewAnswer | null> {
+export async function crewPlan(place: string, date: string, shift: Shift): Promise<CrewAnswer | null> {
   const at = await geocode(place);
-  if (!at) return null;
+  return at ? crewPlanAt(at, date, shift) : null;
+}
+
+/** The plan for a place already resolved, so callers that also need the site key geocode once. */
+export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Promise<CrewAnswer> {
   // A day of history so the first shift hour has the 12 hours a NowCast needs.
   const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
   const [aq, wx, fires, ground] = await Promise.all([
@@ -284,19 +357,23 @@ export async function crewPlan(place: string, date: string, shift: { start: numb
     pm25: aq.hourly.pm2_5[i] ?? null,
     temp_c: temp.get(time) ?? null,
   }));
+  // Only detections that could matter: the US list runs to tens of thousands in fire season, and the
+  // engine looks no further than ~2° anyway.
+  const near = fires.filter(([la, lo]) => Math.abs(la - at.lat) < 2 && Math.abs(lo - at.lon) < 2.5);
   const out = JSON.parse(
-    core().wasm_crew_plan(JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires, ground })),
+    core().wasm_crew_plan(JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground })),
   );
   if (out.error) throw new Error(out.error);
   return { place: at, date, shift, plan: out as CrewPlan };
 }
 
-/** The site a report belongs to: the geocoded place, as a slug. Crew and crew lead share the URL. */
-export function siteKey(placeName: string): string {
-  // "Fresno, California" (typed) and "near Fresno" (GPS) must be one site, or a worker on GPS and a
-  // crew lead who typed the name see different report lists. The town is the key; the geocoder already
-  // prefers California, so two Fresnos in different states do not meet here in practice.
-  return slug(placeName.replace(/^near\s+/i, "").split(",")[0]!);
+/**
+ * The site a report belongs to: the town. A worker on GPS ("near Fresno") and a crew lead who typed
+ * "Fresno" must share one list, so the key is the town, never the display name. Kept without the state
+ * so existing report rows stay on their site.
+ */
+export function siteKey(place: Pick<CrewPlace, "town">): string {
+  return slug(place.town);
 }
 
 /** The local hour now, in the forecast's format. */
@@ -345,7 +422,8 @@ export function reportedFrom(
   let facing: { heading_deg: number; compass: string; toward_fire: boolean | null } | null = null;
   if (Number.isFinite(heading)) {
     const h = ((heading % 360) + 360) % 360;
-    const fireDeg = fire ? COMPASS.indexOf(fire.direction) * 45 : -1;
+    // The engine's exact bearing when it sends one; the 8-point label is only a fallback.
+    const fireDeg = fire ? (fire.bearing_deg ?? COMPASS.indexOf(fire.direction) * 45) : -1;
     const diff = fireDeg >= 0 ? Math.abs(((h - fireDeg + 540) % 360) - 180) : null;
     facing = { heading_deg: Math.round(h), compass: compass(h), toward_fire: diff === null ? null : diff <= 45 };
   }
@@ -375,7 +453,7 @@ export async function senderHash(ip: string): Promise<string> {
   return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export const REPORT_LABELS: Record<string, string> = {
+export const REPORT_LABELS: Record<ReportKind, string> = {
   smoke: "Smoke or haze",
   ash: "Ash falling",
   symptoms: "Someone feels sick",
@@ -395,13 +473,12 @@ export function complaintText(
   report: { id: number; site: string; created_at: string; kind: string; note: string | null; status: string; handled_at: string | null; handled_note: string | null },
   evidence: any,
 ): string {
-  const pt = (iso: string) =>
-    new Date(iso).toLocaleString("en-US", { timeZone: CREW_TZ, dateStyle: "medium", timeStyle: "short" });
+  const pt = ptTime;
   const m = evidence?.metrics ?? {};
   const from = evidence?.from;
   const smoke = ["smoke", "ash", "symptoms", "no_n95"].includes(report.kind);
   const rule = smoke ? "wildfire smoke protections required by Title 8 §5141.1" : "heat illness protections required by Title 8 §3395";
-  const age = Math.floor((Date.now() - Date.parse(report.created_at)) / 60_000);
+  const age = minutesSince(report.created_at);
   const air = [
     m.us_aqi_pm25 !== undefined ? `forecast PM2.5 AQI ${m.us_aqi_pm25} for that hour (EPA NowCast)` : null,
     m.temp_f !== undefined ? `${Math.floor(m.temp_f)}°F` : null,
@@ -420,7 +497,7 @@ export function complaintText(
     `Hazard: outdoor work without the ${rule}.`,
     `Employer: [employer name]. Worksite: [worksite address], ${evidence?.place?.name ?? report.site}${from?.where ? ` (${from.where.lat}, ${from.where.lon})` : ""}.`,
     `When: ${pt(report.created_at)} PT.`,
-    `What happened: ${REPORT_LABELS[report.kind] ?? report.kind}${report.note ? ` - ${report.note.replace(/[.\s]+$/, "")}` : ""}. Reported to the crew lead at ${pt(report.created_at)}${handled}.`,
+    `What happened: ${REPORT_LABELS[report.kind as ReportKind] ?? report.kind}${report.note ? ` - ${report.note.replace(/[.\s]+$/, "")}` : ""}. Reported to the crew lead at ${pt(report.created_at)}${handled}.`,
     air.length ? `Air data: ${air.join("; ")}.` : null,
     `Workers exposed: [number]. Protections missing: [N95s / shade / water / breaks / information].`,
     `I [want / do not want] my name kept confidential.`,
@@ -430,12 +507,6 @@ export function complaintText(
     .join("\n");
 }
 
-/**
- * Where a worker files a safety complaint, by state. California, Oregon and Washington run their own
- * OSHA plans; elsewhere federal OSHA takes complaints. Data, like the rulebooks: a new state plan is a
- * new entry, not new code. Federal OSHA is always listed too, since it covers federal worksites and
- * every state without a plan.
- */
 export interface Agency {
   name: string;
   url: string;
@@ -448,7 +519,13 @@ const FEDERAL_OSHA: Agency = {
   how: "Online, by phone 1-800-321-6742, or at an area office. You can ask for your name to be kept confidential.",
 };
 
-export const STATE_AGENCIES: Record<string, Agency> = {
+/**
+ * Where a worker files a safety complaint, by state. California, Oregon and Washington run their own
+ * OSHA plans; elsewhere federal OSHA takes complaints. Data, like the rulebooks: a new state plan is a
+ * new entry, not new code. Federal OSHA is always listed too, since it covers federal worksites and
+ * every state without a plan.
+ */
+const STATE_AGENCIES: Record<string, Agency> = {
   California: {
     name: "Cal/OSHA",
     url: "https://www.dir.ca.gov/dosh/Complaint.htm",
@@ -467,8 +544,7 @@ export const STATE_AGENCIES: Record<string, Agency> = {
 };
 
 /** The agencies for a place: its state's plan first when it has one, federal OSHA always. */
-export function agenciesFor(place: { name?: string; state?: string | null } | null | undefined): Agency[] {
-  const state = place?.state ?? (place?.name?.split(",")[1]?.trim() || null);
-  const own = state ? STATE_AGENCIES[state] : undefined;
+export function agenciesFor(place: { state?: string | null } | null | undefined): Agency[] {
+  const own = place?.state ? STATE_AGENCIES[place.state] : undefined;
   return own ? [own, FEDERAL_OSHA] : [STATE_AGENCIES.California!, FEDERAL_OSHA];
 }

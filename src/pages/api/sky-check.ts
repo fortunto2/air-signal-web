@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
-import { crewDate, crewPlan, nowHour, parseShift } from "../../lib/crew";
+import { ALL_DAY, crewDate, crewPlan, nowHour } from "../../lib/crew";
+import { jsonReply as reply } from "../../lib/http";
 
 /**
  * "Check the sky": a photo of the horizon in, what a vision decision model sees out.
@@ -73,6 +74,8 @@ export const POST: APIRoute = async ({ request, url }) => {
   );
   body.append("asset-0", new Blob([await photo.arrayBuffer()], { type: "image/jpeg" }), "asset-0");
 
+  // The forecast for this hour is fetched while the vision model looks at the photo, not after it.
+  const planned = place ? crewPlan(place, crewDate(0), ALL_DAY).catch(() => null) : Promise.resolve(null);
   const t0 = Date.now();
   const res = await fetch(JEV, {
     method: "POST",
@@ -99,10 +102,10 @@ export const POST: APIRoute = async ({ request, url }) => {
 
   // The forecast for this hour, when a place is given: what the photo is compared with.
   let model: { aqi: number | null; place: string } | null = null;
-  if (place) {
-    const plan = await crewPlan(place, crewDate(0), parseShift("00-24")).catch(() => null);
+  const plan = await planned;
+  if (plan) {
     const hour = plan?.plan.hours.find((h) => h.time === nowHour());
-    if (plan) model = { aqi: hour?.metrics.us_aqi_pm25 ?? null, place: plan.place.name };
+    model = { aqi: hour?.metrics.us_aqi_pm25 ?? null, place: plan.place.name };
   }
   const looksAqi = skyVisible && visTrusted ? visTrusted.aqi[0] : skyVisible && smokeCall === "yes" ? 101 : null;
   // Visible smoke under a forecast below "unhealthy for sensitive groups" is the mismatch a crew lead
@@ -137,9 +140,3 @@ export const POST: APIRoute = async ({ request, url }) => {
   );
 };
 
-function reply(body: unknown, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "*" },
-  });
-}

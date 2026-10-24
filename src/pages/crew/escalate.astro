@@ -9,7 +9,7 @@
 import Layout from "../../layouts/Layout.astro";
 import Bar from "../../components/Bar.astro";
 import { SITE, paths } from "../../lib/site";
-import { REPORT_LABELS, agenciesFor, complaintText, describeFrom } from "../../lib/crew";
+import { REPORT_LABELS, agenciesFor, complaintText, describeFrom, ptTime } from "../../lib/crew";
 import { getCrewReport } from "../../lib/db";
 
 Astro.response.headers.set("cache-control", "no-store");
@@ -20,6 +20,7 @@ const m = evidence?.metrics ?? {};
 
 const complaint = report ? complaintText(report, evidence) : "";
 const agencies = agenciesFor(evidence?.place);
+const from = describeFrom(evidence?.from);
 const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.get("place") ?? "")}&date=${Astro.url.searchParams.get("date") ?? ""}#reports`;
 ---
 
@@ -40,11 +41,11 @@ const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.
           <div class="esc-block">
             <div class="eyebrow">What the report carries</div>
             <ul>
-              <li><b>{REPORT_LABELS[report.kind] ?? report.kind}</b>{report.note ? `: ${report.note}` : ""}</li>
-              <li>Made {new Date(report.created_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PT {(evidence?.place?.name ?? report.site).startsWith("near ") ? "" : "at "}{evidence?.place?.name ?? report.site}, status {report.status}</li>
+              <li><b>{REPORT_LABELS[report.kind]}</b>{report.note ? `: ${report.note}` : ""}</li>
+              <li>Made {ptTime(report.created_at)} PT {evidence?.place?.approximate ? "" : "at "}{evidence?.place?.name ?? report.site}, status {report.status}</li>
               {m.us_aqi_pm25 !== undefined && <li>Forecast for that hour: PM2.5 AQI {m.us_aqi_pm25} (NowCast), {m.temp_f !== undefined ? `${Math.floor(m.temp_f)}°F` : "temperature unknown"}</li>}
               {evidence?.fire && <li>Nearest satellite fire detection (NASA VIIRS): {Math.round(evidence.fire.nearest_km)} km {evidence.fire.direction}</li>}
-              {describeFrom(evidence?.from) && <li>Reported from {describeFrom(evidence?.from)}</li>}
+              {from && <li>Reported from {from}</li>}
               {evidence?.ground && <li>AirNow monitor {evidence.ground.nearest}, {Math.round(evidence.ground.nearest_km)} km: {evidence.ground.pm25} µg/m³</li>}
             </ul>
           </div>

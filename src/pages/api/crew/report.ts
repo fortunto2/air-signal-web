@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
-import { REPORT_KINDS, addCrewReport, countRecentReports, handleCrewReport, type ReportKind } from "../../../lib/db";
-import { crewDate, crewDefaultDate, crewPlan, evidenceFor, parseShift, reportedFrom, senderHash, siteKey } from "../../../lib/crew";
+import { REPORT_KINDS, addCrewReport, countRecentReports, handleCrewReport, purgeOldReports, type ReportKind } from "../../../lib/db";
+import { ALL_DAY, crewDate, crewPlanAt, evidenceFor, formatShift, geocode, parseDate, parseShift, reportedFrom, senderHash, siteKey } from "../../../lib/crew";
+import { jsonReply } from "../../../lib/http";
 
 /**
  * A worker's report, or the crew lead marking one handled. Takes the /crew page's plain form POST
@@ -10,71 +11,66 @@ import { crewDate, crewDefaultDate, crewPlan, evidenceFor, parseShift, reportedF
  *    lat?, lon?, accuracy_m?, heading_deg?, sky?} → {id, created_at, status: "open"}
  *   (where it was made and which way the camera faced go into the evidence, rounded to ~100 m)
  *   {place, date?, action: "handle", id, note?} → {id, status: "handled"}
+ *
+ * Cheapest checks first: the place resolves once; "handle" and the rate limit never pay for a plan.
  */
-export const POST: APIRoute = async ({ request, clientAddress }) => {
+export const POST: APIRoute = async ({ request, clientAddress, locals }) => {
   const isJson = (request.headers.get("content-type") ?? "").includes("application/json");
+  const fail = (error: string, status: number) =>
+    isJson ? jsonReply({ error }, status) : new Response(error, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+
   let body: Record<string, any>;
   try {
-    body = isJson
-      ? await request.json()
-      : (Object.fromEntries((await request.formData()).entries()) as Record<string, string>);
+    body = isJson ? await request.json() : Object.fromEntries((await request.formData()).entries());
   } catch {
-    return reply(isJson, { error: "unreadable body" }, 400);
+    return fail("unreadable body", 400);
   }
 
   const place = String(body.place ?? "").trim();
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "") ? body.date! : crewDefaultDate();
+  const date = parseDate(body.date);
   const shift = parseShift(body.shift ?? null);
   const note = body.note ? String(body.note).trim().slice(0, 280) || null : null;
-  if (!place) return reply(isJson, { error: "place required" }, 400);
-
+  if (!place) return fail("place required", 400);
   const back = (extra: string) =>
-    `/crew?place=${encodeURIComponent(place)}&date=${date}&shift=${String(shift.start).padStart(2, "0")}-${String(shift.end).padStart(2, "0")}${extra}#reports`;
+    new URL(`/crew?place=${encodeURIComponent(place)}&date=${date}&shift=${formatShift(shift)}${extra}#reports`, request.url);
 
-  // The plan is computed again here, not taken from the form: the evidence a report carries must be
-  // what the sources said, not what a client claims they said. Today, all 24 hours, because a
-  // report is about now, which may be outside the shift it is filed under.
-  let answer;
+  let at;
   try {
-    answer = await crewPlan(place, crewDate(0), { start: 0, end: 24 });
+    at = await geocode(place);
   } catch (e) {
-    // An upstream minute (forecast timeout, rate limit) is not "no such place": say which, so the app
-    // keeps the report as unsent and retries instead of telling the worker their town does not exist.
-    return reply(isJson, { error: `forecast unavailable, try again: ${(e as Error).message}` }, 503);
+    // An upstream minute is not "no such place": say so, so the app keeps the report and retries.
+    return fail(`forecast unavailable, try again: ${(e as Error).message}`, 503);
   }
-  if (!answer) return reply(isJson, { error: `place not found: ${place}` }, 404);
-  const site = siteKey(answer.place.name);
+  if (!at) return fail(`place not found: ${place}`, 404);
+  const site = siteKey(at);
 
   if (body.action === "handle") {
     const id = Number(body.id);
     const ok = Number.isInteger(id) && (await handleCrewReport(id, site, note));
-    if (!isJson) return Response.redirect(new URL(back(ok ? `&handled=${id}` : ""), request.url), 303);
-    return reply(true, ok ? { id, status: "handled" } : { error: "no open report with that id here" }, ok ? 200 : 404);
+    if (!isJson) return Response.redirect(back(ok ? `&handled=${id}` : ""), 303);
+    return ok ? jsonReply({ id, status: "handled" }) : fail("no open report with that id here", 404);
   }
 
   const kind = String(body.kind ?? "") as ReportKind;
-  if (!REPORT_KINDS.includes(kind)) return reply(isJson, { error: `kind must be one of ${REPORT_KINDS.join(", ")}` }, 400);
-
+  if (!REPORT_KINDS.includes(kind)) return fail(`kind must be one of ${REPORT_KINDS.join(", ")}`, 400);
   const sender = await senderHash(clientAddress ?? request.headers.get("cf-connecting-ip") ?? "unknown");
-  if ((await countRecentReports(sender)) >= 10) {
-    return reply(isJson, { error: "too many reports from this device in 10 minutes" }, 429);
-  }
+  if ((await countRecentReports(sender)) >= 10) return fail("too many reports from this device in 10 minutes", 429);
 
+  // The evidence is computed here, not taken from the client: what the sources said, not what a client
+  // claims they said. Today, all 24 hours, because a report is about now, maybe outside the shift.
+  let answer;
+  try {
+    answer = await crewPlanAt(at, crewDate(0), ALL_DAY);
+  } catch (e) {
+    return fail(`forecast unavailable, try again: ${(e as Error).message}`, 503);
+  }
   const from = reportedFrom(
-    { lat: body.lat, lon: body.lon, accuracy_m: body.accuracy_m, heading_deg: body.heading_deg, sky: (body as Record<string, unknown>).sky },
+    { lat: body.lat, lon: body.lon, accuracy_m: body.accuracy_m, heading_deg: body.heading_deg, sky: body.sky },
     answer.plan.confidence.fire,
   );
   const made = await addCrewReport({ site, date, kind, note, evidence: { ...evidenceFor(answer), from }, sender });
-  if (!isJson) return Response.redirect(new URL(back(`&sent=${made.id}`), request.url), 303);
-  return reply(true, { ...made, status: "open" }, 201);
+  // Retention, off the response path: the rate-limit hash after 2 days, raw reports after 24 months.
+  locals.cfContext?.waitUntil(purgeOldReports());
+  if (!isJson) return Response.redirect(back(`&sent=${made.id}`), 303);
+  return jsonReply({ ...made, status: "open" }, 201);
 };
-
-function reply(isJson: boolean, body: Record<string, unknown>, status: number) {
-  if (!isJson && status >= 400) {
-    return new Response(`${body.error}`, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-  }
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
-  });
-}

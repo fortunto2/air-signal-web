@@ -9,7 +9,22 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import { SITE, abs, aqiBand, paths } from "../lib/site";
-import { REPORT_LABELS, agenciesFor, describeFrom, crewDate, crewDefaultDate, crewPlan, parseShift, siteKey, type CrewAnswer } from "../lib/crew";
+import {
+  REPORT_LABELS,
+  agenciesFor,
+  crewDate,
+  crewDefaultDate,
+  crewPlanAt,
+  describeFrom,
+  formatShift,
+  geocode,
+  minutesSince,
+  parseShift,
+  ptClock,
+  ptTime,
+  siteKey,
+  type CrewAnswer,
+} from "../lib/crew";
 import { REPORT_KINDS, listCrewReports, type CrewReport } from "../lib/db";
 
 const DEFAULT_PLACE = "Sacramento";
@@ -23,31 +38,41 @@ const date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefault
 const shift = qs.get("start") && qs.get("end") ? parseShift(`${qs.get("start")}-${qs.get("end")}`) : parseShift(qs.get("shift"));
 const hours = Array.from({ length: 25 }, (_, h) => h);
 const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
-const shiftRaw = `${String(shift.start).padStart(2, "0")}-${String(shift.end).padStart(2, "0")}`;
+const shiftRaw = formatShift(shift);
 
+// Reports change by the minute and belong to one site, so this page is never shared from the edge
+// cache. The upstream forecast and the fire and monitor files are cached on their own (lib/crew.ts).
+Astro.response.headers.set("cache-control", "no-store");
+
+// The place resolves once; the plan and the site's reports then load side by side.
 let answer: CrewAnswer | null = null;
 let failure: string | null = null;
+let reports: CrewReport[] = [];
 try {
-  answer = await crewPlan(place, date, shift);
-  if (!answer) failure = `We could not find “${place}”. Try a city or town name.`;
+  const at = await geocode(place);
+  if (!at) failure = `We could not find “${place}”. Try a city or town name.`;
+  else
+    [answer, reports] = await Promise.all([
+      crewPlanAt(at, date, shift),
+      listCrewReports(siteKey(at), date).catch(() => [] as CrewReport[]),
+    ]);
 } catch (e) {
   failure = "The forecast service did not answer. Try again in a minute.";
   Astro.response.status = 502;
 }
 
 const plan = answer?.plan;
-
-// Reports change by the minute and belong to one site, so this page is never shared from the edge
-// cache. The upstream forecast and the fire and monitor files are cached on their own (lib/crew.ts).
-Astro.response.headers.set("cache-control", "no-store");
-let reports: CrewReport[] = [];
-if (answer) reports = await listCrewReports(siteKey(answer.place.name), date).catch(() => []);
 const sent = Number(qs.get("sent")) || null;
 const handled = Number(qs.get("handled")) || null;
 const ESCALATE_AFTER_MIN = 30;
-const ageMin = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 60_000);
-const localTime = (iso: string) =>
-  new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+// Each row's derived facts, once, here rather than in the markup.
+const agency = answer ? agenciesFor(answer.place)[0]!.name : "Cal/OSHA";
+const rows = reports.map((r) => ({
+  ...r,
+  label: REPORT_LABELS[r.kind],
+  age: minutesSince(r.created_at),
+  from: describeFrom(r.evidence_json ? JSON.parse(r.evidence_json)?.from : null),
+}));
 const clock = (t: string) => t.slice(11, 16);
 const dayLabel = (d: string) =>
   new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }).format(
@@ -65,7 +90,7 @@ const apiUrl = answer
   : "/api/crew?place=Fresno&shift=07-17";
 
 const pageUrl = abs(`${paths.crew()}?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`);
-const madeAt = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", dateStyle: "medium", timeStyle: "short" }).format(new Date());
+const madeAt = ptTime(new Date().toISOString());
 
 const description =
   "Smoke and heat shift plan for outdoor crews in California: enter a place and a shift, get the " +
@@ -252,19 +277,16 @@ const schema = [
                   <button type="submit">Send report</button>
                 </div>
               </form>
-              {reports.length > 0 && (
+              {rows.length > 0 && (
                 <ol class="crew-actions crew-reports">
-                  {reports.map((r) => (
+                  {rows.map((r) => (
                     <li>
-                      <span class="num">{localTime(r.created_at)}</span>
+                      <span class="num">{ptClock(r.created_at)}</span>
                       <span>
-                        <b>{REPORT_LABELS[r.kind] ?? r.kind}</b>{r.note ? ` · ${r.note}` : ""}
-                        {(() => {
-                          const d = describeFrom(r.evidence_json ? JSON.parse(r.evidence_json)?.from : null);
-                          return d ? <span class="crew-handled"><br />{d}</span> : null;
-                        })()}
+                        <b>{r.label}</b>{r.note ? ` · ${r.note}` : ""}
+                        {r.from && <span class="crew-handled"><br />{r.from}</span>}
                         {r.status === "handled" && r.handled_at && (
-                          <span class="crew-handled"> · handled {localTime(r.handled_at)}{r.handled_note ? `: ${r.handled_note}` : ""}</span>
+                          <span class="crew-handled"> · handled {ptClock(r.handled_at)}{r.handled_note ? `: ${r.handled_note}` : ""}</span>
                         )}
                       </span>
                       <span class="cite">
@@ -276,14 +298,13 @@ const schema = [
                               <input type="hidden" name="shift" value={shiftRaw} />
                               <input type="hidden" name="action" value="handle" />
                               <input type="hidden" name="id" value={r.id} />
-                              <input type="hidden" name="note" value="" />
                               <button type="submit">Mark handled</button>
                             </form>
                             <a class="crew-complaint" href={`/crew/escalate?report=${r.id}&place=${encodeURIComponent(place)}&date=${date}`}>
-                              {ageMin(r.created_at) >= ESCALATE_AFTER_MIN ? "Not handled: prepare a complaint" : "Prepare a Cal/OSHA complaint"}
+                              {r.age >= ESCALATE_AFTER_MIN ? "Not handled: prepare a complaint" : `Prepare a ${agency} complaint`}
                             </a>
-                            {ageMin(r.created_at) < ESCALATE_AFTER_MIN && (
-                              <span>usually after {ESCALATE_AFTER_MIN} min ({ESCALATE_AFTER_MIN - ageMin(r.created_at)} left)</span>
+                            {r.age < ESCALATE_AFTER_MIN && (
+                              <span>usually after {ESCALATE_AFTER_MIN} min ({ESCALATE_AFTER_MIN - r.age} left)</span>
                             )}
                           </span>
                         ) : (

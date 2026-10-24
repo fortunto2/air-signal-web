@@ -207,3 +207,5 @@ CREATE TABLE IF NOT EXISTS crew_reports (
 
 CREATE INDEX IF NOT EXISTS crew_reports_site ON crew_reports (site, date, created_at);
 CREATE INDEX IF NOT EXISTS crew_reports_sender ON crew_reports (sender, created_at);
+
+CREATE INDEX IF NOT EXISTS crew_reports_created ON crew_reports (created_at);

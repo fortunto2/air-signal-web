@@ -874,18 +874,6 @@ export async function addCrewReport(r: {
   sender: string;
 }): Promise<{ id: number; created_at: string }> {
   const created_at = new Date().toISOString();
-  // The privacy page promises the rate-limit hash is gone after 2 days: an IPv4 hash with a fixed salt
-  // can be brute-forced, so it is pseudonymous data and kept no longer than the limit needs.
-  // And raw reports older than 24 months are deleted (the page says so); counts by county survive
-  // only in the published aggregates.
-  await DB().batch([
-    DB()
-      .prepare("UPDATE crew_reports SET sender = '' WHERE sender != '' AND created_at < ?1")
-      .bind(new Date(Date.now() - 2 * 86_400_000).toISOString()),
-    DB()
-      .prepare("DELETE FROM crew_reports WHERE created_at < ?1")
-      .bind(new Date(Date.now() - 730 * 86_400_000).toISOString()),
-  ]);
   const row = await DB()
     .prepare(
       `INSERT INTO crew_reports (site, date, created_at, kind, note, evidence_json, sender)
@@ -894,6 +882,19 @@ export async function addCrewReport(r: {
     .bind(r.site, r.date, created_at, r.kind, r.note, JSON.stringify(r.evidence ?? null), r.sender)
     .first<{ id: number }>();
   return { id: row!.id, created_at };
+}
+
+/**
+ * Retention the privacy page promises: the rate-limit hash is erased after 2 days (an IPv4 hash with a
+ * fixed salt can be brute-forced, so it is pseudonymous data), raw reports are deleted after 24 months.
+ * Both statements use `crew_reports_created` (migration 0010), so they read only the rows they touch.
+ */
+export async function purgeOldReports(): Promise<void> {
+  const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+  await DB().batch([
+    DB().prepare("UPDATE crew_reports SET sender = '' WHERE created_at < ?1 AND sender != ''").bind(daysAgo(2)),
+    DB().prepare("DELETE FROM crew_reports WHERE created_at < ?1").bind(daysAgo(730)),
+  ]);
 }
 
 export async function listCrewReports(site: string, date: string): Promise<CrewReport[]> {

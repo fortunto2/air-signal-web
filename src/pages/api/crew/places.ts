@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { placeSuggestions } from "../../../lib/crew";
+import { jsonReply } from "../../../lib/http";
 
 /**
  * Place search for /crew and the app: `?q=fres` → up to 8 US places, California first. Pass a chosen
@@ -8,11 +9,5 @@ import { placeSuggestions } from "../../../lib/crew";
 export const GET: APIRoute = async ({ url }) => {
   const q = url.searchParams.get("q") ?? "";
   const places = await placeSuggestions(q).catch(() => []);
-  return new Response(JSON.stringify({ q, places }), {
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "public, max-age=0, s-maxage=86400",
-      "access-control-allow-origin": "*",
-    },
-  });
+  return jsonReply({ q, places }, 200, "public, max-age=0, s-maxage=86400");
 };
