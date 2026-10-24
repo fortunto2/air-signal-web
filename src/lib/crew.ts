@@ -87,10 +87,14 @@ export interface CrewAnswer {
   home: HomeSignal;
   /** A task for a sensor node (fixed, or a drone outside the fire's TFR) when a satellite sees fire nearby. */
   dispatch: Dispatch;
+  /** Wind by local hour (10 m, °from, km/h) for the plan's hours, for the plume drawing. */
+  wind: { time: string; dir_deg: number; kmh: number }[];
+  /** VIIRS detections within about 150 km, [lat, lon], for the map; the engine sees the same list. */
+  fires_near: [number, number][];
 }
 
 /**
- * The satellite trigger as a task: a VIIRS detection within 30 km means the model's smoke is a guess
+ * The satellite trigger as a task: a VIIRS detection within 50 km means the model's smoke is a guess
  * and a ground reading is worth going for. The node answers through POST /api/crew/report with its
  * PM2.5, and the next plan is corrected by that reading like by any AirNow monitor.
  */
@@ -102,7 +106,8 @@ export interface Dispatch {
   reason: string;
 }
 
-const DISPATCH_KM = 30;
+// The engine's own warning radius: one threshold on the page, in the JSON and in the task.
+const DISPATCH_KM = 50;
 
 function dispatchFor(plan: CrewPlan): Dispatch {
   const f = plan.confidence.fire;
@@ -110,12 +115,12 @@ function dispatchFor(plan: CrewPlan): Dispatch {
   return {
     sensor: go ? "launch" : "standby",
     bearing_deg: f ? (f.bearing_deg ?? null) : null,
-    distance_km: f ? Math.round(f.nearest_km) : null,
+    distance_km: f ? Math.round(f.nearest_km * 10) / 10 : null,
     detections_50km: f?.within_50km ?? 0,
     reason: go
-      ? `VIIRS fire ${Math.round(f!.nearest_km)} km ${f!.direction}: sample PM2.5 toward it, outside the fire's TFR, and report`
+      ? `VIIRS fire ${f!.nearest_km.toFixed(1)} km ${f!.direction}: sample PM2.5 toward it, outside the fire's TFR, and report`
       : f
-        ? `nearest VIIRS fire ${Math.round(f.nearest_km)} km ${f.direction}, beyond ${DISPATCH_KM} km`
+        ? `nearest VIIRS fire ${f.nearest_km.toFixed(1)} km ${f.direction}, beyond ${DISPATCH_KM} km`
         : "no VIIRS fire within about 200 km in the last 24 h",
   };
 }
@@ -431,9 +436,11 @@ export function parseShift(raw: string | null): { start: number; end: number } {
   return start < end && end <= 24 ? { start, end } : { start: 7, end: 17 };
 }
 
-/** Hourly temperature (°C) by local hour from the National Weather Service: US only, free, no key. */
-async function nwsTemps(lat: number, lon: number): Promise<Map<string, number | null>> {
-  const out = new Map<string, number | null>();
+const COMPASS16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+
+/** Hourly temperature (°C) and wind by local hour from the National Weather Service: US only, free, no key. */
+async function nwsHourly(lat: number, lon: number): Promise<Map<string, { c: number | null; dir: number | null; kmh: number | null }>> {
+  const out = new Map<string, { c: number | null; dir: number | null; kmh: number | null }>();
   const get = (url: string) =>
     cached(url, 3600, (t) => JSON.parse(t), { "User-Agent": "airsignal.app (info@superduperai.co)", Accept: "application/geo+json" });
   const point = await get(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
@@ -442,7 +449,13 @@ async function nwsTemps(lat: number, lon: number): Promise<Map<string, number | 
   for (const p of fc?.properties?.periods ?? []) {
     const f = Number(p.temperature);
     const c = p.temperatureUnit === "F" ? ((f - 32) * 5) / 9 : f;
-    out.set(localHour(new Date(p.startTime).toISOString()), Math.round(c * 10) / 10);
+    const mph = Number(String(p.windSpeed ?? "").split(" ")[0]);
+    const di = COMPASS16.indexOf(String(p.windDirection ?? ""));
+    out.set(localHour(new Date(p.startTime).toISOString()), {
+      c: Math.round(c * 10) / 10,
+      dir: di >= 0 ? di * 22.5 : null,
+      kmh: Number.isFinite(mph) ? Math.round(mph * 1.609) : null,
+    });
   }
   return out;
 }
@@ -458,13 +471,23 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
   const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
   const [aqR, wxR, fires, ground, alerts] = await Promise.all([
     json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`).catch((e: Error) => e),
-    json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m`).catch((e: Error) => e),
+    json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m,winddirection_10m,windspeed_10m`).catch((e: Error) => e),
     fetchFires(),
     fetchGround(at.lat, at.lon),
     nwsAlerts(at.lat, at.lon),
   ]);
   let hours: { time: string; pm25: number | null; temp_c: number | null }[];
   let fallback: CrewAnswer["fallback"];
+  const wind = new Map<string, { dir_deg: number; kmh: number }>();
+  if (!(wxR instanceof Error)) {
+    (wxR.hourly.time as string[]).forEach((t, i) => {
+      const d = wxR.hourly.winddirection_10m?.[i];
+      const k = wxR.hourly.windspeed_10m?.[i];
+      if (typeof d === "number" && typeof k === "number") wind.set(t, { dir_deg: d, kmh: Math.round(k) });
+    });
+  } else {
+    for (const [t, w] of await nwsHourly(at.lat, at.lon)) if (w.dir !== null && w.kmh !== null) wind.set(t, { dir_deg: w.dir, kmh: w.kmh });
+  }
   if (!(aqR instanceof Error) && !(wxR instanceof Error)) {
     const temp = new Map<string, number | null>(
       (wxR.hourly.time as string[]).map((t, i) => [t, wxR.hourly.temperature_2m[i]]),
@@ -483,7 +506,7 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
     if (!held) throw new Error(`${reason}; no ground monitor within 100 km to fall back on`);
     const temp: Map<string, number | null> =
       wxR instanceof Error
-        ? await nwsTemps(at.lat, at.lon)
+        ? new Map([...(await nwsHourly(at.lat, at.lon))].map(([t, w]) => [t, w.c]))
         : new Map((wxR.hourly.time as string[]).map((t, i) => [t, wxR.hourly.temperature_2m[i]]));
     const t0 = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 36 * 3_600_000;
     hours = Array.from({ length: 36 + 80 }, (_, k) => {
@@ -506,7 +529,18 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
     );
   }
   const plan = out as CrewPlan;
-  return { place: at, date, shift, plan, alerts, home: homeSignal(plan), dispatch: dispatchFor(plan), ...(fallback ? { fallback } : {}) };
+  const windOut = plan.hours.flatMap((h) => {
+    const w = wind.get(h.time);
+    return w ? [{ time: h.time, ...w }] : [];
+  });
+  // About 150 km: a plume drawn further than that is a guess, and the engine itself looks no further.
+  const fires_near = near
+    .filter(([la, lo]) => Math.abs(la - at.lat) < 1.35 && Math.abs(lo - at.lon) * Math.cos((at.lat * Math.PI) / 180) < 1.35)
+    .slice(0, 400);
+  return {
+    place: at, date, shift, plan, alerts, home: homeSignal(plan), dispatch: dispatchFor(plan), wind: windOut, fires_near,
+    ...(fallback ? { fallback } : {}),
+  };
 }
 
 /**

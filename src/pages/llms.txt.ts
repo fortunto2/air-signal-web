@@ -99,7 +99,7 @@ problem is illegal (Labor Code §6310).
   (NASA VIIRS fire within 50 km, AirNow monitor within 25 km), active NWS alerts, a BMS signal
   (\`plan.bms\`) and a home signal (\`home\`: pre-cool hours before the 16–21 E-TOU-C peak price, the
   smoke hour to shut windows) and a sensor task (\`dispatch\`: "launch" with a bearing when a VIIRS fire is
-  within 30 km; the node reports its PM2.5 through POST /api/crew/report). \`place\` may be \`lat,lon\`.
+  within 50 km; the node reports its PM2.5 through POST /api/crew/report). \`place\` may be \`lat,lon\`.
 - \`GET ${abs("/api/crew/places")}?q=fres\` — place suggestions
 - \`POST ${abs("/api/sky-check")}?place=…\` — raw \`image/jpeg\` body; a vision model's smoke call on a
   photo of the sky, compared with the forecast. Black out faces before sending.

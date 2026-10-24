@@ -8,6 +8,7 @@
  */
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
+import CrewMap from "../components/CrewMap.tsx";
 import { SITE, abs, aqiBand, paths } from "../lib/site";
 import {
   REPORT_LABELS,
@@ -255,6 +256,24 @@ const schema = [
               {answer.home.peak_price.start}:00–{answer.home.peak_price.end}:00 every day{answer.home.precool ? "; “cool” marks the cheap hours to pre-cool a house before it" : ""}.
             </p>
 
+            <div class="crew-block no-print" id="map">
+              <div class="eyebrow">Where the smoke goes</div>
+              <CrewMap
+                client:only="react"
+                lat={answer.place.lat}
+                lon={answer.place.lon}
+                name={answer.place.name}
+                fires={answer.fires_near}
+                monitor={plan.confidence.ground && plan.confidence.ground.nearest_lat !== undefined && plan.confidence.ground.nearest_lon !== undefined
+                  ? { lat: plan.confidence.ground.nearest_lat, lon: plan.confidence.ground.nearest_lon, name: plan.confidence.ground.nearest, pm25: plan.confidence.ground.pm25 }
+                  : null}
+                wind={answer.wind}
+                shift={answer.shift}
+              />
+              <p class="crew-legend">
+                Red dots: NASA VIIRS fire detections, last 24 h. Green: the AirNow monitor the plan was checked against. Orange: three hours of the shift’s mean wind downwind of each fire, a cone, not a dispersion model; darker when it covers this place.
+              </p>
+            </div>
             <div class="crew-block">
               <div class="eyebrow">Building ventilation</div>
               <p>
@@ -834,6 +853,20 @@ const schema = [
   }
   .crew-hours .t {
     color: var(--ink-3);
+  }
+  :global(.crew-map) {
+    margin-top: 10px;
+  }
+  :global(.crew-map-canvas) {
+    height: 380px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-soft);
+    overflow: hidden;
+  }
+  :global(.crew-map-note) {
+    margin-top: 10px;
+    max-width: 66ch;
+    font-size: 14px;
   }
   .tou {
     width: 100%;
