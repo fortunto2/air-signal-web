@@ -19,7 +19,10 @@ const qs = Astro.url.searchParams;
 const place = qs.get("place")?.trim() || DEFAULT_PLACE;
 const days = [0, 1, 2].map((d) => crewDate(d));
 const date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefaultDate();
-const shift = parseShift(qs.get("shift"));
+// Two selects on the form (start, end); `shift=07-17` still works for links and the app.
+const shift = qs.get("start") && qs.get("end") ? parseShift(`${qs.get("start")}-${qs.get("end")}`) : parseShift(qs.get("shift"));
+const hours = Array.from({ length: 25 }, (_, h) => h);
+const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
 const shiftRaw = `${String(shift.start).padStart(2, "0")}-${String(shift.end).padStart(2, "0")}`;
 
 let answer: CrewAnswer | null = null;
@@ -100,7 +103,9 @@ const schema = [
       <form class="crew-form no-print" method="get" action={paths.crew()}>
         <label>
           <span class="eyebrow">Place</span>
-          <input name="place" value={place} placeholder="Fresno" autocomplete="address-level2" required />
+          <input name="place" list="crew-places" data-place value={place} placeholder="Fresno" autocomplete="address-level2" required />
+          <datalist id="crew-places"></datalist>
+          <button type="button" class="crew-locate" data-locate>Use my location</button>
         </label>
         <label>
           <span class="eyebrow">Day</span>
@@ -109,8 +114,16 @@ const schema = [
           </select>
         </label>
         <label>
-          <span class="eyebrow">Shift</span>
-          <input name="shift" value={shiftRaw} pattern="\d{1,2}-\d{1,2}" title="start-end hour, e.g. 07-17" />
+          <span class="eyebrow">From</span>
+          <select name="start">
+            {hours.slice(0, 24).map((h) => <option value={h} selected={h === shift.start}>{hourLabel(h)}</option>)}
+          </select>
+        </label>
+        <label>
+          <span class="eyebrow">To</span>
+          <select name="end">
+            {hours.slice(1).map((h) => <option value={h} selected={h === shift.end}>{hourLabel(h)}</option>)}
+          </select>
         </label>
         <button type="submit">Plan the shift</button>
       </form>
@@ -324,6 +337,38 @@ const schema = [
 </Layout>
 
 <script is:inline>
+  // Place search: suggestions as you type, and "Use my location" plans for where you stand.
+  const placeInput = document.querySelector("[data-place]");
+  const list = document.getElementById("crew-places");
+  let t;
+  placeInput?.addEventListener("input", () => {
+    clearTimeout(t);
+    const q = placeInput.value.trim();
+    if (q.length < 2) return;
+    t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/crew/places?q=${encodeURIComponent(q)}`);
+        const { places } = await r.json();
+        list.replaceChildren(...places.map((p) => Object.assign(document.createElement("option"), { value: `${p.name}, ${p.detail.split(", ").pop()}`, label: p.detail })));
+      } catch {}
+    }, 200);
+  });
+  document.querySelector("[data-locate]")?.addEventListener("click", (e) => {
+    const b = e.currentTarget;
+    if (!navigator.geolocation) return;
+    b.textContent = "Locating…";
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        placeInput.value = `${p.coords.latitude.toFixed(3)},${p.coords.longitude.toFixed(3)}`;
+        placeInput.form.submit();
+      },
+      () => { b.textContent = "Location unavailable"; },
+      { timeout: 10000 },
+    );
+  });
+</script>
+
+<script is:inline>
   // Location only when the worker ticks the box, and only into the form; nothing is sent until Send.
   document.querySelector("[data-geo-ask]")?.addEventListener("change", (e) => {
     if (!e.target.checked || !navigator.geolocation) return;
@@ -384,7 +429,7 @@ const schema = [
 <style>
   .crew-form {
     display: grid;
-    grid-template-columns: 1.6fr 1fr 0.7fr auto;
+    grid-template-columns: 1.6fr 1.2fr 0.7fr 0.7fr auto;
     gap: 12px;
     align-items: end;
     padding: 14px 20px 20px;
@@ -456,6 +501,24 @@ const schema = [
   .crew-fire {
     color: var(--s-poor);
     font-weight: 520;
+  }
+  .crew-form .crew-locate {
+    background: var(--surface);
+    border-color: var(--line);
+    color: var(--ink-2);
+    font-weight: 400;
+  }
+  .crew-locate {
+    margin-top: 6px;
+    align-self: flex-start;
+    font: inherit;
+    font-size: 12.5px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink-2);
+    cursor: pointer;
   }
   .crew-geo {
     display: block;
@@ -702,7 +765,8 @@ const schema = [
       grid-template-columns: 1fr 1fr;
     }
     .crew-form label:first-child,
-    .crew-form button {
+    .crew-form label:nth-child(2),
+    .crew-form > button {
       grid-column: 1 / -1;
     }
     .crew-actions li {

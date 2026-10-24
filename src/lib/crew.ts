@@ -13,6 +13,7 @@
 
 import { core } from "./core";
 import { slug } from "./site";
+import { getNearbyCities } from "./db";
 
 export const CREW_TZ = "America/Los_Angeles";
 
@@ -200,7 +201,38 @@ export async function fetchGround(lat: number, lon: number) {
 }
 
 /** A California place first: the rulebook is Cal/OSHA, and "Fresno" means the one in the valley. */
+/** `"36.748,-119.772"` → the coordinate, named after the nearest city we know, else the numbers. */
+async function fromCoordinates(place: string): Promise<CrewAnswer["place"] | null | undefined> {
+  const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(place);
+  if (!m) return undefined;
+  const lat = Number(m[1]);
+  const lon = Number(m[2]);
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const [near] = await getNearbyCities(lat, lon, 0.5, 1).catch(() => []);
+  const name = near ? `near ${near.name}` : `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+  return { name, lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000 };
+}
+
+/** Up to 8 US places matching what was typed, California first: the app's and page's place search. */
+export async function placeSuggestions(q: string): Promise<{ name: string; detail: string; lat: number; lon: number }[]> {
+  const term = q.trim();
+  if (term.length < 2) return [];
+  const r = await json(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(term)}&count=20&countryCode=US`,
+  );
+  const hits: any[] = r.results ?? [];
+  hits.sort((a, b) => Number(b.admin1 === "California") - Number(a.admin1 === "California"));
+  return hits.slice(0, 8).map((g) => ({
+    name: g.name,
+    detail: [g.admin2, g.admin1].filter(Boolean).join(", "),
+    lat: g.latitude,
+    lon: g.longitude,
+  }));
+}
+
 export async function geocode(place: string): Promise<CrewAnswer["place"] | null> {
+  const coords = await fromCoordinates(place);
+  if (coords !== undefined) return coords;
   const name = place.split(",")[0]!.trim();
   if (!name) return null;
   const r = await json(
@@ -226,7 +258,8 @@ export function crewDefaultDate(): string {
 
 /** `07-17` → `{start: 7, end: 17}`; anything malformed falls back to a day shift. */
 export function parseShift(raw: string | null): { start: number; end: number } {
-  const m = /^(\d{1,2})-(\d{1,2})$/.exec(raw ?? "");
+  // Forgiving: "07-17", "7–17", "07 17", "7:00 to 17:00" all mean the same shift.
+  const m = /^\s*(\d{1,2})(?::00)?\s*(?:-|–|—|to|\s)\s*(\d{1,2})(?::00)?\s*$/i.exec(raw ?? "");
   const start = m ? Number(m[1]) : 7;
   const end = m ? Number(m[2]) : 17;
   return start < end && end <= 24 ? { start, end } : { start: 7, end: 17 };
