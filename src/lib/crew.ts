@@ -293,7 +293,10 @@ export async function crewPlan(place: string, date: string, shift: { start: numb
 
 /** The site a report belongs to: the geocoded place, as a slug. Crew and crew lead share the URL. */
 export function siteKey(placeName: string): string {
-  return slug(placeName);
+  // "Fresno, California" (typed) and "near Fresno" (GPS) must be one site, or a worker on GPS and a
+  // crew lead who typed the name see different report lists. The town is the key; the geocoder already
+  // prefers California, so two Fresnos in different states do not meet here in practice.
+  return slug(placeName.replace(/^near\s+/i, "").split(",")[0]!);
 }
 
 /** The local hour now, in the forecast's format. */
