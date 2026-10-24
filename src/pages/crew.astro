@@ -37,6 +37,11 @@ const dayLabel = (d: string) =>
   new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }).format(
     new Date(`${d}T12:00:00Z`),
   );
+const LEVEL = {
+  "sensor-confirmed": { label: "Checked against a ground monitor", band: "good" },
+  "model-adjusted": { label: "Corrected by a ground monitor", band: "fair" },
+  "model-only": { label: "Model only", band: "quiet" },
+} as const;
 const heatBand = (f: number | undefined) =>
   f === undefined ? "quiet" : f >= 95 ? "bad" : f >= 80 ? "fair" : "good";
 const apiUrl = answer
@@ -122,6 +127,18 @@ const schema = [
               </div>
             </div>
 
+            <div class="crew-check">
+              <span class={`crew-level fg-${LEVEL[plan.confidence.level].band}`}>{LEVEL[plan.confidence.level].label}</span>
+              {plan.confidence.notes.map((n) => <p class={n.startsWith("Active fire") ? "crew-fire" : ""}>{n}</p>)}
+              {!plan.confidence.fire || plan.confidence.fire.nearest_km > 50 ? (
+                <p>
+                  {plan.confidence.fire
+                    ? `Nearest VIIRS fire detection is ${Math.round(plan.confidence.fire.nearest_km)} km ${plan.confidence.fire.direction} (last 24 h).`
+                    : "No VIIRS fire detections within about 200 km in the last 24 h."}
+                </p>
+              ) : null}
+            </div>
+
             <ol class="crew-actions">
               {plan.actions.length === 0 && (
                 <li>
@@ -188,7 +205,11 @@ const schema = [
         </p>
         <p>
           The smoke forecast comes from CAMS, a model with grid cells about 40 km wide, and it runs
-          low right next to a fire. If you can see smoke, trust your eyes and a local sensor over this page.
+          low right next to a fire. So every plan is checked two ways. NASA’s VIIRS satellites flag
+          active fires twice a day, and a detection within 50 km gets a warning. The latest hour from
+          AirNow’s regulatory monitors within 25 km is compared with the model: if they disagree by
+          more than 1.5×, the forecast is scaled toward the monitor around that hour, and the
+          correction fades over about 12 hours. If you can see smoke, trust your eyes over this page.
         </p>
       </div>
 
@@ -266,6 +287,25 @@ const schema = [
   .crew-peaks b {
     font-size: 26px;
     font-weight: 560;
+  }
+  .crew-check {
+    padding: 0 20px 12px;
+    font-size: 13.5px;
+    color: var(--ink-2);
+  }
+  .crew-check p {
+    margin-top: 3px;
+    max-width: 80ch;
+  }
+  .crew-level {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .crew-fire {
+    color: var(--s-poor);
+    font-weight: 520;
   }
   .crew-actions {
     list-style: none;

@@ -51,8 +51,9 @@ export function wasm_comfort_score(json: string): string;
  * the clear window for heavy work, and the BMS signal for the same day.
  *
  * Input: `{"hours":[{"time":"2026-10-24T13:00","pm25":80,"temp_c":28}],"date":"2026-10-24",
- * "start":7,"end":17}`, optionally `"rulebook":{...}`; California's is the default. Hours
- * should start a day early so the NowCast has its history. Returns `crew::ShiftPlan`.
+ * "start":7,"end":17}`, optionally `"rulebook":{...}` (California's is the default) and the
+ * checks: `"lat","lon","fires":[[lat,lon]],"ground":{time,pm25,stations,nearest,nearest_km}`.
+ * Hours should start a day early so the NowCast has its history. Returns `crew::ShiftPlan`.
  */
 export function wasm_crew_plan(json: string): string;
 
