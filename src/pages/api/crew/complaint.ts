@@ -17,7 +17,9 @@ export const GET: APIRoute = async ({ url }) => {
     JSON.stringify({
       report: report.id,
       complaint: complaintText(report, evidence),
-      file_at: agenciesFor(evidence?.place),
+      // `file_at` stays a URL string: the app decodes it that way. The full list is `agencies`.
+      file_at: agenciesFor(evidence?.place)[0]!.url,
+      agencies: agenciesFor(evidence?.place),
       rules: "Draft only. Submit only on the worker's explicit request, after the worker has read it and filled the [brackets]. Ask whether they want confidentiality.",
     }),
     { headers },
