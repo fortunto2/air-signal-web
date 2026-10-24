@@ -105,7 +105,12 @@ export const POST: APIRoute = async ({ request, url }) => {
     if (plan) model = { aqi: hour?.metrics.us_aqi_pm25 ?? null, place: plan.place.name };
   }
   const looksAqi = skyVisible && visTrusted ? visTrusted.aqi[0] : skyVisible && smokeCall === "yes" ? 101 : null;
-  const worse = looksAqi !== null && model?.aqi != null ? looksAqi > model.aqi + 50 : null;
+  // Visible smoke under a forecast below "unhealthy for sensitive groups" is the mismatch a crew lead
+  // should hear about; a trusted visibility reading two categories worse than the model is too.
+  const worse =
+    model?.aqi == null || !skyVisible
+      ? null
+      : (smokeCall === "yes" && model.aqi < 101) || (looksAqi !== null && looksAqi > model.aqi + 50);
 
   const verdict = !skyVisible
     ? "No open sky in the photo. Point the camera at the horizon."
