@@ -94,6 +94,7 @@ For outdoor workers and their employers. The law: at PM2.5 AQI 151 (EPA NowCast,
 shade and water, at 95°F high-heat procedures (§3395). Retaliating against a worker who reports a safety
 problem is illegal (Labor Code §6310).
 
+- \`${abs("/api")}\` — every endpoint on one page, with live examples
 - \`${abs("/crew")}\` — the shift plan page; \`${abs("/crew/privacy")}\` — what is collected
 - \`GET ${abs("/api/crew")}?place=Fresno&shift=07-17\` — the plan by the hour, the rule actions, checks
   (NASA VIIRS fire within 50 km, AirNow monitor within 25 km), active NWS alerts, a BMS signal

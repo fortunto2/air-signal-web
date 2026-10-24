@@ -1,0 +1,324 @@
+---
+/**
+ * The API, on one page.
+ *
+ * Rendered from the same object as /openapi.json, so an endpoint cannot be documented here and
+ * missing there. Grouped by the question asked rather than by URL: the air at a place, the crew
+ * plan, the map layers, and the machine-readable twins. Every GET has a live example link, because
+ * a reader who can click it needs no further documentation.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import { SITE, abs } from "../lib/site";
+import { openapiSpec } from "../lib/openapi";
+
+const spec = openapiSpec();
+type Op = {
+  summary?: string;
+  description?: string;
+  parameters?: { name: string; in: string; required?: boolean; description?: string; schema?: { type?: string; example?: unknown; examples?: unknown[] } }[];
+  requestBody?: { content: Record<string, unknown> };
+  responses?: Record<string, { description?: string }>;
+};
+const paths = spec.paths as Record<string, Record<string, Op>>;
+
+const EXAMPLES: Record<string, string> = {
+  "/api/comfort": "/api/comfort?lat=36.74&lon=-119.79",
+  "/api/nearest": "/api/nearest?lat=36.74&lon=-119.79",
+  "/api/search": "/api/search?q=fresno",
+  "/api/widget": "/api/widget?place=united-states/fresno",
+  "/api/crew": "/api/crew?place=Fresno&shift=07-17",
+  "/api/crew/places": "/api/crew/places?q=fres",
+  "/api/crew/reports": "/api/crew/reports?place=Fresno",
+  "/api/cities.geojson": "/api/cities.geojson",
+  "/api/stations.geojson": "/api/stations.geojson?bbox=-122.6,37.2,-121.6,38.0",
+};
+
+const GROUPS: { title: string; lede: string; paths: string[] }[] = [
+  {
+    title: "Crew Air: the shift plan and what feeds a building, a home or a sensor",
+    lede:
+      "Place and shift in; the hour each Cal/OSHA rule starts out, with the checks that were run and the same day " +
+      "as signals for an air handler, a home energy agent or a sensor node. Reports and the complaint draft stay " +
+      "on the site: nothing is filed anywhere by the API.",
+    paths: ["/api/crew", "/api/crew/places", "/api/sky-check", "/api/crew/report", "/api/crew/reports", "/api/crew/complaint"],
+  },
+  {
+    title: "The air at a place",
+    lede: "Fourteen signals scored for any coordinate on Earth, the nearest city that has a page, search, and the widget payload.",
+    paths: ["/api/comfort", "/api/nearest", "/api/search", "/api/widget"],
+  },
+  {
+    title: "Map layers",
+    lede: "GeoJSON the map itself draws from; take it for your own map.",
+    paths: ["/api/cities.geojson", "/api/stations.geojson"],
+  },
+];
+
+const CREW_FIELDS: [string, string][] = [
+  ["plan.peak_aqi, plan.peak_temp_f", "The shift's worst hour, PM2.5 AQI as an EPA NowCast and °F"],
+  ["plan.actions[]", "The hour each rule starts, the action and the citation (§5141.1, §3395)"],
+  ["plan.hours[]", "AQI and temperature by hour"],
+  ["plan.confidence", "Level, notes, the nearest VIIRS fire with bearing, the AirNow monitor with its divergence from the model"],
+  ["plan.bms", "threshold_aqi, recirculate_at, resume_at: when a building closes outside air"],
+  ["home", "peak_price (E-TOU-C 16–21), precool (13–16 at 80 °F+), close_windows_at, open_windows_at"],
+  ["alerts[]", "Active National Weather Service alerts at the point: Red Flag Warning, Heat Advisory…"],
+  ["wind[]", "10 m wind by hour: dir_deg (from), kmh"],
+  ["fires_near[]", "VIIRS detections within about 150 km, [lat, lon]"],
+  ["dispatch", "sensor: launch | standby, bearing_deg, distance_km, reason: a task for a sensor node when a fire is within 50 km"],
+  ["fallback", "Present when the forecast was held at the nearest monitor (upstream down); says which monitor and where temperatures came from"],
+];
+
+const SOURCES: [string, string, string][] = [
+  ["Open-Meteo", "Hourly PM2.5 (CAMS), temperature and wind; air quality and weather for the comfort score", "https://open-meteo.com/"],
+  ["NASA FIRMS", "VIIRS active-fire detections, last 24 h, NRT", "https://firms.modaps.eosdis.nasa.gov/"],
+  ["EPA AirNow", "Hourly regulatory PM2.5 monitors (files.airnowtech.org)", "https://www.airnow.gov/"],
+  ["National Weather Service", "Hourly forecast and active alerts, api.weather.gov", "https://www.weather.gov/documentation/services-web-api"],
+  ["Sensor.Community", "Volunteer particulate sensors, ODbL", "https://sensor.community/"],
+  ["GeoNames, OpenStreetMap", "Place names, geocoding, sources near a city", "https://www.geonames.org/"],
+  ["USGS, NOAA SWPC", "Seismicity and the planetary K-index for the comfort score", "https://earthquake.usgs.gov/"],
+  ["TypeSafe Jev", "The vision model behind the sky check; the photo is analysed once and not stored", "https://typesafe.ai/"],
+];
+
+const description =
+  "Every endpoint on Air Signal, with live examples: the Crew Air shift plan with its building, home, " +
+  "alert, wind, fire and sensor-task signals; comfort for any coordinate; search; GeoJSON map layers. " +
+  "No key, no account.";
+
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebAPI",
+    name: `${SITE.name} API`,
+    description,
+    url: abs("/api"),
+    documentation: abs("/openapi.json"),
+    provider: { "@type": "Organization", name: SITE.name, url: SITE.origin },
+  },
+];
+---
+
+<Layout title={`API — ${SITE.name}`} description={description} path="/api" schema={schema}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">For developers and agents</div>
+        <h1 style="font-size:27px;margin:5px 0 0">The API</h1>
+        <p class="lede" style="margin-top:12px;font-size:15.5px;max-width:70ch">
+          Everything the site shows is a JSON call away, with no key and no account. Responses are cached at the
+          edge for 10–15 minutes; the forecast, fire and monitor files behind them for an hour or less. The same
+          document for a machine: <a href={abs("/openapi.json")}>/openapi.json</a>, and
+          <a href={abs("/llms.txt")}>/llms.txt</a> for an agent.
+        </p>
+      </div>
+
+      {
+        GROUPS.map((g) => (
+          <div class="api-group">
+            <h2>{g.title}</h2>
+            <p class="api-lede">{g.lede}</p>
+            {g.paths.map((path) => {
+              const ops = paths[path] ?? {};
+              return Object.entries(ops).map(([method, op]) => (
+                <div class="api-op" id={path.replace(/[^a-z0-9]+/gi, "-").replace(/^-/, "")}>
+                  <div class="api-sig">
+                    <span class="api-method">{method.toUpperCase()}</span>
+                    <code>{path}</code>
+                    {method === "get" && EXAMPLES[path] && (
+                      <a class="api-try" href={EXAMPLES[path]}>
+                        try it
+                      </a>
+                    )}
+                  </div>
+                  <p class="api-summary">{op.summary}</p>
+                  {op.description && <p class="api-desc" set:html={op.description.replace(/`([^`]+)`/g, "<code>$1</code>")} />}
+                  {op.parameters && op.parameters.length > 0 && (
+                    <table class="api-params">
+                      <tbody>
+                        {op.parameters.map((q) => (
+                          <tr>
+                            <td>
+                              <code>{q.name}</code>
+                            </td>
+                            <td class="api-req">{q.required ? "required" : "optional"}</td>
+                            <td>
+                              {q.description ?? q.schema?.type ?? ""}
+                              {q.schema?.example !== undefined && (
+                                <>
+                                  {" "}
+                                  · e.g. <code>{String(q.schema.example)}</code>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  {op.requestBody && (
+                    <p class="api-desc">
+                      Body: <code>{Object.keys(op.requestBody.content).join(", ")}</code>
+                    </p>
+                  )}
+                  {path === "/api/crew" && (
+                    <table class="api-params api-fields">
+                      <tbody>
+                        {CREW_FIELDS.map(([k, v]) => (
+                          <tr>
+                            <td>
+                              <code>{k}</code>
+                            </td>
+                            <td colspan="2">{v}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ));
+            })}
+          </div>
+        ))
+      }
+
+      <div class="api-group">
+        <h2>Machine-readable</h2>
+        <p class="api-lede">The same site for something that is not a browser.</p>
+        <ul class="api-list">
+          <li>
+            <a href={abs("/openapi.json")}>/openapi.json</a>: OpenAPI 3.1, every endpoint above with schemas.
+          </li>
+          <li>
+            <a href={abs("/llms.txt")}>/llms.txt</a> and <a href={abs("/llms-full.txt")}>/llms-full.txt</a>: what the site
+            is and how to use it, for an agent; the Crew Air rules and how to help a worker draft a complaint only on
+            their explicit request.
+          </li>
+          <li>
+            <a href={abs("/a2a")}>/a2a</a>: the agent card.
+          </li>
+          <li>
+            Every page has a Markdown twin: add <code>.md</code> to a city or station URL, or send
+            <code>Accept: text/markdown</code>.
+          </li>
+        </ul>
+      </div>
+
+      <div class="api-group">
+        <h2>Where the data comes from</h2>
+        <p class="api-lede">Public sources, named on every answer. Nothing here is resold; a licence travels with each one.</p>
+        <table class="api-params api-sources">
+          <tbody>
+            {
+              SOURCES.map(([name, what, url]) => (
+                <tr>
+                  <td>
+                    <a href={url}>{name}</a>
+                  </td>
+                  <td colspan="2">{what}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+        <p class="api-desc" style="margin-top:14px">
+          Limits: none enforced on reads; reports are limited to 10 per device per 10 minutes. When an upstream is down
+          the crew plan says so in <code>fallback</code> rather than guessing, and the comfort score returns 503 rather
+          than a number. Source: <a href={SITE.repo}>open, AGPL-3.0</a>; the Crew Air engine is
+          <a href="https://github.com/fortunto2/stanford-cleantech-2026">on GitHub</a> too.
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .api-group {
+    padding: 18px 20px 22px;
+    border-top: 1px solid var(--line-soft);
+  }
+  .api-lede {
+    margin-top: 8px;
+    max-width: 70ch;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .api-op {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line-soft);
+  }
+  .api-sig {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  .api-method {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--surface);
+  }
+  .api-sig code {
+    font-size: 15px;
+    font-weight: 560;
+  }
+  .api-try {
+    font-size: 13px;
+    color: var(--accent);
+  }
+  .api-summary {
+    margin-top: 6px;
+    max-width: 70ch;
+    font-size: 14.5px;
+  }
+  .api-desc {
+    margin-top: 6px;
+    max-width: 70ch;
+    font-size: 13.5px;
+    color: var(--ink-2);
+  }
+  .api-desc code,
+  .api-params code {
+    font-size: 12.5px;
+  }
+  .api-params {
+    margin-top: 10px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    max-width: 80ch;
+  }
+  .api-params td {
+    padding: 5px 10px 5px 0;
+    vertical-align: top;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .api-params td:first-child {
+    white-space: nowrap;
+  }
+  .api-req {
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .api-fields {
+    margin-top: 14px;
+  }
+  .api-list {
+    margin: 10px 0 0;
+    padding-left: 18px;
+    max-width: 70ch;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .api-list a,
+  .api-desc a,
+  .api-sources a,
+  .lede a {
+    color: var(--accent);
+  }
+</style>

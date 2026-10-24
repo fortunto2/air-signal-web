@@ -95,6 +95,7 @@ export const paths = {
   map: () => `/map`,
   ranking: () => `/ranking`,
   howItWorks: () => `/how-it-works`,
+  api: () => `/api`,
   /**
    * The widget, explained. Note this is `/embed` and the script is `/embed.js` — two routes, and
    * the static page wins over `[country].astro` the same way `/map` and `/ranking` do.
