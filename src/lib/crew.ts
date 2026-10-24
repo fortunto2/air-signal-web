@@ -381,3 +381,46 @@ export const REPORT_LABELS: Record<string, string> = {
   no_water: "No water",
   other: "Something else",
 };
+
+/**
+ * A Cal/OSHA complaint drafted from a report: every fact the report holds, square brackets for what
+ * only the worker knows (employer, address, how many people, confidentiality). Used by the escalation
+ * page and /api/crew/complaint. Nothing is filed by us: the worker, or an agent acting on the worker's
+ * explicit request, submits it after the worker has read it.
+ */
+export function complaintText(
+  report: { id: number; site: string; created_at: string; kind: string; note: string | null; status: string; handled_at: string | null; handled_note: string | null },
+  evidence: any,
+): string {
+  const pt = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", { timeZone: CREW_TZ, dateStyle: "medium", timeStyle: "short" });
+  const m = evidence?.metrics ?? {};
+  const from = evidence?.from;
+  const smoke = ["smoke", "ash", "symptoms", "no_n95"].includes(report.kind);
+  const rule = smoke ? "wildfire smoke protections required by Title 8 §5141.1" : "heat illness protections required by Title 8 §3395";
+  const age = Math.floor((Date.now() - Date.parse(report.created_at)) / 60_000);
+  const air = [
+    m.us_aqi_pm25 !== undefined ? `forecast PM2.5 AQI ${m.us_aqi_pm25} for that hour (EPA NowCast)` : null,
+    m.temp_f !== undefined ? `${Math.floor(m.temp_f)}°F` : null,
+    evidence?.fire ? `nearest NASA VIIRS fire detection ${Math.round(evidence.fire.nearest_km)} km ${evidence.fire.direction}` : null,
+    evidence?.ground ? `AirNow monitor ${evidence.ground.nearest} (${Math.round(evidence.ground.nearest_km)} km): ${evidence.ground.pm25} µg/m³` : null,
+    from?.sky?.smoke_call ? `photo of the sky checked by a vision model: smoke ${Math.round(from.sky.smoke * 100)}%` : null,
+    from?.facing ? `camera facing ${from.facing.heading_deg}° ${from.facing.compass}${from.facing.toward_fire ? ", toward the fire" : ""}` : null,
+  ].filter(Boolean);
+  const handled =
+    report.status === "open"
+      ? `; not handled after ${age} minutes`
+      : `; marked handled ${report.handled_at ? pt(report.handled_at) : ""}${report.handled_note ? ` (${report.handled_note})` : ""}`;
+  return [
+    `Hazard: outdoor work without the ${rule}.`,
+    `Employer: [employer name]. Worksite: [worksite address], ${evidence?.place?.name ?? report.site}${from?.where ? ` (${from.where.lat}, ${from.where.lon})` : ""}.`,
+    `When: ${pt(report.created_at)} PT.`,
+    `What happened: ${REPORT_LABELS[report.kind] ?? report.kind}${report.note ? ` - ${report.note}` : ""}. Reported to the crew lead at ${pt(report.created_at)}${handled}.`,
+    air.length ? `Air data: ${air.join("; ")}.` : null,
+    `Workers exposed: [number]. Protections missing: [N95s / shade / water / breaks / information].`,
+    `I [want / do not want] my name kept confidential.`,
+    `Record: Crew Air report #${report.id}, airsignal.app/crew.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

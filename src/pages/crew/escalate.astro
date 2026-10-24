@@ -9,7 +9,7 @@
 import Layout from "../../layouts/Layout.astro";
 import Bar from "../../components/Bar.astro";
 import { SITE, paths } from "../../lib/site";
-import { REPORT_LABELS, describeFrom } from "../../lib/crew";
+import { REPORT_LABELS, complaintText, describeFrom } from "../../lib/crew";
 import { getCrewReport } from "../../lib/db";
 
 Astro.response.headers.set("cache-control", "no-store");
@@ -17,6 +17,8 @@ const id = Number(Astro.url.searchParams.get("report"));
 const report = Number.isInteger(id) && id > 0 ? await getCrewReport(id).catch(() => null) : null;
 const evidence = report?.evidence_json ? JSON.parse(report.evidence_json) : null;
 const m = evidence?.metrics ?? {};
+
+const complaint = report ? complaintText(report, evidence) : "";
 const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.get("place") ?? "")}&date=${Astro.url.searchParams.get("date") ?? ""}#reports`;
 ---
 
@@ -50,6 +52,20 @@ const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.
         )
       }
 
+      {
+        report && (
+          <div class="esc-block">
+            <div class="eyebrow">Prepare a Cal/OSHA complaint</div>
+            <p class="esc-soon">Fill the [brackets], then copy it into Cal/OSHA's online form or an email to your district office. We send nothing.</p>
+            <textarea class="esc-text" rows="12" data-complaint>{complaint}</textarea>
+            <div class="esc-acts">
+              <button type="button" data-copy>Copy</button>
+              <a href="https://www.dir.ca.gov/dosh/Complaint.htm" target="_blank" rel="noopener">Open the Cal/OSHA form</a>
+            </div>
+          </div>
+        )
+      }
+
       <div class="esc-block">
         <div class="eyebrow">Where it can go</div>
         <ol class="esc-options">
@@ -66,6 +82,19 @@ const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.
     </div>
   </main>
 </Layout>
+
+<script is:inline>
+  document.querySelector("[data-copy]")?.addEventListener("click", async (e) => {
+    const t = document.querySelector("[data-complaint]");
+    try {
+      await navigator.clipboard.writeText(t.value);
+      e.currentTarget.textContent = "Copied";
+    } catch {
+      t.select();
+      e.currentTarget.textContent = "Select and copy";
+    }
+  });
+</script>
 
 <style>
   .esc-block {
@@ -84,6 +113,33 @@ const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.
   }
   .esc-block a {
     color: var(--accent);
+  }
+  .esc-text {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 8px;
+    font: 13.5px/1.5 var(--font-mono);
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .esc-acts {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .esc-acts button {
+    font: inherit;
+    font-weight: 560;
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    border: 0;
+    background: var(--accent);
+    color: var(--surface);
+    cursor: pointer;
   }
   .esc-soon {
     color: var(--ink-3);

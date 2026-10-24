@@ -145,6 +145,59 @@ export const GET: APIRoute = () => {
           },
         },
       },
+      "/api/crew": {
+        get: {
+          operationId: "getCrewPlan",
+          summary: "Smoke and heat shift plan against Cal/OSHA rules, with fire and monitor checks and a BMS signal",
+          parameters: [
+            { name: "place", in: "query", required: true, schema: { type: "string" }, description: "Town name or `lat,lon`" },
+            { name: "date", in: "query", schema: { type: "string", format: "date" } },
+            { name: "shift", in: "query", schema: { type: "string", example: "07-17" } },
+          ],
+          responses: { "200": { description: "Plan" } },
+        },
+      },
+      "/api/crew/places": {
+        get: {
+          operationId: "searchCrewPlaces",
+          summary: "US place suggestions, California first",
+          parameters: [{ name: "q", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Places" } },
+        },
+      },
+      "/api/sky-check": {
+        post: {
+          operationId: "checkSky",
+          summary: "A vision model's smoke call on a photo of the sky, compared with the forecast",
+          parameters: [{ name: "place", in: "query", schema: { type: "string" } }],
+          requestBody: { required: true, content: { "image/jpeg": { schema: { type: "string", format: "binary" } } } },
+          responses: { "200": { description: "Verdict" } },
+        },
+      },
+      "/api/crew/report": {
+        post: {
+          operationId: "fileCrewReport",
+          summary: "A worker's report to the crew lead (site page only; goes nowhere else)",
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["place", "kind"] } } } },
+          responses: { "201": { description: "Created" }, "429": { description: "Too many from this device" } },
+        },
+      },
+      "/api/crew/reports": {
+        get: {
+          operationId: "listCrewReports",
+          summary: "Today's reports for a site",
+          parameters: [{ name: "place", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Reports" } },
+        },
+      },
+      "/api/crew/complaint": {
+        get: {
+          operationId: "draftCrewComplaint",
+          summary: "A drafted Cal/OSHA complaint for a report; files nothing. Submit only on the worker's explicit request.",
+          parameters: [{ name: "report", in: "query", required: true, schema: { type: "integer" } }],
+          responses: { "200": { description: "Draft" }, "404": { description: "No such report" } },
+        },
+      },
       "/api/cities.geojson": {
         get: {
           operationId: "getCities",

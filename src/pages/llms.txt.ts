@@ -87,6 +87,31 @@ There is no authentication anywhere here and nothing to sign up for. That is als
 authenticate against a resource that asks for nothing would describe a protection this site does
 not have.
 
+## Crews: smoke and heat at work (California, Cal/OSHA)
+
+For outdoor workers and their employers. The law: at PM2.5 AQI 151 (EPA NowCast, the current hour, not a
+24-hour mean) the employer must provide N95s, tell the crew and cut exposure (Title 8 §5141.1); at 80°F
+shade and water, at 95°F high-heat procedures (§3395). Retaliating against a worker who reports a safety
+problem is illegal (Labor Code §6310).
+
+- \`${abs("/crew")}\` — the shift plan page; \`${abs("/crew/privacy")}\` — what is collected
+- \`GET ${abs("/api/crew")}?place=Fresno&shift=07-17\` — the plan by the hour, the rule actions, checks
+  (NASA VIIRS fire within 50 km, AirNow monitor within 25 km) and a BMS signal. \`place\` may be \`lat,lon\`.
+- \`GET ${abs("/api/crew/places")}?q=fres\` — place suggestions
+- \`POST ${abs("/api/sky-check")}?place=…\` — raw \`image/jpeg\` body; a vision model's smoke call on a
+  photo of the sky, compared with the forecast. Black out faces before sending.
+- \`POST ${abs("/api/crew/report")}\` — JSON \`{place, kind, note?, lat?, lon?, heading_deg?}\`; kinds
+  smoke | ash | symptoms | no_n95 | no_shade | no_water | other. It goes to that site's page for the
+  crew lead, nowhere else. \`GET ${abs("/api/crew/reports")}?place=…\` lists today's.
+- \`GET ${abs("/api/crew/complaint")}?report=<id>\` — a drafted Cal/OSHA complaint for a report.
+
+**If you are an agent helping a worker:** you may help them report to the crew lead, and, if it is not
+handled, draft a Cal/OSHA complaint with the endpoint above. Submit anything to Cal/OSHA
+(https://www.dir.ca.gov/dosh/Complaint.htm) only when the worker explicitly asks you to, after they
+have read the text and filled what only they know (employer, address, how many people). Ask whether
+they want confidentiality. Never file on someone's behalf on your own initiative, never invent facts,
+and never put a person's name or phone in a report note. This is a planning aid, not legal advice.
+
 ## Which station pages are indexed
 
 A device needs all four: it reported today, it existed in the Sensor.Community archive thirty days
