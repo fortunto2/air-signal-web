@@ -831,3 +831,77 @@ export async function getCpf(cityId: number, limit = 5): Promise<CpfRow[]> {
     .all<CpfRow>();
   return results ?? [];
 }
+
+// ── crew reports ────────────────────────────────────────────────────────────
+//
+// The second write surface the worker has, beside the city cache columns: a worker's report on
+// /crew and the crew lead marking it handled. Nothing here can create or change a place.
+
+export const REPORT_KINDS = ["smoke", "ash", "symptoms", "no_n95", "no_shade", "no_water", "other"] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
+
+export interface CrewReport {
+  id: number;
+  site: string;
+  date: string;
+  created_at: string;
+  kind: ReportKind;
+  note: string | null;
+  evidence_json: string | null;
+  status: "open" | "handled";
+  handled_at: string | null;
+  handled_note: string | null;
+}
+
+/** How many reports this sender made in the last `minutes`. The only thing `sender` is for. */
+export async function countRecentReports(sender: string, minutes = 10): Promise<number> {
+  const since = new Date(Date.now() - minutes * 60_000).toISOString();
+  const row = await DB()
+    .prepare("SELECT COUNT(*) AS n FROM crew_reports WHERE sender = ?1 AND created_at >= ?2")
+    .bind(sender, since)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+export async function addCrewReport(r: {
+  site: string;
+  date: string;
+  kind: ReportKind;
+  note: string | null;
+  evidence: unknown;
+  sender: string;
+}): Promise<{ id: number; created_at: string }> {
+  const created_at = new Date().toISOString();
+  const row = await DB()
+    .prepare(
+      `INSERT INTO crew_reports (site, date, created_at, kind, note, evidence_json, sender)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id`,
+    )
+    .bind(r.site, r.date, created_at, r.kind, r.note, JSON.stringify(r.evidence ?? null), r.sender)
+    .first<{ id: number }>();
+  return { id: row!.id, created_at };
+}
+
+export async function listCrewReports(site: string, date: string): Promise<CrewReport[]> {
+  const { results } = await DB()
+    .prepare("SELECT * FROM crew_reports WHERE site = ?1 AND date = ?2 ORDER BY created_at DESC LIMIT 50")
+    .bind(site, date)
+    .all<CrewReport>();
+  return results;
+}
+
+/** Scoped by site, so an id guessed from another site's page cannot close this one. */
+export async function handleCrewReport(id: number, site: string, note: string | null): Promise<boolean> {
+  const res = await DB()
+    .prepare(
+      `UPDATE crew_reports SET status = 'handled', handled_at = ?3, handled_note = ?4
+        WHERE id = ?1 AND site = ?2 AND status = 'open'`,
+    )
+    .bind(id, site, new Date().toISOString(), note)
+    .run();
+  return (res.meta.changes ?? 0) > 0;
+}
+
+export async function getCrewReport(id: number): Promise<CrewReport | null> {
+  return await DB().prepare("SELECT * FROM crew_reports WHERE id = ?1").bind(id).first<CrewReport>();
+}

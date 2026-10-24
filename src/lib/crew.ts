@@ -12,6 +12,7 @@
  */
 
 import { core } from "./core";
+import { slug } from "./site";
 
 export const CREW_TZ = "America/Los_Angeles";
 
@@ -65,7 +66,9 @@ export interface CrewAnswer {
 }
 
 async function json(url: string): Promise<any> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  // Cached at the edge: /crew is no-store (its reports are live), so the forecast must not be
+  // fetched again on every view. Ten minutes is far inside how often the models update.
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000), cf: { cacheTtl: 600, cacheEverything: true } } as RequestInit);
   if (!res.ok) throw new Error(`${new URL(url).hostname} ${res.status}`);
   return res.json();
 }
@@ -250,3 +253,46 @@ export async function crewPlan(place: string, date: string, shift: { start: numb
   if (out.error) throw new Error(out.error);
   return { place: at, date, shift, plan: out as CrewPlan };
 }
+
+/** The site a report belongs to: the geocoded place, as a slug. Crew and crew lead share the URL. */
+export function siteKey(placeName: string): string {
+  return slug(placeName);
+}
+
+/** The local hour now, in the forecast's format. */
+export function nowHour(): string {
+  return localHour(new Date().toISOString());
+}
+
+/**
+ * What the plan said for the hour a report was made: the evidence a worker's report carries, so
+ * "it was smoky" arrives with the NowCast, the nearest satellite fire and the ground monitor.
+ */
+export function evidenceFor(answer: CrewAnswer, at = nowHour()) {
+  const hour = answer.plan.hours.find((h) => h.time === at) ?? null;
+  return {
+    place: answer.place,
+    hour: at,
+    metrics: hour?.metrics ?? null,
+    confidence: answer.plan.confidence.level,
+    fire: answer.plan.confidence.fire,
+    ground: answer.plan.confidence.ground,
+  };
+}
+
+/** A salted, daily-rotating hash of the sender: enough to rate-limit, useless to identify. */
+export async function senderHash(ip: string): Promise<string> {
+  const data = new TextEncoder().encode(`${ip}|${crewDate(0)}|crew-air`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export const REPORT_LABELS: Record<string, string> = {
+  smoke: "Smoke or haze",
+  ash: "Ash falling",
+  symptoms: "Someone feels sick",
+  no_n95: "No N95s here",
+  no_shade: "No shade",
+  no_water: "No water",
+  other: "Something else",
+};

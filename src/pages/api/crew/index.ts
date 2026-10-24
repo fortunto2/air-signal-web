@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { crewDefaultDate, crewPlan, parseShift } from "../../lib/crew";
+import { crewDefaultDate, crewPlan, parseShift } from "../../../lib/crew";
 
 /**
  * The crew plan as JSON, and the BMS signal inside it: `plan.bms.recirculate_at` is the hour a

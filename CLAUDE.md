@@ -58,8 +58,10 @@ src/middleware.ts  edge caching + Accept: text/markdown negotiation
 Node in GitHub Actions, because the two largest inputs are 9 MB JSON documents and a 128 MB isolate
 is the wrong place for them. But a city page whose readings are stale scores itself — four upstream
 calls, the same WASM, a `waitUntil` write-back — so `saveCityReadings` in `src/lib/db.ts` may fill
-`comfort`, `signals_json`, `readings_json` and `updated_at` on a row that already exists. That is
-the entire write surface the worker has.
+`comfort`, `signals_json`, `readings_json` and `updated_at` on a row that already exists. The one
+other write is `crew_reports` (`/api/crew/report`): a worker's report on /crew and the crew lead
+marking it handled. Those rows never touch places, stations or readings. That is the entire write
+surface the worker has.
 
 **Comfort is computed on demand, not for ten thousand cities a night.** Most city pages get no
 traffic for months; scoring them all daily is what exhausted Open-Meteo's quota and left the site

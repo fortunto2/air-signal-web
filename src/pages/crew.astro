@@ -9,7 +9,8 @@
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import { SITE, abs, aqiBand, paths } from "../lib/site";
-import { crewDate, crewDefaultDate, crewPlan, parseShift, type CrewAnswer } from "../lib/crew";
+import { REPORT_LABELS, crewDate, crewDefaultDate, crewPlan, parseShift, siteKey, type CrewAnswer } from "../lib/crew";
+import { REPORT_KINDS, listCrewReports, type CrewReport } from "../lib/db";
 
 const DEFAULT_PLACE = "Sacramento";
 const REPO = "https://github.com/fortunto2/stanford-cleantech-2026";
@@ -32,6 +33,18 @@ try {
 }
 
 const plan = answer?.plan;
+
+// Reports change by the minute and belong to one site, so this page is never shared from the edge
+// cache. The upstream forecast and the fire and monitor files are cached on their own (lib/crew.ts).
+Astro.response.headers.set("cache-control", "no-store");
+let reports: CrewReport[] = [];
+if (answer) reports = await listCrewReports(siteKey(answer.place.name), date).catch(() => []);
+const sent = Number(qs.get("sent")) || null;
+const handled = Number(qs.get("handled")) || null;
+const ESCALATE_AFTER_MIN = 30;
+const ageMin = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 60_000);
+const localTime = (iso: string) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 const clock = (t: string) => t.slice(11, 16);
 const dayLabel = (d: string) =>
   new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" }).format(
@@ -182,6 +195,65 @@ const schema = [
                 Same plan as JSON for a building system: <a href={apiUrl}>{apiUrl}</a>
               </p>
             </div>
+            <div class="crew-block" id="reports">
+              <div class="eyebrow">Reports from the crew · {reports.length} today</div>
+              {sent && <p class="crew-ok no-print" role="status">Sent to the crew lead. Report #{sent}. If nothing changes in {ESCALATE_AFTER_MIN} minutes, you can take it further below.</p>}
+              {handled && <p class="crew-ok no-print" role="status">Report #{handled} marked handled.</p>}
+              <form class="crew-report no-print" method="post" action="/api/crew/report">
+                <input type="hidden" name="place" value={place} />
+                <input type="hidden" name="date" value={date} />
+                <input type="hidden" name="shift" value={shiftRaw} />
+                <p>Air got worse, someone feels sick, or something the rules require is missing? Tell the crew lead. No name needed. The report carries the forecast, the satellite fire check and the monitor reading for this hour.</p>
+                <div class="crew-kinds">
+                  {REPORT_KINDS.map((k, i) => (
+                    <label><input type="radio" name="kind" value={k} checked={i === 0} required /> {REPORT_LABELS[k]}</label>
+                  ))}
+                </div>
+                <div class="crew-report-row">
+                  <input name="note" maxlength="280" placeholder="Optional: where, what you see (no names)" />
+                  <button type="submit">Send report</button>
+                </div>
+              </form>
+              {reports.length > 0 && (
+                <ol class="crew-actions crew-reports">
+                  {reports.map((r) => (
+                    <li>
+                      <span class="num">{localTime(r.created_at)}</span>
+                      <span>
+                        <b>{REPORT_LABELS[r.kind] ?? r.kind}</b>{r.note ? ` · ${r.note}` : ""}
+                        {r.status === "handled" && r.handled_at && (
+                          <span class="crew-handled"> · handled {localTime(r.handled_at)}{r.handled_note ? `: ${r.handled_note}` : ""}</span>
+                        )}
+                      </span>
+                      <span class="cite">
+                        {r.status === "open" ? (
+                          <span class="no-print crew-report-acts">
+                            <form method="post" action="/api/crew/report">
+                              <input type="hidden" name="place" value={place} />
+                              <input type="hidden" name="date" value={date} />
+                              <input type="hidden" name="shift" value={shiftRaw} />
+                              <input type="hidden" name="action" value="handle" />
+                              <input type="hidden" name="id" value={r.id} />
+                              <input type="hidden" name="note" value="" />
+                              <button type="submit">Mark handled</button>
+                            </form>
+                            {ageMin(r.created_at) >= ESCALATE_AFTER_MIN ? (
+                              <a href={`/crew/escalate?report=${r.id}&place=${encodeURIComponent(place)}&date=${date}`}>Take it further</a>
+                            ) : (
+                              <span>escalate in {ESCALATE_AFTER_MIN - ageMin(r.created_at)} min</span>
+                            )}
+                          </span>
+                        ) : (
+                          "handled"
+                        )}
+                        <span class="print-only">#{r.id} {r.status}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+
             <div class="crew-signoff print-only">
               <div class="eyebrow">Pre-shift briefing</div>
               <p>Given by ______________________ at ________ · Water, shade and N95 location: ______________________</p>
@@ -306,6 +378,64 @@ const schema = [
   .crew-fire {
     color: var(--s-poor);
     font-weight: 520;
+  }
+  .crew-ok {
+    color: var(--s-excellent);
+    font-weight: 520;
+  }
+  .crew-report p {
+    max-width: 70ch;
+  }
+  .crew-kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 10px;
+    font-size: 14px;
+  }
+  .crew-report-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .crew-report input[name="note"],
+  .crew-report button,
+  .crew-report-acts button {
+    font: inherit;
+    font-size: 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+    min-width: 0;
+  }
+  .crew-report button {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--surface);
+    font-weight: 560;
+    cursor: pointer;
+  }
+  .crew-reports {
+    margin-top: 14px;
+  }
+  .crew-report-acts {
+    display: inline-flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .crew-report-acts form {
+    display: inline;
+  }
+  .crew-report-acts button {
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .crew-handled {
+    color: var(--ink-3);
   }
   .crew-actions {
     list-style: none;

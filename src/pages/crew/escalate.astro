@@ -1,0 +1,90 @@
+---
+/**
+ * The third rung, as a mock: what an unresolved report would carry, and where it could go.
+ *
+ * Nothing is sent from here yet. Forwarding a worker's report to a union or legal aid needs their
+ * agreement first, and a button that pretends to send would be worse than none. The Cal/OSHA link
+ * is real: anyone may file there, anonymously, and retaliation for it is illegal (Labor Code §6310).
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import { SITE, paths } from "../../lib/site";
+import { REPORT_LABELS } from "../../lib/crew";
+import { getCrewReport } from "../../lib/db";
+
+Astro.response.headers.set("cache-control", "no-store");
+const id = Number(Astro.url.searchParams.get("report"));
+const report = Number.isInteger(id) && id > 0 ? await getCrewReport(id).catch(() => null) : null;
+const evidence = report?.evidence_json ? JSON.parse(report.evidence_json) : null;
+const m = evidence?.metrics ?? {};
+const back = `${paths.crew()}?place=${encodeURIComponent(Astro.url.searchParams.get("place") ?? "")}&date=${Astro.url.searchParams.get("date") ?? ""}#reports`;
+---
+
+<Layout title={`Take a report further — ${SITE.name}`} description="Where an unresolved crew report can go, and what it carries." path="/crew/escalate" noindex pitch={false}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">For crews · step 3</div>
+        <h1 style="font-size:25px;margin:5px 0 0">The report was not handled. Here is where it can go.</h1>
+        <p class="lede" style="margin-top:12px;font-size:15px">
+          Nothing leaves this page without you. Your name is not in the report, and it never was.
+        </p>
+      </div>
+
+      {
+        report ? (
+          <div class="esc-block">
+            <div class="eyebrow">What the report carries</div>
+            <ul>
+              <li><b>{REPORT_LABELS[report.kind] ?? report.kind}</b>{report.note ? `: ${report.note}` : ""}</li>
+              <li>Made {new Date(report.created_at).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PT at {evidence?.place?.name ?? report.site}, status {report.status}</li>
+              {m.us_aqi_pm25 !== undefined && <li>Forecast for that hour: PM2.5 AQI {m.us_aqi_pm25} (NowCast), {m.temp_f !== undefined ? `${Math.floor(m.temp_f)}°F` : "temperature unknown"}</li>}
+              {evidence?.fire && <li>Nearest satellite fire detection (NASA VIIRS): {Math.round(evidence.fire.nearest_km)} km {evidence.fire.direction}</li>}
+              {evidence?.ground && <li>AirNow monitor {evidence.ground.nearest}, {Math.round(evidence.ground.nearest_km)} km: {evidence.ground.pm25} µg/m³</li>}
+            </ul>
+          </div>
+        ) : (
+          <p class="esc-block">No such report. Go back to the plan and send one first.</p>
+        )
+      }
+
+      <div class="esc-block">
+        <div class="eyebrow">Where it can go</div>
+        <ol class="esc-options">
+          <li>
+            <b>Cal/OSHA complaint</b>, anonymous if you want, and firing you for it is illegal (Labor Code §6310).
+            <a href="https://www.dir.ca.gov/dosh/Complaint.htm">dir.ca.gov/dosh/Complaint.htm</a>
+          </li>
+          <li><b>A union or worker center</b>, for example the United Farm Workers. <span class="esc-soon">Not connected yet: this will forward the report once they agree to receive it.</span> <a href="https://ufw.org/">ufw.org</a></li>
+          <li><b>Free legal aid</b>, for example California Rural Legal Assistance. <span class="esc-soon">Not connected yet.</span> <a href="https://crla.org/">crla.org</a></li>
+        </ol>
+      </div>
+
+      <p class="esc-block"><a href={back}>← Back to the shift plan</a></p>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .esc-block {
+    padding: 16px 20px;
+    border-top: 1px solid var(--line-soft);
+    font-size: 14.5px;
+  }
+  .esc-block ul,
+  .esc-options {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 75ch;
+  }
+  .esc-block a {
+    color: var(--accent);
+  }
+  .esc-soon {
+    color: var(--ink-3);
+  }
+</style>
