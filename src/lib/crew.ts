@@ -573,10 +573,13 @@ export function nowHour(): string {
  */
 export function evidenceFor(answer: CrewAnswer, at = nowHour()) {
   const hour = answer.plan.hours.find((h) => h.time === at) ?? null;
+  const wind = answer.wind.find((w) => w.time === at) ?? null;
   return {
     place: answer.place,
     hour: at,
     metrics: hour?.metrics ?? null,
+    /** 10 m wind that hour, °from and km/h: which way the smoke someone smelled was coming from. */
+    wind: wind ? { dir_deg: wind.dir_deg, kmh: wind.kmh } : null,
     confidence: answer.plan.confidence.level,
     fire: answer.plan.confidence.fire,
     ground: answer.plan.confidence.ground,

@@ -2,14 +2,18 @@ import type { APIRoute } from "astro";
 import { REPORT_KINDS, addCrewReport, countRecentReports, handleCrewReport, purgeOldReports, type ReportKind } from "../../../lib/db";
 import { ALL_DAY, crewDate, crewPlanAt, evidenceFor, formatShift, geocode, parseDate, parseShift, reportedFrom, senderHash, siteKey } from "../../../lib/crew";
 import { jsonReply } from "../../../lib/http";
+import { parseApp, parseObservation } from "../../../lib/observation";
 
 /**
  * A worker's report, or the crew lead marking one handled. Takes the /crew page's plain form POST
  * (and answers with a redirect back to it) or JSON from the app (and answers with JSON).
  *
  *   {place, date?, shift?, kind, note?,
- *    lat?, lon?, accuracy_m?, heading_deg?, sky?} → {id, created_at, status: "open"}
- *   (where it was made and which way the camera faced go into the evidence, rounded to ~100 m)
+ *    lat?, lon?, accuracy_m?, heading_deg?, sky?,
+ *    app?: "crewair" | "airsignal", observation?: {kind, intensity, observed_at?, snapshot?}}
+ *     → {id, created_at, status: "open"}
+ *   (where it was made and which way the camera faced go into the evidence, rounded to ~100 m;
+ *    Air Signal's observations are stored with app = "airsignal" and stay off the crew boards)
  *   {place, date?, action: "handle", id, note?} → {id, status: "handled"}
  *
  * Cheapest checks first: the place resolves once; "handle" and the rate limit never pay for a plan.
@@ -53,6 +57,13 @@ export const POST: APIRoute = async ({ request, clientAddress, locals }) => {
 
   const kind = String(body.kind ?? "") as ReportKind;
   if (!REPORT_KINDS.includes(kind)) return fail(`kind must be one of ${REPORT_KINDS.join(", ")}`, 400);
+  let app, observation;
+  try {
+    app = parseApp(body.app);
+    observation = parseObservation(body.observation);
+  } catch (e) {
+    return fail((e as Error).message, 400);
+  }
   const sender = await senderHash(clientAddress ?? request.headers.get("cf-connecting-ip") ?? "unknown");
   if ((await countRecentReports(sender)) >= 10) return fail("too many reports from this device in 10 minutes", 429);
 
@@ -68,7 +79,7 @@ export const POST: APIRoute = async ({ request, clientAddress, locals }) => {
     { lat: body.lat, lon: body.lon, accuracy_m: body.accuracy_m, heading_deg: body.heading_deg, sky: body.sky },
     answer.plan.confidence.fire,
   );
-  const made = await addCrewReport({ site, date, kind, note, evidence: { ...evidenceFor(answer), from }, sender });
+  const made = await addCrewReport({ site, date, kind, note, evidence: { ...evidenceFor(answer), from }, sender, app, observation });
   // Retention, off the response path: the rate-limit hash after 2 days, raw reports after 24 months.
   locals.cfContext?.waitUntil(purgeOldReports());
   if (!isJson) return Response.redirect(back(`&sent=${made.id}`), 303);

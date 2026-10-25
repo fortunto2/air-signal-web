@@ -853,6 +853,10 @@ export interface CrewReport {
   status: "open" | "handled";
   handled_at: string | null;
   handled_note: string | null;
+  /** Which app sent it. Air Signal's citizen observations stay off the crew boards. */
+  app: "crewair" | "airsignal";
+  /** Air Signal's structured observation (kind, intensity, observed_at, snapshot); null for crew reports. */
+  observation_json: string | null;
 }
 
 /** How many reports this sender made in the last `minutes`. The only thing `sender` is for. */
@@ -872,14 +876,16 @@ export async function addCrewReport(r: {
   note: string | null;
   evidence: unknown;
   sender: string;
+  app: CrewReport["app"];
+  observation: unknown | null;
 }): Promise<{ id: number; created_at: string }> {
   const created_at = new Date().toISOString();
   const row = await DB()
     .prepare(
-      `INSERT INTO crew_reports (site, date, created_at, kind, note, evidence_json, sender)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id`,
+      `INSERT INTO crew_reports (site, date, created_at, kind, note, evidence_json, sender, app, observation_json)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) RETURNING id`,
     )
-    .bind(r.site, r.date, created_at, r.kind, r.note, JSON.stringify(r.evidence ?? null), r.sender)
+    .bind(r.site, r.date, created_at, r.kind, r.note, JSON.stringify(r.evidence ?? null), r.sender, r.app, r.observation ? JSON.stringify(r.observation) : null)
     .first<{ id: number }>();
   return { id: row!.id, created_at };
 }
@@ -897,9 +903,10 @@ export async function purgeOldReports(): Promise<void> {
   ]);
 }
 
+/** The crew board: a site's day, crew reports only. Air Signal's observations are kept, not shown here. */
 export async function listCrewReports(site: string, date: string): Promise<CrewReport[]> {
   const { results } = await DB()
-    .prepare("SELECT * FROM crew_reports WHERE site = ?1 AND date = ?2 ORDER BY created_at DESC LIMIT 50")
+    .prepare("SELECT * FROM crew_reports WHERE site = ?1 AND date = ?2 AND app = 'crewair' ORDER BY created_at DESC LIMIT 50")
     .bind(site, date)
     .all<CrewReport>();
   return results;

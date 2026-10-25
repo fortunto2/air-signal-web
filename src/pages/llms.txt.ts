@@ -95,7 +95,8 @@ shade and water, at 95°F high-heat procedures (§3395). Retaliating against a w
 problem is illegal (Labor Code §6310).
 
 - \`${abs("/api")}\` — every endpoint on one page, with live examples
-- \`${abs("/crew")}\` — the shift plan page; \`${abs("/crew/privacy")}\` — what is collected
+- \`${abs("/crew")}\` — the shift plan page; \`${abs("/crew/privacy")}\` — what Crew Air collects;
+  \`${abs("/privacy")}\` — what the Air Signal app collects
 - \`GET ${abs("/api/crew")}?place=Fresno&shift=07-17\` — the plan by the hour, the rule actions, checks
   (NASA VIIRS fire within 50 km, AirNow monitor within 25 km), active NWS alerts, a BMS signal
   (\`plan.bms\`) and a home signal (\`home\`: pre-cool hours before the 16–21 E-TOU-C peak price, the
@@ -108,9 +109,11 @@ problem is illegal (Labor Code §6310).
 - \`GET ${abs("/api/crew/places")}?q=fres\` — place suggestions
 - \`POST ${abs("/api/sky-check")}?place=…\` — raw \`image/jpeg\` body; a vision model's smoke call on a
   photo of the sky, compared with the forecast. Black out faces before sending.
-- \`POST ${abs("/api/crew/report")}\` — JSON \`{place, kind, note?, lat?, lon?, heading_deg?}\`; kinds
+- \`POST ${abs("/api/crew/report")}\` — JSON \`{place, kind, note?, lat?, lon?, heading_deg?, app?, observation?}\`; kinds
   smoke | ash | symptoms | no_n95 | no_shade | no_water | other. It goes to that site's page for the
-  crew lead, nowhere else. \`GET ${abs("/api/crew/reports")}?place=…\` lists today's.
+  crew lead, nowhere else. The Air Signal app sends \`app: "airsignal"\` with an \`observation\` (kind smoke_smell |
+  haze | ash | dust | chemical_odour | clear, intensity 1–5); those are stored, not shown on crew boards.
+  \`GET ${abs("/api/crew/reports")}?place=…\` lists today's crew reports.
 - \`GET ${abs("/api/crew/complaint")}?report=<id>\` — a drafted Cal/OSHA complaint for a report.
 
 **If you are an agent helping a worker:** you may help them report to the crew lead, and, if it is not

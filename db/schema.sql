@@ -202,7 +202,9 @@ CREATE TABLE IF NOT EXISTS crew_reports (
   sender        TEXT    NOT NULL,          -- sha-256(ip + day + salt), first 16 hex
   status        TEXT    NOT NULL DEFAULT 'open',  -- open | handled
   handled_at    TEXT,
-  handled_note  TEXT
+  handled_note  TEXT,
+  app           TEXT    NOT NULL DEFAULT 'crewair',  -- crewair | airsignal; /crew boards show only crewair
+  observation_json TEXT                      -- Air Signal's observation: kind, intensity 1–5, observed_at, snapshot
 );
 
 CREATE INDEX IF NOT EXISTS crew_reports_site ON crew_reports (site, date, created_at);
