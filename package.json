@@ -20,6 +20,7 @@
     "ingest": "tsx cli/main.ts ingest",
     "comfort": "tsx cli/main.ts comfort",
     "integration": "tsx cli/main.ts integration",
+    "test": "node --import tsx --test tests/*.test.ts",
     "backfill": "tsx cli/main.ts backfill",
     "deploy": "pnpm build && wrangler deploy",
     "astro": "astro"

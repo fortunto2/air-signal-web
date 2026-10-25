@@ -102,6 +102,8 @@ problem is illegal (Labor Code §6310).
   smoke hour to shut windows) and \`dispatch\`: whether a worksite reading is advised (\`sensor: launch\`,
   with the bearing and distance to the nearest VIIRS fire within 50 km; the reading goes back through
   POST /api/crew/report). \`place\` may be \`lat,lon\`.
+- \`GET ${abs("/api/crew/plan.ics")}?place=Fresno&shift=07-17\` — the same plan as an iCalendar file
+  (text/calendar): the N95 hour, the shade-and-water hour, the heavy work window, pre-cool and the peak price.
 - \`GET ${abs("/api/crew/places")}?q=fres\` — place suggestions
 - \`POST ${abs("/api/sky-check")}?place=…\` — raw \`image/jpeg\` body; a vision model's smoke call on a
   photo of the sky, compared with the forecast. Black out faces before sending.

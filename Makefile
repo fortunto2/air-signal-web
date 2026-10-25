@@ -1,4 +1,4 @@
-.PHONY: help install dev build preview check deploy wasm db-init db-reset seed ingest integration clean
+.PHONY: help install dev build preview check test deploy wasm db-init db-reset seed ingest integration clean
 
 # Where the Rust core lives. Only `make wasm` needs it; everything else runs off the vendored
 # artifacts in src/wasm/, so a fresh checkout builds without a Rust toolchain.
@@ -21,6 +21,9 @@ preview: ## Serve the built worker locally via wrangler
 
 check: ## Astro + TypeScript diagnostics
 	pnpm check
+
+test: ## Unit tests for the pure TS modules (calendar file, battery sizing)
+	pnpm test
 
 wasm: ## Rebuild both airq-core WASM builds from $(AIRQ) and vendor them into src/wasm/
 	cd $(AIRQ)/airq-core && wasm-pack build --target nodejs --out-dir pkg-node \

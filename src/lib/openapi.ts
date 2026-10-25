@@ -154,6 +154,23 @@ export function openapiSpec() {
           responses: { "200": { description: "Plan" } },
         },
       },
+      "/api/crew/plan.ics": {
+        get: {
+          operationId: "getCrewPlanCalendar",
+          summary: "The shift plan as an iCalendar file (text/calendar, attachment)",
+          description:
+            "Same query as /api/crew. Events on the plan's day, America/Los_Angeles with a VTIMEZONE: " +
+            "\"N95 from HH:00 (AQI ≥151)\", \"Heat: shade and water from HH:00\", \"Heavy work window HH–HH\" " +
+            "(the longest stretch under both thresholds, when a rule fires), \"Pre-cool HH–HH\" and \"TOU peak 16–21\" " +
+            "from `home`. Always at least the peak-price event.",
+          parameters: [
+            { name: "place", in: "query", required: true, schema: { type: "string" }, description: "Town name or `lat,lon`" },
+            { name: "date", in: "query", schema: { type: "string", format: "date" } },
+            { name: "shift", in: "query", schema: { type: "string", example: "07-17" } },
+          ],
+          responses: { "200": { description: "Calendar", content: { "text/calendar": { schema: { type: "string" } } } } },
+        },
+      },
       "/api/crew/places": {
         get: {
           operationId: "searchCrewPlaces",

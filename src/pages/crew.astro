@@ -27,6 +27,7 @@ import {
   type CrewAnswer,
 } from "../lib/crew";
 import { REPORT_KINDS, listCrewReports, type CrewReport } from "../lib/db";
+import { BACKUP_MARGIN, backupHours, backupSizing } from "../lib/battery";
 
 const DEFAULT_PLACE = "Sacramento";
 const REPO = "https://github.com/fortunto2/stanford-cleantech-2026";
@@ -91,6 +92,13 @@ const heatBand = (f: number | undefined) =>
 const apiUrl = answer
   ? `/api/crew?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`
   : "/api/crew?place=Fresno&shift=07-17";
+const icsUrl = `/api/crew/plan.ics?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`;
+// Backup battery for the house: three presets × the hours the grid is dearest or an alert lasts.
+const backup = answer ? backupHours(answer.home, answer.alerts) : null;
+const battery = backup ? backupSizing(backup.hours) : [];
+const batteryWhy = backup
+  ? `Hours: ${backup.basis}. Typical running draws, ${Math.round(BACKUP_MARGIN * 100)}% margin for inverter losses, rounded up to 0.1 kWh. Arithmetic, not a load study: a fridge with a warm kitchen or a CPAP with a humidifier draws more.`
+  : "";
 
 const pageUrl = abs(`${paths.crew()}?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`);
 const madeAt = ptTime(new Date().toISOString());
@@ -179,6 +187,7 @@ const schema = [
                 <h2 style="margin-top:4px">{answer.place.name}</h2>
               </div>
               <div class="crew-peaks">
+                <a class="crew-print no-print" href={icsUrl} download>Add to calendar (.ics)</a>
                 <button class="crew-print no-print" type="button" onclick="window.print()">Print / Save PDF</button>
                 <span>
                   <span class="eyebrow">Peak AQI</span>
@@ -334,6 +343,18 @@ const schema = [
                   ? `Smoke: windows shut and HVAC on recirculate from ${clock(answer.home.close_windows_at)}${answer.home.open_windows_at ? ` to ${clock(answer.home.open_windows_at)}` : " for the rest of the day"}; a closed house runs the air conditioner longer, so the pre-cooling matters more.`
                   : "No smoke hour: windows can stay open overnight."}
               </p>
+              <div class="eyebrow" style="margin-top:14px">Backup battery · {backup?.hours} h</div>
+              <table class="crew-battery">
+                <thead>
+                  <tr><th>Keeps running</th><th class="num">W</th><th class="num">kWh for {backup?.hours} h</th></tr>
+                </thead>
+                <tbody>
+                  {battery.map((b) => (
+                    <tr><td>{b.name}</td><td class="num">{b.watts}</td><td class="num">{b.kwh.toFixed(1)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              <p class="crew-legend">{batteryWhy}</p>
               <p class="crew-legend no-print">
                 Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: reading advised, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
               </p>
@@ -1016,6 +1037,30 @@ const schema = [
     color: var(--ink-2);
     cursor: pointer;
     align-self: center;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .crew-battery {
+    border-collapse: collapse;
+    margin-top: 6px;
+    font-size: 14px;
+    min-width: 320px;
+  }
+  .crew-battery th {
+    font-weight: 500;
+    color: var(--ink-3);
+    font-size: 12.5px;
+  }
+  .crew-battery th,
+  .crew-battery td {
+    text-align: left;
+    padding: 5px 14px 5px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .crew-battery .num {
+    text-align: right;
+    padding-right: 0;
+    padding-left: 14px;
   }
   .print-only {
     display: none;
