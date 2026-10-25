@@ -220,11 +220,11 @@ const schema = [
                 Check again before the afternoon.
               </p>
             )}
-            {answer.place.country === "US" && answer.place.state && answer.place.state !== "California" && (
-              <p class="crew-note">These are California’s rules. {answer.place.state} may have its own; complaints there go to {agenciesFor(answer.place)[0]!.name}.</p>
-            )}
-            {answer.place.country !== "US" && (
-              <p class="crew-note">No workplace smoke or heat rulebook for this country yet: the hours show the forecast and the checks, without legal thresholds. Hours are local to the place ({answer.place.tz}).</p>
+            {plan.jurisdiction === null && (
+              <p class="crew-note">
+                No workplace smoke or heat rulebook for {answer.place.country === "US" && answer.place.state ? answer.place.state : "this country"} yet: the hours show the forecast and the checks (AirNow, fires, NWS), without legal thresholds.
+                {answer.place.country === "US" ? ` Safety complaints there go to ${agenciesFor(answer.place)[0]!.name}.` : ` Hours are local to the place (${answer.place.tz}).`}
+              </p>
             )}
             <div class="crew-check">
               <span class={`crew-level fg-${LEVEL[plan.confidence.level].band}`}>{LEVEL[plan.confidence.level].label}</span>

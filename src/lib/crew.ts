@@ -17,6 +17,7 @@ import { getNearbyCities, type ReportKind } from "./db";
 import { typicalGridCo2, type GridCo2 } from "./grid-co2";
 import { median } from "./stats";
 import { evidenceAt } from "./evidence";
+import { jurisdictionFor } from "./jurisdiction";
 import { PACIFIC, localDay, localHour as hourIn, localHourNumber } from "./tz";
 
 /** The zone a plan falls back to when a place has none: California's, where the rulebook is from. */
@@ -35,7 +36,7 @@ export interface CrewAction {
 }
 
 export interface CrewPlan {
-  /** The rulebook applied: "US-CA" for every US place today; null outside the US, where no rulebook exists and `actions` is empty. */
+  /** The rulebook applied: "US-CA" in California; null everywhere else today, where `actions` is empty (lib/jurisdiction.ts). */
   jurisdiction: string | null;
   hours: CrewHour[];
   actions: CrewAction[];
@@ -93,7 +94,7 @@ export interface CrewAnswer {
   plan: CrewPlan;
   /** Active National Weather Service alerts for the point (Red Flag Warning, Heat Advisory, …). */
   alerts: { event: string; onset: string | null; ends: string | null }[];
-  /** The same day for a home or a building's agent: the price peak and the hours to act before it. US only: null elsewhere, where the tariff means nothing. */
+  /** The same day for a home or a building's agent: the price peak and the hours to act before it. California only (PG&E's tariff): null elsewhere. */
   home: HomeSignal | null;
   /** Whether a worksite PM2.5 reading is advised (a satellite sees fire within 50 km), with the fire's bearing and distance. */
   dispatch: Dispatch;
@@ -436,7 +437,7 @@ export async function geocode(place: string): Promise<CrewPlace | null> {
   return g ? toPlace(g) : null;
 }
 
-/** The engine's rulebook is California's; outside the United States there is none, and the engine is told so. */
+/** The engine's embedded rulebook is California's; everywhere else there is none yet, and the engine is told so. */
 const NO_RULEBOOK = { jurisdiction: "none", name: "No rulebook", rules: [] };
 
 /** Today in the place's zone (California when none), as `YYYY-MM-DD`, plus `offset` days. */
@@ -590,14 +591,14 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts
   // Only detections that could matter: the US list runs to tens of thousands in fire season, and the
   // engine looks no further than ~2° anyway.
   const near = fires.filter(([la, lo]) => Math.abs(la - at.lat) < 2 && Math.abs(lo - at.lon) < 2.5);
-  const us = at.country === "US";
+  const jurisdiction = jurisdictionFor(at.country, at.state);
   const out = JSON.parse(
     core().wasm_crew_plan(
-      JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground, ...(us ? {} : { rulebook: NO_RULEBOOK }) }),
+      JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground, ...(jurisdiction === "US-CA" ? {} : { rulebook: NO_RULEBOOK }) }),
     ),
   );
   if (out.error) throw new Error(out.error);
-  if (!us) out.jurisdiction = null;
+  out.jurisdiction = jurisdiction;
   // With no forecast the "model" is the monitor itself; comparing them would claim a check that never ran.
   if (fallback) {
     out.confidence.notes = (out.confidence.notes as string[]).map((n) =>
@@ -614,7 +615,7 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts
     .filter(([la, lo]) => Math.abs(la - at.lat) < 1.35 && Math.abs(lo - at.lon) * Math.cos((at.lat * Math.PI) / 180) < 1.35)
     .slice(0, 400);
   return {
-    place: at, date, shift, plan, alerts, home: us ? homeSignal(plan) : null, dispatch: dispatchFor(plan), wind: windOut, fires_near, grid_co2,
+    place: at, date, shift, plan, alerts, home: jurisdiction === "US-CA" ? homeSignal(plan) : null, dispatch: dispatchFor(plan), wind: windOut, fires_near, grid_co2,
     ...(fallback ? { fallback } : {}),
   };
 }

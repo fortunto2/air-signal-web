@@ -144,7 +144,7 @@ export function openapiSpec() {
           description:
             "`place` is the resolved place: name, town, state, `country` (ISO 3166-1 alpha-2) and `tz`, the IANA zone every hour in the " +
             "answer is written in (the place's own; `place` may be any town on Earth or `lat,lon`). `plan.jurisdiction` is the rulebook " +
-            "applied, US-CA for US places and null elsewhere, where `plan.actions` is empty and `home` is null. " +
+            "applied: US-CA in California, null everywhere else today, where `plan.actions` is empty and `home` is null. " +
             "`plan.hours` is the NowCast AQI and temperature by hour; `plan.actions` the hour each rule starts; " +
             "`plan.bms` when a building closes outside air; `home` the pre-cool hours before the 16–21 E-TOU-C peak " +
             "and the smoke hour for windows; `alerts` active NWS alerts; `wind` by hour; `fires_near` VIIRS " +

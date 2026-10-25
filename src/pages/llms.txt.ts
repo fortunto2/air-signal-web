@@ -105,8 +105,8 @@ problem is illegal (Labor Code §6310).
   with the bearing and distance to the nearest VIIRS fire within 50 km; the reading goes back through
   POST /api/crew/report). For a California place, \`grid_co2\`: the CAISO grid's typical CO₂ by hour in g/kWh,
   the median of the last 7 days (a pattern, not a forecast), from Today's Outlook every half hour. \`place\` may be
-  any town on Earth or \`lat,lon\`; every hour in the answer is in the place's own zone, \`place.tz\`. Outside the
-  US there is no rulebook yet: \`plan.jurisdiction\` is null, \`plan.actions\` empty, \`home\` null.
+  any town on Earth or \`lat,lon\`; every hour in the answer is in the place's own zone, \`place.tz\`. Outside
+  California there is no rulebook yet: \`plan.jurisdiction\` is null, \`plan.actions\` empty, \`home\` null.
 - \`GET ${abs("/api/crew/plan.ics")}?place=Fresno&shift=07-17\` — the same plan as an iCalendar file
   (text/calendar): the N95 hour, the shade-and-water hour, the heavy work window, pre-cool and the peak price.
 - \`GET ${abs("/api/crew/places")}?q=fres\` — place suggestions
