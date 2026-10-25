@@ -920,3 +920,43 @@ export async function handleCrewReport(id: number, site: string, note: string | 
 export async function getCrewReport(id: number): Promise<CrewReport | null> {
   return await DB().prepare("SELECT * FROM crew_reports WHERE id = ?1").bind(id).first<CrewReport>();
 }
+
+// ── grid_co2 — CAISO hourly carbon intensity, written by the Worker's cron ───────────────────────
+
+export interface GridCo2Row {
+  day: string;
+  hour: number;
+  g_per_kwh: number;
+  samples: number;
+}
+
+/** One day's hourly means, replacing whatever that day had: a partial hour is re-written as it fills. */
+export async function upsertGridCo2(day: string, rows: Omit<GridCo2Row, "day">[]): Promise<void> {
+  if (rows.length === 0) return;
+  const now = new Date().toISOString();
+  const stmt = DB().prepare(
+    `INSERT INTO grid_co2 (day, hour, g_per_kwh, samples, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+     ON CONFLICT (day, hour) DO UPDATE SET g_per_kwh = excluded.g_per_kwh, samples = excluded.samples, updated_at = excluded.updated_at`,
+  );
+  await DB().batch(rows.map((r) => stmt.bind(day, r.hour, r.g_per_kwh, r.samples, now)));
+}
+
+/** The days the table holds, newest first; the cron fills the recent ones it lacks. */
+export async function listGridCo2Days(): Promise<string[]> {
+  const { results } = await DB().prepare("SELECT DISTINCT day FROM grid_co2 ORDER BY day DESC").all<{ day: string }>();
+  return results.map((r) => r.day);
+}
+
+/** Retention: nothing older than `keepDays` before `today`. */
+export async function pruneGridCo2(today: string, keepDays = 14): Promise<void> {
+  await DB().prepare("DELETE FROM grid_co2 WHERE day < date(?1, ?2)").bind(today, `-${keepDays} days`).run();
+}
+
+/** The last `days` days of hourly rows, for the typical-hour median. Asked once per isolate per half hour. */
+export const getGridCo2Recent = memo(HOUR / 2, async (today: string, days = 7): Promise<GridCo2Row[]> => {
+  const { results } = await DB()
+    .prepare("SELECT day, hour, g_per_kwh, samples FROM grid_co2 WHERE day > date(?1, ?2) AND day <= ?1 ORDER BY day, hour")
+    .bind(today, `-${days} days`)
+    .all<GridCo2Row>();
+  return results;
+});

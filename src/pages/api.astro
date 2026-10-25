@@ -67,6 +67,7 @@ const CREW_FIELDS: [string, string][] = [
   ["wind[]", "10 m wind by hour: dir_deg (from), kmh"],
   ["fires_near[]", "VIIRS detections within about 150 km, [lat, lon]"],
   ["dispatch", "sensor: launch | standby (a worksite reading is advised | not needed), bearing_deg and distance_km to the nearest fire within 50 km, reason"],
+  ["grid_co2", "California only: the CAISO grid's typical carbon intensity by hour, g_per_kwh keyed \"00\"–\"23\", the median of the last 7 days (days, basis); a pattern, not a forecast; null elsewhere"],
   ["fallback", "Present when the forecast was held at the nearest monitor (upstream down); says which monitor and where temperatures came from"],
 ];
 

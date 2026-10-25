@@ -59,9 +59,11 @@ Node in GitHub Actions, because the two largest inputs are 9 MB JSON documents a
 is the wrong place for them. But a city page whose readings are stale scores itself — four upstream
 calls, the same WASM, a `waitUntil` write-back — so `saveCityReadings` in `src/lib/db.ts` may fill
 `comfort`, `signals_json`, `readings_json` and `updated_at` on a row that already exists. The one
-other write is `crew_reports` (`/api/crew/report`): a worker's report on /crew and the crew lead
-marking it handled. Those rows never touch places, stations or readings. That is the entire write
-surface the worker has.
+other writes are `crew_reports` (`/api/crew/report`): a worker's report on /crew and the crew lead
+marking it handled; and `grid_co2`, filled by the Worker's own cron every 30 minutes (`src/worker.ts`
+→ `src/lib/grid-co2.ts`) from two 8 KB CAISO files, because a half-hourly job is too frequent for the
+GitHub Actions pass and too small to need it. Those rows never touch places, stations or readings.
+That is the entire write surface the worker has.
 
 **Comfort is computed on demand, not for ten thousand cities a night.** Most city pages get no
 traffic for months; scoring them all daily is what exhausted Open-Meteo's quota and left the site

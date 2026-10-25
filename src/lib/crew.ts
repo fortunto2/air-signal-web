@@ -14,6 +14,7 @@
 import { core } from "./core";
 import { slug } from "./site";
 import { getNearbyCities, type ReportKind } from "./db";
+import { typicalGridCo2, type GridCo2 } from "./grid-co2";
 
 export const CREW_TZ = "America/Los_Angeles";
 
@@ -91,6 +92,11 @@ export interface CrewAnswer {
   wind: { time: string; dir_deg: number; kmh: number }[];
   /** VIIRS detections within about 150 km, [lat, lon], for the map; the engine sees the same list. */
   fires_near: [number, number][];
+  /**
+   * The CAISO grid's typical carbon intensity by hour, g CO2/kWh: the median of the last seven days,
+   * not a forecast. California places only; `null` elsewhere or before the cron has stored a day.
+   */
+  grid_co2: GridCo2 | null;
 }
 
 /**
@@ -470,12 +476,15 @@ export async function crewPlan(place: string, date: string, shift: Shift): Promi
 export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Promise<CrewAnswer> {
   // A day of history so the first shift hour has the 12 hours a NowCast needs.
   const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
-  const [aqR, wxR, fires, ground, alerts] = await Promise.all([
+  const [aqR, wxR, fires, ground, alerts, grid_co2] = await Promise.all([
     json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`).catch((e: Error) => e),
     json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m,winddirection_10m,windspeed_10m`).catch((e: Error) => e),
     fetchFires(),
     fetchGround(at.lat, at.lon),
     nwsAlerts(at.lat, at.lon),
+    // CAISO runs California's grid; a plan for Oregon says nothing about its carbon. A D1 hiccup
+    // costs the column, never the plan.
+    at.state === "California" ? typicalGridCo2(crewDate(0)).catch(() => null) : Promise.resolve(null),
   ]);
   let hours: { time: string; pm25: number | null; temp_c: number | null }[];
   let fallback: CrewAnswer["fallback"];
@@ -539,7 +548,7 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
     .filter(([la, lo]) => Math.abs(la - at.lat) < 1.35 && Math.abs(lo - at.lon) * Math.cos((at.lat * Math.PI) / 180) < 1.35)
     .slice(0, 400);
   return {
-    place: at, date, shift, plan, alerts, home: homeSignal(plan), dispatch: dispatchFor(plan), wind: windOut, fires_near,
+    place: at, date, shift, plan, alerts, home: homeSignal(plan), dispatch: dispatchFor(plan), wind: windOut, fires_near, grid_co2,
     ...(fallback ? { fallback } : {}),
   };
 }

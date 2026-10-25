@@ -23,6 +23,7 @@ function answer(): CrewAnswer {
     dispatch: { sensor: "standby", bearing_deg: null, distance_km: null, detections_50km: 0, reason: "" },
     wind: [],
     fires_near: [],
+    grid_co2: null,
   };
 }
 

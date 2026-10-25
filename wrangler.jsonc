@@ -1,11 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "air-signal-web",
-  // The unified entrypoint the adapter ships in v13 — the same file serves `astro dev` and the
-  // deployed worker. Pointing this at a path under dist/ instead fails before the build has made
-  // it, because the Cloudflare Vite plugin resolves `main` at config time.
-  "main": "@astrojs/cloudflare/entrypoints/server",
+  // src/worker.ts re-exports the adapter's unified `fetch` (the same file serves `astro dev` and the
+  // deployed worker) and adds the `scheduled` handler the cron below runs. The adapter honours a
+  // custom `main` (dist/wrangler.js: `config.main ?? "@astrojs/cloudflare/entrypoints/server"`).
+  // Pointing this at a path under dist/ instead fails before the build has made it, because the
+  // Cloudflare Vite plugin resolves `main` at config time.
+  "main": "src/worker.ts",
   "compatibility_date": "2026-08-06",
+
+  // CAISO's carbon intensity for today into D1 (grid_co2), every half hour; src/lib/grid-co2.ts.
+  "triggers": { "crons": ["*/30 * * * *"] },
 
   // `nodejs_compat` is what lets the Astro server bundle run at all.
   // `global_fetch_strictly_public` makes a `fetch()` to our own origin leave the worker and come

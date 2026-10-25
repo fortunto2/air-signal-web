@@ -209,3 +209,13 @@ CREATE INDEX IF NOT EXISTS crew_reports_site ON crew_reports (site, date, create
 CREATE INDEX IF NOT EXISTS crew_reports_sender ON crew_reports (sender, created_at);
 
 CREATE INDEX IF NOT EXISTS crew_reports_created ON crew_reports (created_at);
+
+-- grid_co2 — CAISO hourly carbon intensity, written by the Worker's cron. See db/migrations/0011_grid_co2.sql.
+CREATE TABLE IF NOT EXISTS grid_co2 (
+  day        TEXT    NOT NULL,   -- CAISO's day, Pacific, '2026-10-24'
+  hour       INTEGER NOT NULL,   -- 0–23, Pacific
+  g_per_kwh  REAL    NOT NULL,   -- mean of the hour's 5-minute intensities, g CO2 / kWh
+  samples    INTEGER NOT NULL,   -- 5-minute rows behind the mean (12 when complete)
+  updated_at TEXT    NOT NULL,   -- ISO UTC
+  PRIMARY KEY (day, hour)
+);

@@ -101,6 +101,10 @@ const batteryWhy = backup
   : "";
 
 const pageUrl = abs(`${paths.crew()}?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`);
+// The grid's typical carbon by hour, under the price bar: a pattern from CAISO's last days, said so.
+const co2 = answer?.grid_co2 ?? null;
+const co2At = (time: string) => co2?.g_per_kwh[time.slice(11, 13)];
+const co2Legend = co2 ? ` Grey: typical grid CO₂ at this hour, g/kWh, ${co2.basis} (CAISO).` : "";
 const madeAt = ptTime(new Date().toISOString());
 // The printed record of how the AQI was determined, for the employer's file (§5141.1(c), Appendix A).
 const determination = (() => {
@@ -267,12 +271,17 @@ const schema = [
                       </span>
                     );
                   })()}
+                  {co2 && (
+                    <span role="cell" class="num co2" title="Typical grid CO₂ at this hour, g/kWh">
+                      {co2At(h.time) ?? "–"}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
             <p class="crew-legend">
               Top: PM2.5 AQI (NowCast). Middle: air temperature, °F. Bar: electricity price, {answer.home.peak_price.tariff} peak{" "}
-              {answer.home.peak_price.start}:00–{answer.home.peak_price.end}:00 every day{answer.home.precool ? "; “cool” marks the cheap hours to pre-cool a house before it" : ""}.
+              {answer.home.peak_price.start}:00–{answer.home.peak_price.end}:00 every day{answer.home.precool ? "; “cool” marks the cheap hours to pre-cool a house before it" : ""}.{co2Legend}
             </p>
 
             <div class="crew-block no-print" id="map">
@@ -356,7 +365,7 @@ const schema = [
               </table>
               <p class="crew-legend">{batteryWhy}</p>
               <p class="crew-legend no-print">
-                Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: reading advised, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
+                Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>{co2 ? <>, <code>grid_co2</code></> : null}, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: reading advised, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
               </p>
             </div>
             <div class="crew-block no-print" id="sky">
@@ -950,6 +959,10 @@ const schema = [
   .tou-cool {
     background: #3d74c4;
     color: #fff;
+  }
+  .crew-hours .co2 {
+    font-size: 11px;
+    color: var(--ink-3);
   }
   .chipcell {
     width: 100%;

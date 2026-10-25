@@ -139,12 +139,14 @@ export function openapiSpec() {
       "/api/crew": {
         get: {
           operationId: "getCrewPlan",
-          summary: "Smoke and heat shift plan against Cal/OSHA rules, with fire and monitor checks, a BMS signal, a home signal, NWS alerts, wind, nearby fires and whether a worksite reading is advised",
+          summary: "Smoke and heat shift plan against Cal/OSHA rules, with fire and monitor checks, a BMS signal, a home signal, NWS alerts, wind, nearby fires, the grid's typical CO2 by hour and whether a worksite reading is advised",
           description:
             "`plan.hours` is the NowCast AQI and temperature by hour; `plan.actions` the hour each rule starts; " +
             "`plan.bms` when a building closes outside air; `home` the pre-cool hours before the 16–21 E-TOU-C peak " +
             "and the smoke hour for windows; `alerts` active NWS alerts; `wind` by hour; `fires_near` VIIRS " +
-            "detections within 150 km; `dispatch` whether a worksite reading is advised (`sensor: launch`), with the bearing and distance to the nearest fire within 50 km. " +
+            "detections within 150 km; `dispatch` whether a worksite reading is advised (`sensor: launch`), with the bearing and distance to the nearest fire within 50 km; " +
+            "`grid_co2` (California only) the CAISO grid's typical carbon intensity by hour, `g_per_kwh` keyed \"00\"–\"23\", the median of the " +
+            "last 7 days (`days`, `basis`), a pattern rather than a forecast, `null` elsewhere. " +
             "`fallback` is set when the forecast was held at the nearest monitor.",
           parameters: [
             { name: "place", in: "query", required: true, schema: { type: "string" }, description: "Town name or `lat,lon`" },
