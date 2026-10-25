@@ -12,6 +12,7 @@
  * remove a reading from it.
  */
 
+import { median } from "./stats";
 import type { Readings, SignalCore } from "./signals";
 
 /** Long enough for a slow model server, short enough that a page never hangs on one. */
@@ -329,7 +330,5 @@ function medianPm25(rows: any): number | undefined {
     if (usable !== null) values.push(usable);
   }
   if (values.length === 0) return undefined;
-  values.sort((a, b) => a - b);
-  const mid = values.length >> 1;
-  return values.length % 2 ? values[mid]! : (values[mid - 1]! + values[mid]!) / 2;
+  return median(values);
 }

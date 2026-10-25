@@ -1,23 +1,25 @@
 /**
- * An Air Signal observation, validated: what a person says about their own air, structured so it
- * can be counted against monitors later. The shape is AirKit's `ObservationRequest.Body`
- * (air-signal-ios): kind, intensity 1–5, the minute it was observed, and the evidence snapshot the
- * phone saw. Pure, so the test can hand it bad input without a server.
+ * The report model, pure: what a crew report may say, which app sent it, and Air Signal's structured
+ * observation. The shape is AirKit's `ObservationRequest` (air-signal-ios): kind, intensity 1–5, the
+ * minute it was observed, and the evidence snapshot the phone saw. No imports, so openapi.ts,
+ * llms.txt and the tests read the same lists the endpoint enforces.
  */
+
+/** A crew report's kind: what §5141.1 asks workers to report, plus the heat rule's missing items. */
+export const REPORT_KINDS = ["smoke", "ash", "symptoms", "no_n95", "no_shade", "no_water", "other"] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
 
 export const REPORT_APPS = ["crewair", "airsignal"] as const;
 export type ReportApp = (typeof REPORT_APPS)[number];
 
+/** AirKit's `ObservationKind` raw values, exactly; no aliases, so the dataset has one spelling. */
 export const OBSERVATION_KINDS = ["smoke_smell", "haze", "ash", "dust", "chemical_odour", "clear"] as const;
 export type ObservationKind = (typeof OBSERVATION_KINDS)[number];
-
-/** Spellings the kinds have gone by; stored as AirKit's raw values. */
-const KIND_ALIASES: Record<string, ObservationKind> = { chemical_smell: "chemical_odour", chemical: "chemical_odour", smoke: "smoke_smell" };
 
 export interface Observation {
   kind: ObservationKind;
   intensity: 1 | 2 | 3 | 4 | 5;
-  /** ISO UTC to the minute, as sent; `null` when absent or unreadable. */
+  /** ISO UTC to the minute, as sent; `null` when absent. */
   observed_at: string | null;
   /** The phone's evidence snapshot, kept as given but trimmed to small fields. */
   snapshot: Record<string, unknown> | null;
@@ -41,9 +43,8 @@ export function parseObservation(raw: unknown): Observation | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("observation must be an object");
   const o = raw as Record<string, unknown>;
-  const kindRaw = String(o.kind ?? "").trim().toLowerCase();
-  const kind = (OBSERVATION_KINDS as readonly string[]).includes(kindRaw) ? (kindRaw as ObservationKind) : KIND_ALIASES[kindRaw];
-  if (!kind) throw new Error(`observation.kind must be one of ${OBSERVATION_KINDS.join(", ")}`);
+  const kind = String(o.kind ?? "").trim();
+  if (!(OBSERVATION_KINDS as readonly string[]).includes(kind)) throw new Error(`observation.kind must be one of ${OBSERVATION_KINDS.join(", ")}`);
   const intensity = Number(o.intensity);
   if (!Number.isInteger(intensity) || intensity < 1 || intensity > 5) throw new Error("observation.intensity must be an integer 1–5");
   let observed_at: string | null = null;
@@ -59,5 +60,5 @@ export function parseObservation(raw: unknown): Observation | null {
     snapshot = Object.fromEntries(SNAPSHOT_KEYS.filter((k) => s[k] !== undefined).map((k) => [k, s[k]]));
     if (JSON.stringify(snapshot).length > 4000) throw new Error("observation.snapshot too large");
   }
-  return { kind, intensity: intensity as Observation["intensity"], observed_at, snapshot };
+  return { kind: kind as ObservationKind, intensity: intensity as Observation["intensity"], observed_at, snapshot };
 }

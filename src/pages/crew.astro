@@ -89,18 +89,17 @@ const LEVEL = {
 } as const;
 const heatBand = (f: number | undefined) =>
   f === undefined ? "quiet" : f >= 95 ? "bad" : f >= 80 ? "fair" : "good";
-const apiUrl = answer
-  ? `/api/crew?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`
-  : "/api/crew?place=Fresno&shift=07-17";
-const icsUrl = `/api/crew/plan.ics?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`;
+const apiUrl = answer ? paths.crewApi(place, date, shiftRaw) : paths.crewApi("Fresno", undefined, "07-17");
+const icsUrl = paths.crewPlanIcs(place, date, shiftRaw);
 // Backup battery for the house: three presets × the hours the grid is dearest or an alert lasts.
-const backup = answer ? backupHours(answer.home, answer.alerts) : null;
+const home = answer?.home ?? null;
+const backup = home && answer ? backupHours(home, answer.alerts) : null;
 const battery = backup ? backupSizing(backup.hours) : [];
 const batteryWhy = backup
   ? `Hours: ${backup.basis}. Typical running draws, ${Math.round(BACKUP_MARGIN * 100)}% margin for inverter losses, rounded up to 0.1 kWh. Arithmetic, not a load study: a fridge with a warm kitchen or a CPAP with a humidifier draws more.`
   : "";
 
-const pageUrl = abs(`${paths.crew()}?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}`);
+const pageUrl = abs(paths.crewPlan(place, date, shiftRaw));
 // The grid's typical carbon by hour, under the price bar: a pattern from CAISO's last days, said so.
 const co2 = answer?.grid_co2 ?? null;
 const co2At = (time: string) => co2?.g_per_kwh[time.slice(11, 13)];
@@ -261,10 +260,10 @@ const schema = [
                   <span role="cell" class={`num fg-${heatBand(h.metrics.temp_f)}`}>
                     {h.metrics.temp_f === undefined ? "–" : `${Math.floor(h.metrics.temp_f)}°`}
                   </span>
-                  {(() => {
+                  {home && (() => {
                     const hour = Number(h.time.slice(11, 13));
-                    const peak = hour >= answer.home.peak_price.start && hour < answer.home.peak_price.end;
-                    const cool = answer.home.precool && hour >= answer.home.precool.start && hour < answer.home.precool.end;
+                    const peak = hour >= home.peak_price.start && hour < home.peak_price.end;
+                    const cool = home.precool && hour >= home.precool.start && hour < home.precool.end;
                     return (
                       <span role="cell" class={`tou ${peak ? "tou-peak" : cool ? "tou-cool" : ""}`} title={peak ? "Peak price" : cool ? "Pre-cool" : "Off-peak"}>
                         {peak ? "peak" : cool ? "cool" : ""}
@@ -280,8 +279,7 @@ const schema = [
               ))}
             </div>
             <p class="crew-legend">
-              Top: PM2.5 AQI (NowCast). Middle: air temperature, °F. Bar: electricity price, {answer.home.peak_price.tariff} peak{" "}
-              {answer.home.peak_price.start}:00–{answer.home.peak_price.end}:00 every day{answer.home.precool ? "; “cool” marks the cheap hours to pre-cool a house before it" : ""}.{co2Legend}
+              Top: PM2.5 AQI (NowCast). Middle: air temperature, °F.{home ? ` Bar: electricity price, ${home.peak_price.tariff} peak ${home.peak_price.start}:00–${home.peak_price.end}:00 every day${home.precool ? "; “cool” marks the cheap hours to pre-cool a house before it" : ""}.` : ""}{co2Legend}
             </p>
 
             <div class="crew-block no-print" id="map">
@@ -344,26 +342,37 @@ const schema = [
             </div>
             <div class="crew-block">
               <div class="eyebrow">Home</div>
-              <p>
-                {answer.home.precool
-                  ? `Cool the house ${answer.home.precool.start}:00–${answer.home.precool.end}:00, before the ${answer.home.peak_price.start}:00–${answer.home.peak_price.end}:00 peak price, then hold. `
-                  : `Under 80 °F: no pre-cooling needed; the peak price runs ${answer.home.peak_price.start}:00–${answer.home.peak_price.end}:00. `}
-                {answer.home.close_windows_at
-                  ? `Smoke: windows shut and HVAC on recirculate from ${clock(answer.home.close_windows_at)}${answer.home.open_windows_at ? ` to ${clock(answer.home.open_windows_at)}` : " for the rest of the day"}; a closed house runs the air conditioner longer, so the pre-cooling matters more.`
-                  : "No smoke hour: windows can stay open overnight."}
-              </p>
-              <div class="eyebrow" style="margin-top:14px">Backup battery · {backup?.hours} h</div>
-              <table class="crew-battery">
-                <thead>
-                  <tr><th>Keeps running</th><th class="num">W</th><th class="num">kWh for {backup?.hours} h</th></tr>
-                </thead>
-                <tbody>
-                  {battery.map((b) => (
-                    <tr><td>{b.name}</td><td class="num">{b.watts}</td><td class="num">{b.kwh.toFixed(1)}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-              <p class="crew-legend">{batteryWhy}</p>
+              {home ? (
+                <>
+                  <p>
+                    {home.precool
+                      ? `Cool the house ${home.precool.start}:00–${home.precool.end}:00, before the ${home.peak_price.start}:00–${home.peak_price.end}:00 peak price, then hold. `
+                      : `Under 80 °F: no pre-cooling needed; the peak price runs ${home.peak_price.start}:00–${home.peak_price.end}:00. `}
+                    {home.close_windows_at
+                      ? `Smoke: windows shut and HVAC on recirculate from ${clock(home.close_windows_at)}${home.open_windows_at ? ` to ${clock(home.open_windows_at)}` : " for the rest of the day"}; a closed house runs the air conditioner longer, so the pre-cooling matters more.`
+                      : "No smoke hour: windows can stay open overnight."}
+                  </p>
+                  <div class="eyebrow" style="margin-top:14px">Backup battery · {backup?.hours} h</div>
+                  <table class="crew-battery">
+                    <thead>
+                      <tr><th>Keeps running</th><th class="num">W</th><th class="num">kWh for {backup?.hours} h</th></tr>
+                    </thead>
+                    <tbody>
+                      {battery.map((b) => (
+                        <tr><td>{b.name}</td><td class="num">{b.watts}</td><td class="num">{b.kwh.toFixed(1)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p class="crew-legend">{batteryWhy}</p>
+                </>
+              ) : (
+                <p>
+                  {plan.bms.recirculate_at
+                    ? `Smoke: windows shut and HVAC on recirculate from ${clock(plan.bms.recirculate_at)}${plan.bms.resume_at ? ` to ${clock(plan.bms.resume_at)}` : " for the rest of the day"}.`
+                    : "No smoke hour: windows can stay open overnight."}{" "}
+                  No electricity tariff is modelled outside the United States.
+                </p>
+              )}
               <p class="crew-legend no-print">
                 Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>{co2 ? <>, <code>grid_co2</code></> : null}, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: reading advised, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
               </p>

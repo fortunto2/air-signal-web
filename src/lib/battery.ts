@@ -33,7 +33,7 @@ export interface BackupRow {
  * How many hours to size for: the peak price window (16–21 is 5 h), or the longest active alert when
  * it is longer, never under 4 h and never over 24. Which one was used is returned with the hours.
  */
-export function backupHours(home: CrewAnswer["home"], alerts: CrewAnswer["alerts"]): { hours: number; basis: string } {
+export function backupHours(home: NonNullable<CrewAnswer["home"]>, alerts: CrewAnswer["alerts"]): { hours: number; basis: string } {
   const peak = home.peak_price.end - home.peak_price.start;
   let hours = Math.max(BACKUP_MIN_HOURS, peak);
   let basis = peak >= BACKUP_MIN_HOURS ? `the ${home.peak_price.start}:00–${home.peak_price.end}:00 peak price` : `a ${BACKUP_MIN_HOURS} h minimum`;

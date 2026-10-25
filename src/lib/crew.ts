@@ -15,8 +15,11 @@ import { core } from "./core";
 import { slug } from "./site";
 import { getNearbyCities, type ReportKind } from "./db";
 import { typicalGridCo2, type GridCo2 } from "./grid-co2";
+import { median } from "./stats";
+import { PACIFIC, localDay, localHour as hourIn, localHourNumber } from "./tz";
 
-export const CREW_TZ = "America/Los_Angeles";
+/** The zone a plan falls back to when a place has none: California's, where the rulebook is from. */
+export const CREW_TZ = PACIFIC;
 
 export interface CrewHour {
   time: string;
@@ -70,6 +73,10 @@ export interface CrewPlace {
   name: string;
   town: string;
   state: string | null;
+  /** ISO 3166-1 alpha-2, "US"; null when the place came from bare coordinates we could not name. */
+  country: string | null;
+  /** IANA zone the plan's hours are in: the place's own, from the geocoder or the forecast. */
+  tz: string;
   lat: number;
   lon: number;
   approximate: boolean;
@@ -84,8 +91,8 @@ export interface CrewAnswer {
   plan: CrewPlan;
   /** Active National Weather Service alerts for the point (Red Flag Warning, Heat Advisory, …). */
   alerts: { event: string; onset: string | null; ends: string | null }[];
-  /** The same day for a home or a building's agent: the price peak and the hours to act before it. */
-  home: HomeSignal;
+  /** The same day for a home or a building's agent: the price peak and the hours to act before it. US only: null elsewhere, where the tariff means nothing. */
+  home: HomeSignal | null;
   /** Whether a worksite PM2.5 reading is advised (a satellite sees fire within 50 km), with the fire's bearing and distance. */
   dispatch: Dispatch;
   /** Wind by local hour (10 m, °from, km/h) for the plan's hours, for the plume drawing. */
@@ -106,6 +113,9 @@ export interface CrewAnswer {
  * back through POST /api/crew/report, and the next plan is corrected by it like by any AirNow monitor.
  */
 export interface Dispatch {
+  /** Whether a worksite PM2.5 reading is advised: a VIIRS fire within 50 km. */
+  reading_advised: boolean;
+  /** @deprecated The same fact as `reading_advised`, in the words the first clients parse: launch = advised. */
   sensor: "launch" | "standby";
   bearing_deg: number | null;
   distance_km: number | null;
@@ -120,6 +130,7 @@ function dispatchFor(plan: CrewPlan): Dispatch {
   const f = plan.confidence.fire;
   const go = !!f && f.nearest_km <= DISPATCH_KM;
   return {
+    reading_advised: go,
     sensor: go ? "launch" : "standby",
     bearing_deg: f ? (f.bearing_deg ?? null) : null,
     distance_km: f ? Math.round(f.nearest_km * 10) / 10 : null,
@@ -282,11 +293,6 @@ function parseAirNow(text: string): Monitor[] {
   return out;
 }
 
-const HOUR_PARTS = new Intl.DateTimeFormat("en-CA", {
-  timeZone: CREW_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",
-});
-const DAY = new Intl.DateTimeFormat("en-CA", { timeZone: CREW_TZ });
-const HOUR_NUM = new Intl.DateTimeFormat("en-US", { timeZone: CREW_TZ, hour: "numeric", hourCycle: "h23" });
 const PT = new Intl.DateTimeFormat("en-US", { timeZone: CREW_TZ, dateStyle: "medium", timeStyle: "short" });
 const PT_CLOCK = new Intl.DateTimeFormat("en-US", { timeZone: CREW_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
@@ -297,10 +303,9 @@ export const ptClock = (iso: string) => PT_CLOCK.format(new Date(iso));
 /** Whole minutes since an ISO instant. */
 export const minutesSince = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 60_000);
 
-/** A UTC instant as the forecast's local hour, `2026-10-24T05:00`. */
-function localHour(utc: string): string {
-  const parts = Object.fromEntries(HOUR_PARTS.formatToParts(new Date(utc)).map((x) => [x.type, x.value]));
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`;
+/** A UTC instant as the forecast's local hour in the place's zone, `2026-10-24T05:00`. */
+function localHour(utc: string, tz: string): string {
+  return hourIn(utc, tz);
 }
 
 /**
@@ -309,7 +314,7 @@ function localHour(utc: string): string {
  * AirNow posts an hour's file roughly an hour later and fills it in over the next one, so files are
  * searched newest first, up to four hours back, for one where a nearby monitor has a value. Keyless; the hourly file is ~1 MB and cached at the edge.
  */
-async function fetchGround(lat: number, lon: number, maxKm = 25) {
+async function fetchGround(lat: number, lon: number, tz: string, maxKm = 25) {
   // All four candidate hours are requested at once (each is shared per isolate and edge-cached), then
   // read newest first: worst case one round trip instead of four sequential 8-second waits.
   const files = [1, 2, 3, 4].map((back) => {
@@ -328,10 +333,9 @@ async function fetchGround(lat: number, lon: number, maxKm = 25) {
       .slice(0, 3);
     // The newest file fills in over the next hour: a monitor can be listed with no value yet.
     if (near.length === 0) continue;
-    const vals = near.map((m) => m.pm25).sort((a, b) => a - b);
     return {
-      time: localHour(near[0]!.utc),
-      pm25: vals[Math.floor(vals.length / 2)]!,
+      time: localHour(near[0]!.utc, tz),
+      pm25: median(near.map((m) => m.pm25)),
       stations: near.length,
       nearest: near[0]!.name,
       nearest_km: Math.round(near[0]!.km * 10) / 10,
@@ -346,6 +350,8 @@ interface Hit {
   name: string;
   admin1?: string;
   admin2?: string;
+  country_code?: string;
+  timezone?: string;
   latitude: number;
   longitude: number;
 }
@@ -364,6 +370,8 @@ const toPlace = (g: Hit, approximate = false, lat = g.latitude, lon = g.longitud
   name: approximate ? `near ${g.name}` : [g.name, g.admin1].filter(Boolean).join(", "),
   town: g.name,
   state: g.admin1 ?? null,
+  country: g.country_code ?? null,
+  tz: g.timezone ?? PACIFIC,
   lat,
   lon,
   approximate,
@@ -382,7 +390,7 @@ async function fromCoordinates(place: string): Promise<CrewPlace | null | undefi
   const [near] = await getNearbyCities(lat, lon, 0.5, 1).catch(() => []);
   if (!near) {
     const name = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
-    return { name, town: name, state: null, lat, lon, approximate: true };
+    return { name, town: name, state: null, country: null, tz: PACIFIC, lat, lon, approximate: true };
   }
   const hits = await searchUS(near.name).catch(() => [] as Hit[]);
   const closest = hits.sort((a, b) => km(lat, lon, a.latitude, a.longitude) - km(lat, lon, b.latitude, b.longitude))[0];
@@ -412,21 +420,19 @@ export async function geocode(place: string): Promise<CrewPlace | null> {
   return g ? toPlace(g) : null;
 }
 
-/** Today in California, as `YYYY-MM-DD`, plus `offset` days. */
-export function crewDate(offset = 0): string {
-  const d = new Date(Date.now() + offset * 86_400_000);
-  return DAY.format(d);
+/** Today in the place's zone (California when none), as `YYYY-MM-DD`, plus `offset` days. */
+export function crewDate(offset = 0, tz = CREW_TZ): string {
+  return localDay(new Date(Date.now() + offset * 86_400_000), tz);
 }
 
-/** Before noon in California the plan is for today; after it, for tomorrow's shift. */
-export function crewDefaultDate(): string {
-  const hour = Number(HOUR_NUM.format(new Date()));
-  return crewDate(hour < 12 ? 0 : 1);
+/** Before noon in the place the plan is for today; after it, for tomorrow's shift. */
+export function crewDefaultDate(tz = CREW_TZ): string {
+  return crewDate(localHourNumber(new Date(), tz) < 12 ? 0 : 1, tz);
 }
 
 /** A `YYYY-MM-DD` from a request, or the default plan day. */
-export function parseDate(raw: string | null | undefined): string {
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw ?? "") ? raw! : crewDefaultDate();
+export function parseDate(raw: string | null | undefined, tz = CREW_TZ): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw ?? "") ? raw! : crewDefaultDate(tz);
 }
 
 export type Shift = { start: number; end: number };
@@ -446,7 +452,7 @@ export function parseShift(raw: string | null): { start: number; end: number } {
 const COMPASS16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 
 /** Hourly temperature (°C) and wind by local hour from the National Weather Service: US only, free, no key. */
-async function nwsHourly(lat: number, lon: number): Promise<Map<string, { c: number | null; dir: number | null; kmh: number | null }>> {
+async function nwsHourly(lat: number, lon: number, tz: string): Promise<Map<string, { c: number | null; dir: number | null; kmh: number | null }>> {
   const out = new Map<string, { c: number | null; dir: number | null; kmh: number | null }>();
   const get = (url: string) =>
     cached(url, 3600, (t) => JSON.parse(t), { "User-Agent": "airsignal.app (info@superduperai.co)", Accept: "application/geo+json" });
@@ -458,7 +464,7 @@ async function nwsHourly(lat: number, lon: number): Promise<Map<string, { c: num
     const c = p.temperatureUnit === "F" ? ((f - 32) * 5) / 9 : f;
     const mph = Number(String(p.windSpeed ?? "").split(" ")[0]);
     const di = COMPASS16.indexOf(String(p.windDirection ?? ""));
-    out.set(localHour(new Date(p.startTime).toISOString()), {
+    out.set(localHour(new Date(p.startTime).toISOString(), tz), {
       c: Math.round(c * 10) / 10,
       dir: di >= 0 ? di * 22.5 : null,
       kmh: Number.isFinite(mph) ? Math.round(mph * 1.609) : null,
@@ -472,15 +478,39 @@ export async function crewPlan(place: string, date: string, shift: Shift): Promi
   return at ? crewPlanAt(at, date, shift) : null;
 }
 
+export type PlanQuery =
+  | { ok: true; place: string; date: string; shift: Shift; answer: CrewAnswer }
+  | { ok: false; status: 400 | 404 | 502; error: string };
+
+/**
+ * `?place=&date=&shift=` to a plan, with the three failures every plan route answers the same way:
+ * no place (400), a place we cannot find (404), an upstream that did not answer (502). The date
+ * defaults in the place's own zone, so it is parsed after the place resolves.
+ */
+export async function planFromQuery(url: URL): Promise<PlanQuery> {
+  const place = url.searchParams.get("place")?.trim() ?? "";
+  if (!place) return { ok: false, status: 400, error: "place required, e.g. ?place=Fresno&shift=07-17" };
+  const shift = parseShift(url.searchParams.get("shift"));
+  try {
+    const at = await geocode(place);
+    if (!at) return { ok: false, status: 404, error: `place not found: ${place}` };
+    const date = parseDate(url.searchParams.get("date"), at.tz);
+    return { ok: true, place, date, shift, answer: await crewPlanAt(at, date, shift) };
+  } catch (e) {
+    return { ok: false, status: 502, error: `forecast unavailable: ${(e as Error).message}` };
+  }
+}
+
 /** The plan for a place already resolved, so callers that also need the site key geocode once. */
 export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Promise<CrewAnswer> {
   // A day of history so the first shift hour has the 12 hours a NowCast needs.
   const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
+  const tz = at.tz;
   const [aqR, wxR, fires, ground, alerts, grid_co2] = await Promise.all([
     json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`).catch((e: Error) => e),
     json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m,winddirection_10m,windspeed_10m`).catch((e: Error) => e),
     fetchFires(),
-    fetchGround(at.lat, at.lon),
+    fetchGround(at.lat, at.lon, tz),
     nwsAlerts(at.lat, at.lon),
     // CAISO runs California's grid; a plan for Oregon says nothing about its carbon. A D1 hiccup
     // costs the column, never the plan.
@@ -496,7 +526,7 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
       if (typeof d === "number" && typeof k === "number") wind.set(t, { dir_deg: d, kmh: Math.round(k) });
     });
   } else {
-    for (const [t, w] of await nwsHourly(at.lat, at.lon)) if (w.dir !== null && w.kmh !== null) wind.set(t, { dir_deg: w.dir, kmh: w.kmh });
+    for (const [t, w] of await nwsHourly(at.lat, at.lon, tz)) if (w.dir !== null && w.kmh !== null) wind.set(t, { dir_deg: w.dir, kmh: w.kmh });
   }
   if (!(aqR instanceof Error) && !(wxR instanceof Error)) {
     const temp = new Map<string, number | null>(
@@ -512,15 +542,15 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
     // A safety tool must still answer: the air holds at the nearest monitor's reading (persistence,
     // said on the page), the temperature comes from the National Weather Service.
     const reason = String(aqR instanceof Error ? aqR.message : (wxR as Error).message);
-    const held = ground ?? (await fetchGround(at.lat, at.lon, 100));
+    const held = ground ?? (await fetchGround(at.lat, at.lon, tz, 100));
     if (!held) throw new Error(`${reason}; no ground monitor within 100 km to fall back on`);
     const temp: Map<string, number | null> =
       wxR instanceof Error
-        ? new Map([...(await nwsHourly(at.lat, at.lon))].map(([t, w]) => [t, w.c]))
+        ? new Map([...(await nwsHourly(at.lat, at.lon, tz))].map(([t, w]) => [t, w.c]))
         : new Map((wxR.hourly.time as string[]).map((t, i) => [t, wxR.hourly.temperature_2m[i]]));
     const t0 = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 36 * 3_600_000;
     hours = Array.from({ length: 36 + 80 }, (_, k) => {
-      const time = localHour(new Date(t0 + k * 3_600_000).toISOString());
+      const time = localHour(new Date(t0 + k * 3_600_000).toISOString(), tz);
       return { time, pm25: held.pm25, temp_c: temp.get(time) ?? null };
     });
     fallback = { air: "monitor", monitor: `${held.nearest}, ${held.nearest_km} km`, temp: !(wxR instanceof Error) ? "open-meteo" : temp.size ? "nws" : "none", reason };
@@ -562,16 +592,16 @@ export function siteKey(place: Pick<CrewPlace, "town">): string {
   return slug(place.town);
 }
 
-/** The local hour now, in the forecast's format. */
-export function nowHour(): string {
-  return localHour(new Date().toISOString());
+/** The local hour now in the place's zone, in the forecast's format. */
+export function nowHour(tz = CREW_TZ): string {
+  return localHour(new Date().toISOString(), tz);
 }
 
 /**
  * What the plan said for the hour a report was made: the evidence a worker's report carries, so
  * "it was smoky" arrives with the NowCast, the nearest satellite fire and the ground monitor.
  */
-export function evidenceFor(answer: CrewAnswer, at = nowHour()) {
+export function evidenceFor(answer: CrewAnswer, at = nowHour(answer.place.tz)) {
   const hour = answer.plan.hours.find((h) => h.time === at) ?? null;
   const wind = answer.wind.find((w) => w.time === at) ?? null;
   return {
@@ -636,8 +666,8 @@ export function describeFrom(from: ReturnType<typeof reportedFrom> | null | unde
 }
 
 /** A salted, daily-rotating hash of the sender: enough to rate-limit, useless to identify. */
-export async function senderHash(ip: string): Promise<string> {
-  const data = new TextEncoder().encode(`${ip}|${crewDate(0)}|crew-air`);
+export async function senderHash(ip: string, tz = CREW_TZ): Promise<string> {
+  const data = new TextEncoder().encode(`${ip}|${crewDate(0, tz)}|crew-air`);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 }

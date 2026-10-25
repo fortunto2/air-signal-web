@@ -103,6 +103,10 @@ export const paths = {
   embed: () => `/embed`,
   /** Smoke and heat shift plans for outdoor crews, Cal/OSHA. Static, so it wins over `[country]`. */
   crew: () => `/crew`,
+  /** A plan's page, its JSON and its calendar file, from one query so the three can never disagree. */
+  crewPlan: (place: string, date?: string, shift?: string) => `/crew${crewQuery(place, date, shift)}`,
+  crewApi: (place: string, date?: string, shift?: string) => `/api/crew${crewQuery(place, date, shift)}`,
+  crewPlanIcs: (place: string, date?: string, shift?: string) => `/api/crew/plan.ics${crewQuery(place, date, shift)}`,
   /** Crew Air's privacy policy and terms; the Crew Air app's App Store privacy URL. */
   crewPrivacy: () => `/crew/privacy`,
   /** Air Signal's privacy policy; the Air Signal app's App Store privacy URL. Static, wins over `[country]`. */
@@ -120,6 +124,14 @@ export const paths = {
   cityMarkdown: (country: string, city: string) => `/${slug(country)}/${slug(city)}.md`,
   countryMarkdown: (country: string) => `/${slug(country)}.md`,
 };
+
+/** `?place=Fresno&date=2026-10-25&shift=07-17`; `date` and `shift` only when given. */
+function crewQuery(place: string, date?: string, shift?: string): string {
+  const q = new URLSearchParams({ place });
+  if (date) q.set("date", date);
+  if (shift) q.set("shift", shift);
+  return `?${q}`;
+}
 
 /**
  * The one place a URL segment is made, used by the pages, the sitemap and the ETL alike. If two

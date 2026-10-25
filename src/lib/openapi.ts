@@ -1,4 +1,5 @@
 import { SITE } from "./site";
+import { OBSERVATION_KINDS, REPORT_APPS, REPORT_KINDS } from "./observation";
 
 /**
  * The OpenAPI document, built once here so `/openapi.json` and the `/api` page describe the same
@@ -195,9 +196,9 @@ export function openapiSpec() {
           operationId: "fileCrewReport",
           summary: "A worker's report to the crew lead, or an Air Signal observation (site page only; goes nowhere else)",
           description:
-            "`kind` is one of smoke, ash, symptoms, no_n95, no_shade, no_water, other. `app` says which app sent it " +
-            "(default crewair); Air Signal sends `app: airsignal` with an `observation` (kind smoke_smell | haze | ash | " +
-            "dust | chemical_odour | clear, intensity 1–5, observed_at, snapshot) and maps `kind` to the nearest crew kind. " +
+            `\`kind\` is one of ${REPORT_KINDS.join(", ")}. \`app\` says which app sent it ` +
+            `(default crewair); Air Signal sends \`app: airsignal\` with an \`observation\` (kind ${OBSERVATION_KINDS.join(" | ")}, ` +
+            "intensity 1–5, observed_at, snapshot) and maps `kind` to the nearest crew kind. " +
             "Observations are stored and kept off /crew's boards. The server attaches its own evidence for the hour: " +
             "NowCast AQI, temperature, wind, the nearest VIIRS fire and AirNow monitor.",
           requestBody: {
@@ -210,18 +211,18 @@ export function openapiSpec() {
                   properties: {
                     place: { type: "string", description: "Town name or `lat,lon`" },
                     date: { type: "string", format: "date" },
-                    kind: { type: "string", enum: ["smoke", "ash", "symptoms", "no_n95", "no_shade", "no_water", "other"] },
+                    kind: { type: "string", enum: [...REPORT_KINDS] },
                     note: { type: "string", maxLength: 280 },
                     lat: { type: "number" },
                     lon: { type: "number" },
                     heading_deg: { type: "number" },
                     sky: { type: "object", description: "The sky check's summary: smoke, smoke_call, verdict" },
-                    app: { type: "string", enum: ["crewair", "airsignal"], default: "crewair" },
+                    app: { type: "string", enum: [...REPORT_APPS], default: "crewair" },
                     observation: {
                       type: "object",
                       required: ["kind", "intensity"],
                       properties: {
-                        kind: { type: "string", enum: ["smoke_smell", "haze", "ash", "dust", "chemical_odour", "clear"] },
+                        kind: { type: "string", enum: [...OBSERVATION_KINDS] },
                         intensity: { type: "integer", minimum: 1, maximum: 5 },
                         observed_at: { type: "string", format: "date-time" },
                         snapshot: { type: "object", description: "The phone's evidence: hour, aqi, pm25_ugm3, wind_dir_deg, wind_kmh, fire, monitor" },

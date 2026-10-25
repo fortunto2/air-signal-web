@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getComfortExtremes, getLastIngest, getSitemapCounts } from "../lib/db";
 import { SIGNALS, SITE, abs, paths } from "../lib/site";
 import { cityView } from "../lib/view";
+import { OBSERVATION_KINDS, REPORT_KINDS } from "../lib/observation";
 
 /**
  * What this site is, for something that reads rather than looks.
@@ -110,9 +111,9 @@ problem is illegal (Labor Code §6310).
 - \`POST ${abs("/api/sky-check")}?place=…\` — raw \`image/jpeg\` body; a vision model's smoke call on a
   photo of the sky, compared with the forecast. Black out faces before sending.
 - \`POST ${abs("/api/crew/report")}\` — JSON \`{place, kind, note?, lat?, lon?, heading_deg?, app?, observation?}\`; kinds
-  smoke | ash | symptoms | no_n95 | no_shade | no_water | other. It goes to that site's page for the
-  crew lead, nowhere else. The Air Signal app sends \`app: "airsignal"\` with an \`observation\` (kind smoke_smell |
-  haze | ash | dust | chemical_odour | clear, intensity 1–5); those are stored, not shown on crew boards.
+  ${REPORT_KINDS.join(" | ")}. It goes to that site's page for the
+  crew lead, nowhere else. The Air Signal app sends \`app: "airsignal"\` with an \`observation\` (kind
+  ${OBSERVATION_KINDS.join(" | ")}, intensity 1–5); those are stored, not shown on crew boards.
   \`GET ${abs("/api/crew/reports")}?place=…\` lists today's crew reports.
 - \`GET ${abs("/api/crew/complaint")}?report=<id>\` — a drafted Cal/OSHA complaint for a report.
 

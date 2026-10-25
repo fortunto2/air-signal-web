@@ -7,8 +7,8 @@
 import Layout from "../../layouts/Layout.astro";
 import Bar from "../../components/Bar.astro";
 import CrewMap from "../../components/CrewMap.tsx";
-import { SITE, abs } from "../../lib/site";
-import { crewDefaultDate, crewPlanAt, parseShift, type CrewAnswer, type CrewPlace } from "../../lib/crew";
+import { SITE, abs, paths } from "../../lib/site";
+import { crewDefaultDate, crewPlanAt, parseShift, type CrewAnswer, type CrewPlace, CREW_TZ } from "../../lib/crew";
 import power from "../../data/svce-power.json";
 
 const CITIES: CrewPlace[] = [
@@ -25,7 +25,7 @@ const CITIES: CrewPlace[] = [
   ["Morgan Hill", 37.1305, -121.6544],
   ["Gilroy", 37.0058, -121.5683],
   ["San Martin (county)", 37.085, -121.6102],
-].map(([name, lat, lon]) => ({ name: name as string, town: name as string, state: "California", lat: lat as number, lon: lon as number, approximate: false }));
+].map(([name, lat, lon]) => ({ name: name as string, town: name as string, state: "California", country: "US", tz: CREW_TZ, lat: lat as number, lon: lon as number, approximate: false }));
 
 // 07:00–21:00: the working day and the 16–21 peak price in one window.
 const shift = parseShift("07-21");
@@ -149,10 +149,10 @@ const description =
                     {a.plan.confidence.fire ? `${Math.round(a.plan.confidence.fire.nearest_km)} km ${a.plan.confidence.fire.direction}` : "none in 200 km"}
                   </td>
                   <td>{(() => { const w = meanWind(a); return w ? `${w.from} ${w.kmh} km/h` : "–"; })()}</td>
-                  <td>{a.home.precool ? `${a.home.precool.start}:00–${a.home.precool.end}:00` : "not needed"}</td>
-                  <td class={a.home.close_windows_at ? "fg-bad" : ""}>{a.home.close_windows_at ? `from ${clock(a.home.close_windows_at)}` : "open"}</td>
+                  <td>{a.home?.precool ? `${a.home.precool.start}:00–${a.home.precool.end}:00` : "not needed"}</td>
+                  <td class={a.home?.close_windows_at ? "fg-bad" : ""}>{a.home?.close_windows_at ? `from ${clock(a.home.close_windows_at)}` : "open"}</td>
                   <td class={a.dispatch.sensor === "launch" ? "fg-bad" : ""}>{a.dispatch.sensor === "launch" ? `advised, fire at ${a.dispatch.bearing_deg}°` : "not needed"}</td>
-                  <td><a href={`/crew?place=${encodeURIComponent(`${city.lat},${city.lon}`)}&shift=07-17`}>open</a></td>
+                  <td><a href={paths.crewPlan(`${city.lat},${city.lon}`, undefined, "07-17")}>open</a></td>
                 </tr>
               ) : (
                 <tr><td>{city.name}</td><td colspan="8" class="fg-fair">forecast did not answer</td></tr>

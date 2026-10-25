@@ -8,6 +8,8 @@
  * no network: the cron in `grid-co2.ts` fetches, this file computes, the tests use a fixture.
  */
 
+import { median } from "./stats";
+
 export interface IntensityRow {
   /** "HH:MM", Pacific. */
   time: string;
@@ -85,13 +87,12 @@ export function hourlyMeans(rows: IntensityRow[]): HourMean[] {
  */
 export function medianByHour(rows: { hour: number; g_per_kwh: number }[]): Record<string, number> {
   const byHour = new Map<number, number[]>();
-  for (const r of rows) byHour.set(r.hour, [...(byHour.get(r.hour) ?? []), r.g_per_kwh]);
-  const out: Record<string, number> = {};
-  for (const [hour, vals] of [...byHour].sort((a, b) => a[0] - b[0])) {
-    const s = vals.sort((a, b) => a - b);
-    const mid = Math.floor(s.length / 2);
-    const median = s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
-    out[String(hour).padStart(2, "0")] = Math.round(median);
+  for (const r of rows) {
+    let vals = byHour.get(r.hour);
+    if (!vals) byHour.set(r.hour, (vals = []));
+    vals.push(r.g_per_kwh);
   }
+  const out: Record<string, number> = {};
+  for (const [hour, vals] of [...byHour].sort((a, b) => a[0] - b[0])) out[String(hour).padStart(2, "0")] = Math.round(median(vals));
   return out;
 }

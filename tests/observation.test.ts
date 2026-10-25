@@ -28,10 +28,11 @@ test("a valid observation comes back whole, the snapshot trimmed to known fields
   assert.equal(parseObservation(null), null);
 });
 
-test("an unknown kind is rejected; the older spelling of the chemical kind is accepted", () => {
+test("an unknown kind is rejected, and so is any spelling but AirKit's", () => {
   assert.throws(() => parseObservation({ ...body, kind: "fog" }), /observation.kind must be one of/);
   assert.throws(() => parseObservation({ ...body, kind: undefined }), /observation.kind/);
-  assert.equal(parseObservation({ ...body, kind: "chemical_smell" })!.kind, "chemical_odour");
+  assert.throws(() => parseObservation({ ...body, kind: "chemical_smell" }), /observation.kind/);
+  assert.throws(() => parseObservation({ ...body, kind: "Haze" }), /observation.kind/);
   assert.equal(parseObservation({ ...body, kind: "chemical_odour" })!.kind, "chemical_odour");
 });
 
