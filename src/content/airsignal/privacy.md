@@ -15,7 +15,7 @@ of our own, described below.
 | **The place you look at**: coordinates rounded on the phone to two decimals (about 1 km) | every forecast, the map, the place name | to fetch the forecast, name the nearest town and list sensors around it | not stored with you; forecasts are cached by place for about 10 minutes |
 | **A report** you send: what the air is like (smoke smell, haze, ash, dust, chemical smell, clear), how strong (1–5), the minute it was sent | when you press Send | to compare what people notice with monitors and forecasts | 24 months, then deleted |
 | **Evidence sent with a report**: this hour's forecast (AQI, PM2.5), wind, the nearest satellite fire and air monitor, and your latest sky check's score if you attach it | with every report | so each report shows what the air data said when it was made | with the report |
-| **Where the report was made**, only if you allow location: coordinates rounded on the phone to two decimals (about 1 km), and which way you faced, to the whole degree | with a report | to place the report and tell whether you faced a fire | with the report |
+| **Where the report was made**: your location if you allow it, otherwise the place you are looking at, rounded on the phone to two decimals (about 1 km). No heading. | with a report | to place the report and derive the air evidence for that point and hour | with the report |
 | **A sky photo** you check | when you press Check | to ask a vision model whether it shows smoke | **not stored by us** (see below) |
 | **A rate-limit code**: a one-way hash of your IP address and the date | with a report | to stop one device flooding the service (10 reports per 10 minutes) | erased after 2 days; never shown to anyone |
 
