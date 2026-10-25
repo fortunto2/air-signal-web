@@ -57,16 +57,18 @@ const GROUPS: { title: string; lede: string; paths: string[] }[] = [
 ];
 
 const CREW_FIELDS: [string, string][] = [
+  ["place", "name, town, state, country (ISO2), tz: the IANA zone every hour in the answer is written in, lat, lon"],
+  ["plan.jurisdiction", "The rulebook applied: US-CA for US places; null outside the US, where actions is empty"],
   ["plan.peak_aqi, plan.peak_temp_f", "The shift's worst hour, PM2.5 AQI as an EPA NowCast and °F"],
   ["plan.actions[]", "The hour each rule starts, the action and the citation (§5141.1, §3395)"],
   ["plan.hours[]", "AQI and temperature by hour"],
   ["plan.confidence", "Level, notes, the nearest VIIRS fire with bearing, the AirNow monitor with its divergence from the model"],
   ["plan.bms", "threshold_aqi, recirculate_at, resume_at: when a building closes outside air"],
-  ["home", "peak_price (E-TOU-C 16–21), precool (13–16 at 80 °F+), close_windows_at, open_windows_at"],
+  ["home", "peak_price (E-TOU-C 16–21), precool (13–16 at 80 °F+), close_windows_at, open_windows_at; null outside the US"],
   ["alerts[]", "Active National Weather Service alerts at the point: Red Flag Warning, Heat Advisory…"],
   ["wind[]", "10 m wind by hour: dir_deg (from), kmh"],
   ["fires_near[]", "VIIRS detections within about 150 km, [lat, lon]"],
-  ["dispatch", "sensor: launch | standby (a worksite reading is advised | not needed), bearing_deg and distance_km to the nearest fire within 50 km, reason"],
+  ["dispatch", "reading_advised (a worksite PM2.5 reading is advised: a fire within 50 km), bearing_deg and distance_km to it, reason; sensor: launch | standby says the same, deprecated"],
   ["grid_co2", "California only: the CAISO grid's typical carbon intensity by hour, g_per_kwh keyed \"00\"–\"23\", the median of the last 7 days (days, basis); a pattern, not a forecast; null elsewhere"],
   ["fallback", "Present when the forecast was held at the nearest monitor (upstream down); says which monitor and where temperatures came from"],
 ];

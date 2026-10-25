@@ -135,5 +135,8 @@ has real numbers, and gating cities on sensors would delete the entire non-Europ
 - **MapLibre's data worker must be bundled explicitly** — `?worker&url` plus `worker: { format: "es" }`
   in the Vite config. Without it the pool starts dead, no GeoJSON ever parses, `load` never fires,
   and the only symptom is a blank map under a permanent "Loading sensors…". No error is raised.
+- **Every hour in a crew answer is in the place's own zone** (`place.tz`, from the geocoder or Open-Meteo's
+  `timezone=auto` for bare coordinates). The CAISO cron alone is pinned to Pacific (`PACIFIC` in `src/lib/tz.ts`).
+  Outside the US the engine runs with an empty rulebook: `plan.jurisdiction` null, `actions` empty, `home` null.
 - **Deploy with `make deploy`.** The adapter copies `wrangler.jsonc` into `dist/server/wrangler.json`
   at build time and wrangler reads *that*, so a bare `wrangler deploy` ships the previous config.

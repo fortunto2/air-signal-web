@@ -23,7 +23,8 @@ import {
   parseShift,
   ptClock,
   ptTime,
-  siteKey,
+  siteKeys,
+  CREW_TZ,
   type CrewAnswer,
 } from "../lib/crew";
 import { REPORT_KINDS, listCrewReports, type CrewReport } from "../lib/db";
@@ -34,8 +35,6 @@ const REPO = "https://github.com/fortunto2/stanford-cleantech-2026";
 
 const qs = Astro.url.searchParams;
 const place = qs.get("place")?.trim() || DEFAULT_PLACE;
-const days = [0, 1, 2].map((d) => crewDate(d));
-const date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefaultDate();
 // Two selects on the form (start, end); `shift=07-17` still works for links and the app.
 const shift = qs.get("start") && qs.get("end") ? parseShift(`${qs.get("start")}-${qs.get("end")}`) : parseShift(qs.get("shift"));
 const hours = Array.from({ length: 25 }, (_, h) => h);
@@ -46,18 +45,26 @@ const shiftRaw = formatShift(shift);
 // cache. The upstream forecast and the fire and monitor files are cached on their own (lib/crew.ts).
 Astro.response.headers.set("cache-control", "no-store");
 
-// The place resolves once; the plan and the site's reports then load side by side.
+// The place resolves once; its zone decides which day is "today" and which three the form offers;
+// then the plan and the site's reports load side by side.
 let answer: CrewAnswer | null = null;
 let failure: string | null = null;
 let reports: CrewReport[] = [];
+let tz = CREW_TZ;
+let days = [0, 1, 2].map((d) => crewDate(d, tz));
+let date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefaultDate(tz);
 try {
   const at = await geocode(place);
   if (!at) failure = `We could not find “${place}”. Try a city or town name.`;
-  else
+  else {
+    tz = at.tz || CREW_TZ;
+    days = [0, 1, 2].map((d) => crewDate(d, tz));
+    date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefaultDate(tz);
     [answer, reports] = await Promise.all([
       crewPlanAt(at, date, shift),
-      listCrewReports(siteKey(at), date).catch(() => [] as CrewReport[]),
+      listCrewReports(siteKeys(at), date).catch(() => [] as CrewReport[]),
     ]);
+  }
 } catch (e) {
   failure = /no ground monitor/.test(String(e))
     ? "The air forecast service is down right now and there is no ground monitor within 100 km of this place. Try the nearest town in the valley."
@@ -213,8 +220,11 @@ const schema = [
                 Check again before the afternoon.
               </p>
             )}
-            {answer.place.state && answer.place.state !== "California" && (
+            {answer.place.country === "US" && answer.place.state && answer.place.state !== "California" && (
               <p class="crew-note">These are California’s rules. {answer.place.state} may have its own; complaints there go to {agenciesFor(answer.place)[0]!.name}.</p>
+            )}
+            {answer.place.country !== "US" && (
+              <p class="crew-note">No workplace smoke or heat rulebook for this country yet: the hours show the forecast and the checks, without legal thresholds. Hours are local to the place ({answer.place.tz}).</p>
             )}
             <div class="crew-check">
               <span class={`crew-level fg-${LEVEL[plan.confidence.level].band}`}>{LEVEL[plan.confidence.level].label}</span>
@@ -302,7 +312,7 @@ const schema = [
             </div>
             <div class="crew-block" id="record">
               <div class="eyebrow">After a fire: the reading and the record</div>
-              {answer.dispatch.sensor === "launch" ? (
+              {answer.dispatch.reading_advised ? (
                 <div class="crew-task crew-task-launch">
                   <svg class="crew-bearing" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style={`transform:rotate(${answer.dispatch.bearing_deg ?? 0}deg)`}>
                     <path d="M12 2 L18 14 L12 11 L6 14 Z" fill="currentColor" />
@@ -374,7 +384,7 @@ const schema = [
                 </p>
               )}
               <p class="crew-legend no-print">
-                Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>{co2 ? <>, <code>grid_co2</code></> : null}, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: reading advised, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
+                Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>{co2 ? <>, <code>grid_co2</code></> : null}, <code>dispatch</code>{answer.dispatch.reading_advised ? `: reading advised, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
               </p>
             </div>
             <div class="crew-block no-print" id="sky">

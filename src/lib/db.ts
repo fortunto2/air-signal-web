@@ -52,6 +52,8 @@ export interface CityRow {
   /** Joined in from `countries`, so a page still reads `row.country` and nothing downstream moved. */
   country: string;
   country_slug: string;
+  /** ISO 3166-1 alpha-2 when the countries table knows it. */
+  country_iso: string | null;
   slug: string;
   name: string;
   lat: number;
@@ -237,7 +239,7 @@ export async function getDensestCity(countryId: number): Promise<CityRow | null>
  * the same four round trips it always did.
  */
 const CITY_SELECT = `
-  SELECT c.*, co.slug AS country_slug, co.name AS country
+  SELECT c.*, co.slug AS country_slug, co.name AS country, co.iso AS country_iso
     FROM cities c JOIN countries co ON co.id = c.country_id`;
 
 /**
@@ -905,29 +907,34 @@ export async function purgeOldReports(): Promise<void> {
   ]);
 }
 
-/** The crew board: a site's day, crew reports only. Air Signal's observations are kept, not shown here. */
-export async function listCrewReports(site: string, date: string): Promise<CrewReport[]> {
+/**
+ * The crew board: a site's day, crew reports only. Air Signal's observations are kept, not shown here.
+ * `sites` is the place's current key and the one rows were filed under before the key carried the
+ * country and state (lib/crew.ts siteKeys), so an old row stays on its board.
+ */
+export async function listCrewReports(sites: [string, string], date: string): Promise<CrewReport[]> {
   const { results } = await DB()
-    .prepare("SELECT * FROM crew_reports WHERE site = ?1 AND date = ?2 AND app = 'crewair' ORDER BY created_at DESC LIMIT 50")
-    .bind(site, date)
+    .prepare("SELECT * FROM crew_reports WHERE site IN (?1, ?2) AND date = ?3 AND app = 'crewair' ORDER BY created_at DESC LIMIT 50")
+    .bind(sites[0], sites[1], date)
     .all<CrewReport>();
   return results;
 }
 
-/** Scoped by site, so an id guessed from another site's page cannot close this one. */
-export async function handleCrewReport(id: number, site: string, note: string | null): Promise<boolean> {
+/** Scoped by site, so an id guessed from another site's page cannot close this one; crew rows only. */
+export async function handleCrewReport(id: number, sites: [string, string], note: string | null): Promise<boolean> {
   const res = await DB()
     .prepare(
-      `UPDATE crew_reports SET status = 'handled', handled_at = ?3, handled_note = ?4
-        WHERE id = ?1 AND site = ?2 AND status = 'open'`,
+      `UPDATE crew_reports SET status = 'handled', handled_at = ?4, handled_note = ?5
+        WHERE id = ?1 AND site IN (?2, ?3) AND status = 'open' AND app = 'crewair'`,
     )
-    .bind(id, site, new Date().toISOString(), note)
+    .bind(id, sites[0], sites[1], new Date().toISOString(), note)
     .run();
   return (res.meta.changes ?? 0) > 0;
 }
 
+/** One crew report by id, for the escalation page and the complaint draft. An observation is not a crew report and is not found here. */
 export async function getCrewReport(id: number): Promise<CrewReport | null> {
-  return await DB().prepare("SELECT * FROM crew_reports WHERE id = ?1").bind(id).first<CrewReport>();
+  return await DB().prepare("SELECT * FROM crew_reports WHERE id = ?1 AND app = 'crewair'").bind(id).first<CrewReport>();
 }
 
 // ── grid_co2 — CAISO hourly carbon intensity, written by the Worker's cron ───────────────────────

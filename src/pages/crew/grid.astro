@@ -68,7 +68,7 @@ const n = {
   hot: ok.filter((r) => (r.a.plan.peak_temp_f ?? 0) >= 80).length,
   smoke: ok.filter((r) => r.a.plan.bms.recirculate_at).length,
   fire50: ok.filter((r) => r.a.plan.confidence.fire && r.a.plan.confidence.fire.nearest_km <= 50).length,
-  launch: ok.filter((r) => r.a.dispatch.sensor === "launch").length,
+  launch: ok.filter((r) => r.a.dispatch.reading_advised).length,
   fallback: ok.filter((r) => r.a.fallback).length,
   fires: fires.length,
 };
@@ -151,7 +151,7 @@ const description =
                   <td>{(() => { const w = meanWind(a); return w ? `${w.from} ${w.kmh} km/h` : "–"; })()}</td>
                   <td>{a.home?.precool ? `${a.home.precool.start}:00–${a.home.precool.end}:00` : "not needed"}</td>
                   <td class={a.home?.close_windows_at ? "fg-bad" : ""}>{a.home?.close_windows_at ? `from ${clock(a.home.close_windows_at)}` : "open"}</td>
-                  <td class={a.dispatch.sensor === "launch" ? "fg-bad" : ""}>{a.dispatch.sensor === "launch" ? `advised, fire at ${a.dispatch.bearing_deg}°` : "not needed"}</td>
+                  <td class={a.dispatch.reading_advised ? "fg-bad" : ""}>{a.dispatch.reading_advised ? `advised, fire at ${a.dispatch.bearing_deg}°` : "not needed"}</td>
                   <td><a href={paths.crewPlan(`${city.lat},${city.lon}`, undefined, "07-17")}>open</a></td>
                 </tr>
               ) : (

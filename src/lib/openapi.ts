@@ -142,16 +142,20 @@ export function openapiSpec() {
           operationId: "getCrewPlan",
           summary: "Smoke and heat shift plan against Cal/OSHA rules, with fire and monitor checks, a BMS signal, a home signal, NWS alerts, wind, nearby fires, the grid's typical CO2 by hour and whether a worksite reading is advised",
           description:
+            "`place` is the resolved place: name, town, state, `country` (ISO 3166-1 alpha-2) and `tz`, the IANA zone every hour in the " +
+            "answer is written in (the place's own; `place` may be any town on Earth or `lat,lon`). `plan.jurisdiction` is the rulebook " +
+            "applied, US-CA for US places and null elsewhere, where `plan.actions` is empty and `home` is null. " +
             "`plan.hours` is the NowCast AQI and temperature by hour; `plan.actions` the hour each rule starts; " +
             "`plan.bms` when a building closes outside air; `home` the pre-cool hours before the 16–21 E-TOU-C peak " +
             "and the smoke hour for windows; `alerts` active NWS alerts; `wind` by hour; `fires_near` VIIRS " +
-            "detections within 150 km; `dispatch` whether a worksite reading is advised (`sensor: launch`), with the bearing and distance to the nearest fire within 50 km; " +
+            "detections within 150 km; `dispatch.reading_advised` whether a worksite reading is advised, with the bearing and distance to the nearest fire within 50 km " +
+            "(`dispatch.sensor` launch | standby is the same fact in the first clients' words, deprecated); " +
             "`grid_co2` (California only) the CAISO grid's typical carbon intensity by hour, `g_per_kwh` keyed \"00\"–\"23\", the median of the " +
             "last 7 days (`days`, `basis`), a pattern rather than a forecast, `null` elsewhere. " +
             "`fallback` is set when the forecast was held at the nearest monitor.",
           parameters: [
-            { name: "place", in: "query", required: true, schema: { type: "string" }, description: "Town name or `lat,lon`" },
-            { name: "date", in: "query", schema: { type: "string", format: "date" } },
+            { name: "place", in: "query", required: true, schema: { type: "string" }, description: "Town name anywhere (\"Fresno\", \"Paris, France\") or `lat,lon`" },
+            { name: "date", in: "query", schema: { type: "string", format: "date" }, description: "Defaults to today before noon in the place's zone, tomorrow after" },
             { name: "shift", in: "query", schema: { type: "string", example: "07-17" } },
           ],
           responses: { "200": { description: "Plan" } },

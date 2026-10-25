@@ -34,7 +34,8 @@ export interface CrewAction {
 }
 
 export interface CrewPlan {
-  jurisdiction: string;
+  /** The rulebook applied: "US-CA" for every US place today; null outside the US, where no rulebook exists and `actions` is empty. */
+  jurisdiction: string | null;
   hours: CrewHour[];
   actions: CrewAction[];
   peak_aqi: number | null;
@@ -75,7 +76,7 @@ export interface CrewPlace {
   state: string | null;
   /** ISO 3166-1 alpha-2, "US"; null when the place came from bare coordinates we could not name. */
   country: string | null;
-  /** IANA zone the plan's hours are in: the place's own, from the geocoder or the forecast. */
+  /** IANA zone the plan's hours are in: the place's own, from the geocoder, or from the forecast for bare coordinates. */
   tz: string;
   lat: number;
   lon: number;
@@ -350,20 +351,22 @@ interface Hit {
   name: string;
   admin1?: string;
   admin2?: string;
+  country?: string;
   country_code?: string;
   timezone?: string;
   latitude: number;
   longitude: number;
 }
 
-/** US places matching a name, California first: the rulebook is Cal/OSHA, and "Fresno" means the valley. */
-async function searchUS(name: string): Promise<Hit[]> {
-  const r = await json(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20&countryCode=US`,
-    86_400,
-  );
+/**
+ * Places matching a name, anywhere. Open-Meteo ranks by population, which is what "Berlin" or "Paris"
+ * means to most people; California is moved to the front because the rulebook is Cal/OSHA and
+ * "Fresno" means the valley. The sort is stable, so nothing else changes order.
+ */
+async function searchPlaces(name: string): Promise<Hit[]> {
+  const r = await json(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20`, 86_400);
   const hits: Hit[] = r.results ?? [];
-  return hits.sort((a, b) => Number(b.admin1 === "California") - Number(a.admin1 === "California"));
+  return hits.sort((a, b) => Number(b.admin1 === "California" && b.country_code === "US") - Number(a.admin1 === "California" && a.country_code === "US"));
 }
 
 const toPlace = (g: Hit, approximate = false, lat = g.latitude, lon = g.longitude): CrewPlace => ({
@@ -378,8 +381,10 @@ const toPlace = (g: Hit, approximate = false, lat = g.latitude, lon = g.longitud
 });
 
 /**
- * `"36.748,-119.772"` → that coordinate, named after the nearest city we know; its state comes from
- * the geocoder hit for that name that lies closest to the point.
+ * `"36.748,-119.772"` → that coordinate, named after the nearest city in our own database (a reverse
+ * geocode, no name search). In the United States the state decides the rulebook and only the geocoder
+ * knows it, so a US point also looks its town up and takes the hit closest to it. Elsewhere the zone is
+ * left empty and comes back with the forecast (`timezone=auto`).
  */
 async function fromCoordinates(place: string): Promise<CrewPlace | null | undefined> {
   const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(place);
@@ -390,44 +395,55 @@ async function fromCoordinates(place: string): Promise<CrewPlace | null | undefi
   const [near] = await getNearbyCities(lat, lon, 0.5, 1).catch(() => []);
   if (!near) {
     const name = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
-    return { name, town: name, state: null, country: null, tz: PACIFIC, lat, lon, approximate: true };
+    return { name, town: name, state: null, country: null, tz: "", lat, lon, approximate: true };
   }
-  const hits = await searchUS(near.name).catch(() => [] as Hit[]);
-  const closest = hits.sort((a, b) => km(lat, lon, a.latitude, a.longitude) - km(lat, lon, b.latitude, b.longitude))[0];
-  return toPlace(closest ?? { name: near.name, latitude: lat, longitude: lon }, true, lat, lon);
+  if (near.country_iso === "US") {
+    const hits = (await searchPlaces(near.name).catch(() => [] as Hit[])).filter((h) => h.country_code === "US");
+    const closest = hits.sort((a, b) => km(lat, lon, a.latitude, a.longitude) - km(lat, lon, b.latitude, b.longitude))[0];
+    if (closest) return toPlace(closest, true, lat, lon);
+  }
+  return { name: `near ${near.name}`, town: near.name, state: null, country: near.country_iso, tz: "", lat, lon, approximate: true };
 }
 
-/** Up to 8 US places matching what was typed: the app's and page's place search. */
+/** Up to 8 places matching what was typed, California first: the app's and page's place search. */
 export async function placeSuggestions(q: string): Promise<{ name: string; detail: string; lat: number; lon: number }[]> {
   const term = q.trim();
   if (term.length < 2) return [];
-  return (await searchUS(term)).slice(0, 8).map((g) => ({
+  return (await searchPlaces(term)).slice(0, 8).map((g) => ({
     name: g.name,
-    detail: [g.admin2, g.admin1].filter(Boolean).join(", "),
+    detail: [g.admin2, g.admin1, g.country_code === "US" ? null : g.country].filter(Boolean).join(", "),
     lat: g.latitude,
     lon: g.longitude,
   }));
 }
 
-/** A typed name ("Fresno", "Springfield, Illinois") or `lat,lon` → a place. A state after the comma wins. */
+/**
+ * A typed name ("Fresno", "Springfield, Illinois", "Paris, France") or `lat,lon` → a place. What follows
+ * the comma wins when it names a hit's state or country.
+ */
 export async function geocode(place: string): Promise<CrewPlace | null> {
   const coords = await fromCoordinates(place);
   if (coords !== undefined) return coords;
   const [name, hint] = place.split(",").map((x) => x.trim());
   if (!name) return null;
-  const hits = await searchUS(name);
-  const g = (hint && hits.find((x) => x.admin1?.toLowerCase() === hint.toLowerCase())) || hits[0];
+  const hits = await searchPlaces(name);
+  const want = hint?.toLowerCase();
+  const g =
+    (want && hits.find((x) => [x.admin1, x.country, x.country_code].some((v) => v?.toLowerCase() === want))) || hits[0];
   return g ? toPlace(g) : null;
 }
 
+/** The engine's rulebook is California's; outside the United States there is none, and the engine is told so. */
+const NO_RULEBOOK = { jurisdiction: "none", name: "No rulebook", rules: [] };
+
 /** Today in the place's zone (California when none), as `YYYY-MM-DD`, plus `offset` days. */
 export function crewDate(offset = 0, tz = CREW_TZ): string {
-  return localDay(new Date(Date.now() + offset * 86_400_000), tz);
+  return localDay(new Date(Date.now() + offset * 86_400_000), tz || CREW_TZ);
 }
 
 /** Before noon in the place the plan is for today; after it, for tomorrow's shift. */
 export function crewDefaultDate(tz = CREW_TZ): string {
-  return crewDate(localHourNumber(new Date(), tz) < 12 ? 0 : 1, tz);
+  return crewDate(localHourNumber(new Date(), tz || CREW_TZ) < 12 ? 0 : 1, tz);
 }
 
 /** A `YYYY-MM-DD` from a request, or the default plan day. */
@@ -506,12 +522,22 @@ export async function planFromQuery(url: URL): Promise<PlanQuery> {
  * `gridCo2: false` skips the D1 read for callers that discard it (a report's evidence).
  */
 export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts: { gridCo2?: boolean } = {}): Promise<CrewAnswer> {
-  // A day of history so the first shift hour has the 12 hours a NowCast needs.
-  const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
-  const tz = at.tz;
-  const [aqR, wxR, fires, ground, alerts, grid_co2] = await Promise.all([
+  // A day of history so the first shift hour has the 12 hours a NowCast needs. Hours come back in the
+  // place's own zone; for bare coordinates with no zone yet, Open-Meteo names it (`timezone=auto`) and
+  // the forecast is awaited first so the ground check reads the same clock.
+  const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(at.tz || "auto")}`;
+  const forecasts = Promise.all([
     json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`).catch((e: Error) => e),
     json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m,winddirection_10m,windspeed_10m`).catch((e: Error) => e),
+  ]);
+  let tz = at.tz;
+  if (!tz) {
+    const [a, w] = await forecasts;
+    tz = (!(w instanceof Error) && w.timezone) || (!(a instanceof Error) && a.timezone) || PACIFIC;
+    at = { ...at, tz };
+  }
+  const [[aqR, wxR], fires, ground, alerts, grid_co2] = await Promise.all([
+    forecasts,
     fetchFires(),
     fetchGround(at.lat, at.lon, tz),
     nwsAlerts(at.lat, at.lon),
@@ -561,10 +587,14 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts
   // Only detections that could matter: the US list runs to tens of thousands in fire season, and the
   // engine looks no further than ~2° anyway.
   const near = fires.filter(([la, lo]) => Math.abs(la - at.lat) < 2 && Math.abs(lo - at.lon) < 2.5);
+  const us = at.country === "US";
   const out = JSON.parse(
-    core().wasm_crew_plan(JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground })),
+    core().wasm_crew_plan(
+      JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground, ...(us ? {} : { rulebook: NO_RULEBOOK }) }),
+    ),
   );
   if (out.error) throw new Error(out.error);
+  if (!us) out.jurisdiction = null;
   // With no forecast the "model" is the monitor itself; comparing them would claim a check that never ran.
   if (fallback) {
     out.confidence.notes = (out.confidence.notes as string[]).map((n) =>
@@ -581,23 +611,33 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts
     .filter(([la, lo]) => Math.abs(la - at.lat) < 1.35 && Math.abs(lo - at.lon) * Math.cos((at.lat * Math.PI) / 180) < 1.35)
     .slice(0, 400);
   return {
-    place: at, date, shift, plan, alerts, home: homeSignal(plan), dispatch: dispatchFor(plan), wind: windOut, fires_near, grid_co2,
+    place: at, date, shift, plan, alerts, home: us ? homeSignal(plan) : null, dispatch: dispatchFor(plan), wind: windOut, fires_near, grid_co2,
     ...(fallback ? { fallback } : {}),
   };
 }
 
 /**
- * The site a report belongs to: the town. A worker on GPS ("near Fresno") and a crew lead who typed
- * "Fresno" must share one list, so the key is the town, never the display name. Kept without the state
- * so existing report rows stay on their site.
+ * The site a report belongs to: country, state and town, so Berlin (DE) and Berlin (NH), Springfield
+ * (IL) and Springfield (MO) keep separate boards. A worker on GPS ("near Fresno") and a crew lead who
+ * typed "Fresno" share one list because the key is built from the town, never the display name.
  */
-export function siteKey(place: Pick<CrewPlace, "town">): string {
+export function siteKey(place: Pick<CrewPlace, "town" | "state" | "country">): string {
+  return slug([place.country, place.state, place.town].filter(Boolean).join(" "));
+}
+
+/** The key rows were filed under before it carried the country and state: the bare town. */
+export function legacySiteKey(place: Pick<CrewPlace, "town">): string {
   return slug(place.town);
+}
+
+/** Both keys, for reading a board: today's rows and the ones filed before the key changed. */
+export function siteKeys(place: Pick<CrewPlace, "town" | "state" | "country">): [string, string] {
+  return [siteKey(place), legacySiteKey(place)];
 }
 
 /** The local hour now in the place's zone, in the forecast's format. */
 export function nowHour(tz = CREW_TZ): string {
-  return localHour(new Date().toISOString(), tz);
+  return localHour(new Date().toISOString(), tz || CREW_TZ);
 }
 
 /**
@@ -670,7 +710,8 @@ export function describeFrom(from: ReturnType<typeof reportedFrom> | null | unde
 
 /** A salted, daily-rotating hash of the sender: enough to rate-limit, useless to identify. */
 export async function senderHash(ip: string, tz = CREW_TZ): Promise<string> {
-  const data = new TextEncoder().encode(`${ip}|${crewDate(0, tz)}|crew-air`);
+  // `tz` may still be empty for bare coordinates before the forecast named the zone; the hash rotates daily either way.
+  const data = new TextEncoder().encode(`${ip}|${crewDate(0, tz || CREW_TZ)}|crew-air`);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
