@@ -1,0 +1,69 @@
+---
+/**
+ * Air Signal privacy policy, the App Store's privacy URL for the Air Signal iOS app. The text lives
+ * in src/content/airsignal/privacy.md, copied from air-signal-ios/legal/airsignal/, so the page and
+ * the App Store answers are written from one document. Crew Air's is /crew/privacy.
+ */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import { SITE, paths } from "../lib/site";
+import { Content as Privacy } from "../content/airsignal/privacy.md";
+---
+
+<Layout title={`Air Signal privacy — ${SITE.name}`} description="What the Air Signal app collects (no account, no tracking, one usage counter), how long it keeps it, and your rights." path={paths.privacy()} pitch={false}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+      <article class="legal">
+        <Privacy />
+        <p class="legal-cross">Crew Air, the sister app for outdoor crews, has its own: <a href={paths.crewPrivacy()}>Crew Air privacy and terms</a>.</p>
+      </article>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .legal {
+    padding: 24px 20px 40px;
+    max-width: 78ch;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .legal :global(h1) {
+    font-size: 26px;
+    margin: 8px 0 6px;
+  }
+  .legal :global(h2) {
+    font-size: 18px;
+    margin: 22px 0 6px;
+  }
+  .legal :global(p),
+  .legal :global(ul) {
+    margin: 8px 0;
+  }
+  .legal :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 10px 0;
+    display: block;
+    overflow-x: auto;
+  }
+  .legal :global(th),
+  .legal :global(td) {
+    text-align: left;
+    vertical-align: top;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .legal :global(a) {
+    color: var(--accent);
+    word-break: break-word;
+  }
+  .legal-cross {
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-2);
+  }
+</style>

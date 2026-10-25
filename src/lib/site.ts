@@ -103,6 +103,10 @@ export const paths = {
   embed: () => `/embed`,
   /** Smoke and heat shift plans for outdoor crews, Cal/OSHA. Static, so it wins over `[country]`. */
   crew: () => `/crew`,
+  /** Crew Air's privacy policy and terms; the Crew Air app's App Store privacy URL. */
+  crewPrivacy: () => `/crew/privacy`,
+  /** Air Signal's privacy policy; the Air Signal app's App Store privacy URL. Static, wins over `[country]`. */
+  privacy: () => `/privacy`,
   /**
    * The guide. `/guide` is the index; `/guide/<signal>` is one signal explained at length.
    *

@@ -22,6 +22,9 @@ export const GET: APIRoute = async () => {
     // ("free air quality widget for my website"), so it earns a place beside the guide.
     { loc: paths.embed(), priority: "0.7" },
     { loc: paths.crew(), priority: "0.8" },
+    // The two apps' App Store privacy URLs. Rarely change; indexed so the store's link resolves to a known page.
+    { loc: paths.privacy(), priority: "0.3" },
+    { loc: paths.crewPrivacy(), priority: "0.3" },
     { loc: "/", priority: "1.0" },
   ];
 
