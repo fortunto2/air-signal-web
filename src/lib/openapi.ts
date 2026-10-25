@@ -139,12 +139,12 @@ export function openapiSpec() {
       "/api/crew": {
         get: {
           operationId: "getCrewPlan",
-          summary: "Smoke and heat shift plan against Cal/OSHA rules, with fire and monitor checks, a BMS signal, a home signal, NWS alerts, wind, nearby fires and a sensor task",
+          summary: "Smoke and heat shift plan against Cal/OSHA rules, with fire and monitor checks, a BMS signal, a home signal, NWS alerts, wind, nearby fires and whether a worksite reading is advised",
           description:
             "`plan.hours` is the NowCast AQI and temperature by hour; `plan.actions` the hour each rule starts; " +
             "`plan.bms` when a building closes outside air; `home` the pre-cool hours before the 16–21 E-TOU-C peak " +
             "and the smoke hour for windows; `alerts` active NWS alerts; `wind` by hour; `fires_near` VIIRS " +
-            "detections within 150 km; `dispatch` a sensor task with a bearing when a fire is within 50 km. " +
+            "detections within 150 km; `dispatch` whether a worksite reading is advised (`sensor: launch`), with the bearing and distance to the nearest fire within 50 km. " +
             "`fallback` is set when the forecast was held at the nearest monitor.",
           parameters: [
             { name: "place", in: "query", required: true, schema: { type: "string" }, description: "Town name or `lat,lon`" },

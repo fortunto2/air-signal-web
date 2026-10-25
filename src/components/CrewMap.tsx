@@ -153,7 +153,7 @@ export default function CrewMap(p: CrewMapProps) {
       for (const { f, km } of near) {
         const hit = reaches(f, place, w);
         plumes.push({ type: "Feature", geometry: plume(f, w), properties: { hit } });
-        if (hit && !inside) inside = { km, dir: compass(bearing(place, f)) };
+        if (hit && !inside) inside = { km: Math.round(km * 10) / 10, dir: compass(bearing(place, f)) };
         // Only fires that matter get the hour-by-hour fan; 150 km × 10 h of cones is a smear.
         if (km <= 100) for (const hw of hws) hourly.push({ type: "Feature", geometry: plume(f, hw), properties: { hour: hw.hour } });
       }

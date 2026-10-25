@@ -293,8 +293,8 @@ const schema = [
                     <path d="M12 11 V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                   </svg>
                   <div>
-                    <b>Sensor task: launch</b>
-                    <span class="crew-task-where">bearing <span class="num">{answer.dispatch.bearing_deg ?? "–"}°</span>, <span class="num">{answer.dispatch.distance_km ?? "–"}</span> km</span>
+                    <b>A worksite reading is advised</b>
+                    <span class="crew-task-where">fire at bearing <span class="num">{answer.dispatch.bearing_deg ?? "–"}°</span>, <span class="num">{answer.dispatch.distance_km ?? "–"}</span> km</span>
                     <p>{answer.dispatch.reason}.</p>
                   </div>
                 </div>
@@ -305,12 +305,12 @@ const schema = [
                     <path d="M12 11 V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                   </svg>
                   <span>
-                    Sensor: standby{answer.dispatch.distance_km !== null ? <>, nearest fire <span class="num">{answer.dispatch.distance_km}</span> km</> : ", no fire within about 200 km"}
+                    No worksite reading needed{answer.dispatch.distance_km !== null ? <>: nearest fire <span class="num">{answer.dispatch.distance_km}</span> km</> : ": no fire within about 200 km"}
                   </span>
                 </div>
               )}
               <p>
-                <b>How the AQI was determined (§5141.1(c)):</b> {determination} Worksite instrument (Appendix A: 0.3–2.5 µm, used per the manufacturer, error accounted for): a node or a drone reports its PM2.5 through <code>POST /api/crew/report</code> and the next plan is corrected by it like by any AirNow monitor; the record prints with the plan.
+                <b>How the AQI was determined (§5141.1(c)):</b> {determination} Worksite instrument (Appendix A: 0.3–2.5 µm, used per the manufacturer, error accounted for): a handheld meter or a fixed node reports its PM2.5 through <code>POST /api/crew/report</code> and the next plan is corrected by it like by any AirNow monitor; the record prints with the plan.
               </p>
               <p class="crew-legend">
                 §5141.1 requires N95s at AQI 151+ and respirators above 500; it does not forbid the work. The employer determines the AQI; this page records how.
@@ -335,7 +335,7 @@ const schema = [
                   : "No smoke hour: windows can stay open overnight."}
               </p>
               <p class="crew-legend no-print">
-                Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: launch, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
+                Same day as JSON for a building system, a home agent or a sensor node (<code>plan.bms</code>, <code>home</code>, <code>alerts</code>, <code>dispatch</code>{answer.dispatch.sensor === "launch" ? `: reading advised, fire ${answer.dispatch.distance_km} km at ${answer.dispatch.bearing_deg}°` : ""}): <a href={apiUrl}>{apiUrl}</a>
               </p>
             </div>
             <div class="crew-block no-print" id="sky">
@@ -960,7 +960,7 @@ const schema = [
   .crew-block .crew-legend {
     padding: 4px 0 0;
   }
-  /* The sensor task: loud when a satellite sees fire within 50 km, quiet otherwise. */
+  /* The worksite reading: loud when a satellite sees fire within 50 km, quiet otherwise. */
   .crew-task {
     display: flex;
     align-items: flex-start;

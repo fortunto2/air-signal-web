@@ -85,7 +85,7 @@ export interface CrewAnswer {
   alerts: { event: string; onset: string | null; ends: string | null }[];
   /** The same day for a home or a building's agent: the price peak and the hours to act before it. */
   home: HomeSignal;
-  /** A task for a sensor node (fixed, or a drone outside the fire's TFR) when a satellite sees fire nearby. */
+  /** Whether a worksite PM2.5 reading is advised (a satellite sees fire within 50 km), with the fire's bearing and distance. */
   dispatch: Dispatch;
   /** Wind by local hour (10 m, °from, km/h) for the plan's hours, for the plume drawing. */
   wind: { time: string; dir_deg: number; kmh: number }[];
@@ -94,9 +94,10 @@ export interface CrewAnswer {
 }
 
 /**
- * The satellite trigger as a task: a VIIRS detection within 50 km means the model's smoke is a guess
- * and a ground reading is worth going for. The node answers through POST /api/crew/report with its
- * PM2.5, and the next plan is corrected by that reading like by any AirNow monitor.
+ * The satellite trigger as advice: a VIIRS detection within 50 km means the model's smoke is a guess
+ * and a worksite reading is worth taking. `sensor` keeps its two values ("launch" = a reading is
+ * advised, "standby" = not needed) so the app and other callers stay compatible. The reading comes
+ * back through POST /api/crew/report, and the next plan is corrected by it like by any AirNow monitor.
  */
 export interface Dispatch {
   sensor: "launch" | "standby";
@@ -118,7 +119,7 @@ function dispatchFor(plan: CrewPlan): Dispatch {
     distance_km: f ? Math.round(f.nearest_km * 10) / 10 : null,
     detections_50km: f?.within_50km ?? 0,
     reason: go
-      ? `VIIRS fire ${f!.nearest_km.toFixed(1)} km ${f!.direction}: sample PM2.5 toward it, outside the fire's TFR, and report`
+      ? `VIIRS fire ${f!.nearest_km.toFixed(1)} km ${f!.direction}: the smoke model reads lowest this close to a fire, so take a PM2.5 reading at the worksite and report it`
       : f
         ? `nearest VIIRS fire ${f.nearest_km.toFixed(1)} km ${f.direction}, beyond ${DISPATCH_KM} km`
         : "no VIIRS fire within about 200 km in the last 24 h",

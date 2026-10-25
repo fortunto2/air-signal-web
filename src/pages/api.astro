@@ -65,7 +65,7 @@ const CREW_FIELDS: [string, string][] = [
   ["alerts[]", "Active National Weather Service alerts at the point: Red Flag Warning, Heat Advisory…"],
   ["wind[]", "10 m wind by hour: dir_deg (from), kmh"],
   ["fires_near[]", "VIIRS detections within about 150 km, [lat, lon]"],
-  ["dispatch", "sensor: launch | standby, bearing_deg, distance_km, reason: a task for a sensor node when a fire is within 50 km"],
+  ["dispatch", "sensor: launch | standby (a worksite reading is advised | not needed), bearing_deg and distance_km to the nearest fire within 50 km, reason"],
   ["fallback", "Present when the forecast was held at the nearest monitor (upstream down); says which monitor and where temperatures came from"],
 ];
 
