@@ -912,22 +912,22 @@ export async function purgeOldReports(): Promise<void> {
  * `sites` is the place's current key and the one rows were filed under before the key carried the
  * country and state (lib/crew.ts siteKeys), so an old row stays on its board.
  */
-export async function listCrewReports(sites: [string, string], date: string): Promise<CrewReport[]> {
+export async function listCrewReports(sites: [string, string, string], date: string): Promise<CrewReport[]> {
   const { results } = await DB()
-    .prepare("SELECT * FROM crew_reports WHERE site IN (?1, ?2) AND date = ?3 AND app = 'crewair' ORDER BY created_at DESC LIMIT 50")
-    .bind(sites[0], sites[1], date)
+    .prepare("SELECT * FROM crew_reports WHERE site IN (?1, ?2, ?3) AND date = ?4 AND app = 'crewair' ORDER BY created_at DESC LIMIT 50")
+    .bind(sites[0], sites[1], sites[2], date)
     .all<CrewReport>();
   return results;
 }
 
 /** Scoped by site, so an id guessed from another site's page cannot close this one; crew rows only. */
-export async function handleCrewReport(id: number, sites: [string, string], note: string | null): Promise<boolean> {
+export async function handleCrewReport(id: number, sites: [string, string, string], note: string | null): Promise<boolean> {
   const res = await DB()
     .prepare(
-      `UPDATE crew_reports SET status = 'handled', handled_at = ?4, handled_note = ?5
-        WHERE id = ?1 AND site IN (?2, ?3) AND status = 'open' AND app = 'crewair'`,
+      `UPDATE crew_reports SET status = 'handled', handled_at = ?5, handled_note = ?6
+        WHERE id = ?1 AND site IN (?2, ?3, ?4) AND status = 'open' AND app = 'crewair'`,
     )
-    .bind(id, sites[0], sites[1], new Date().toISOString(), note)
+    .bind(id, sites[0], sites[1], sites[2], new Date().toISOString(), note)
     .run();
   return (res.meta.changes ?? 0) > 0;
 }

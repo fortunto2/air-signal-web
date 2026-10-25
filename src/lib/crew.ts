@@ -370,7 +370,8 @@ async function searchPlaces(name: string): Promise<Hit[]> {
 }
 
 const toPlace = (g: Hit, approximate = false, lat = g.latitude, lon = g.longitude): CrewPlace => ({
-  name: approximate ? `near ${g.name}` : [g.name, g.admin1].filter(Boolean).join(", "),
+  // "Fresno, California" at home, "Berlin, Germany" abroad: the state means something only to a US reader.
+  name: approximate ? `near ${g.name}` : [g.name, g.country_code === "US" ? g.admin1 : g.country].filter(Boolean).join(", "),
   town: g.name,
   state: g.admin1 ?? null,
   country: g.country_code ?? null,
@@ -382,9 +383,10 @@ const toPlace = (g: Hit, approximate = false, lat = g.latitude, lon = g.longitud
 
 /**
  * `"36.748,-119.772"` → that coordinate, named after the nearest city in our own database (a reverse
- * geocode, no name search). In the United States the state decides the rulebook and only the geocoder
- * knows it, so a US point also looks its town up and takes the hit closest to it. Elsewhere the zone is
- * left empty and comes back with the forecast (`timezone=auto`).
+ * geocode). The state decides the rulebook in the United States and only the geocoder knows it, so a
+ * point whose country we do not know for sure to be foreign also looks its town up and takes the hit
+ * closest to it (the countries table carries no ISO code yet, so today that is every point). A point in
+ * a country we know is not the US skips the lookup; its zone comes back with the forecast (`timezone=auto`).
  */
 async function fromCoordinates(place: string): Promise<CrewPlace | null | undefined> {
   const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(place);
@@ -397,8 +399,8 @@ async function fromCoordinates(place: string): Promise<CrewPlace | null | undefi
     const name = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
     return { name, town: name, state: null, country: null, tz: "", lat, lon, approximate: true };
   }
-  if (near.country_iso === "US") {
-    const hits = (await searchPlaces(near.name).catch(() => [] as Hit[])).filter((h) => h.country_code === "US");
+  if (near.country_iso === null || near.country_iso === "US") {
+    const hits = await searchPlaces(near.name).catch(() => [] as Hit[]);
     const closest = hits.sort((a, b) => km(lat, lon, a.latitude, a.longitude) - km(lat, lon, b.latitude, b.longitude))[0];
     if (closest) return toPlace(closest, true, lat, lon);
   }
@@ -625,14 +627,17 @@ export function siteKey(place: Pick<CrewPlace, "town" | "state" | "country">): s
   return slug([place.country, place.state, place.town].filter(Boolean).join(" "));
 }
 
-/** The key rows were filed under before it carried the country and state: the bare town. */
-export function legacySiteKey(place: Pick<CrewPlace, "town">): string {
-  return slug(place.town);
+/**
+ * The keys rows were filed under before: the bare town ("fresno"), and before that the town with its
+ * state ("fresno-california"). Both generations exist in the table.
+ */
+export function legacySiteKeys(place: Pick<CrewPlace, "town" | "state">): [string, string] {
+  return [slug(place.town), slug([place.town, place.state].filter(Boolean).join(" "))];
 }
 
-/** Both keys, for reading a board: today's rows and the ones filed before the key changed. */
-export function siteKeys(place: Pick<CrewPlace, "town" | "state" | "country">): [string, string] {
-  return [siteKey(place), legacySiteKey(place)];
+/** Every key a board reads: today's, then the two older generations. */
+export function siteKeys(place: Pick<CrewPlace, "town" | "state" | "country">): [string, string, string] {
+  return [siteKey(place), ...legacySiteKeys(place)];
 }
 
 /** The local hour now in the place's zone, in the forecast's format. */
