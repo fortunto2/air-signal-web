@@ -62,3 +62,45 @@ export function parseObservation(raw: unknown): Observation | null {
   }
   return { kind: kind as ObservationKind, intensity: intensity as Observation["intensity"], observed_at, snapshot };
 }
+
+/** The body of POST /api/report, validated. */
+export interface ObservationRequest {
+  /** Two decimals, about a kilometre: rounded here whatever the client sent. */
+  lat: number;
+  lon: number;
+  observation: Observation & { observed_at: string };
+  /** The sky check's smoke probability, 0–1, when the person attached it. */
+  sky_smoke: number | null;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * `{lat, lon, observation: {kind, intensity, observed_at?}, sky?: {smoke_score}, snapshot?}` → a request,
+ * or a thrown error naming the field. `observed_at` defaults to `now`; a time more than a day old or in
+ * the future is refused, since the evidence is derived for that hour and a plan covers only the day.
+ */
+export function parseObservationRequest(raw: unknown, now = new Date()): ObservationRequest {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new Error("body must be a JSON object");
+  const b = raw as Record<string, unknown>;
+  const lat = Number(b.lat);
+  const lon = Number(b.lon);
+  if (b.lat === undefined || b.lat === null || b.lat === "" || !Number.isFinite(lat) || Math.abs(lat) > 90) throw new Error("lat must be a number between -90 and 90");
+  if (b.lon === undefined || b.lon === null || b.lon === "" || !Number.isFinite(lon) || Math.abs(lon) > 180) throw new Error("lon must be a number between -180 and 180");
+  if (b.observation === undefined || b.observation === null) throw new Error("observation required: {kind, intensity, observed_at?}");
+  // The phone's snapshot may travel beside the observation as well as inside it.
+  const inner = b.observation as Record<string, unknown>;
+  const observation = parseObservation(typeof inner === "object" && inner !== null && !Array.isArray(inner) && inner.snapshot === undefined ? { ...inner, snapshot: b.snapshot } : b.observation)!;
+  const observed_at = observation.observed_at ?? now.toISOString().slice(0, 16) + ":00Z";
+  const t = Date.parse(observed_at);
+  if (t > now.getTime() + 5 * 60_000) throw new Error("observation.observed_at is in the future");
+  if (t < now.getTime() - 36 * 3_600_000) throw new Error("observation.observed_at is more than 36 hours old");
+  let sky_smoke: number | null = null;
+  if (b.sky !== undefined && b.sky !== null) {
+    if (typeof b.sky !== "object" || Array.isArray(b.sky)) throw new Error("sky must be an object {smoke_score}");
+    const s = Number((b.sky as Record<string, unknown>).smoke_score ?? (b.sky as Record<string, unknown>).smoke);
+    if (!Number.isFinite(s) || s < 0 || s > 1) throw new Error("sky.smoke_score must be a number 0–1");
+    sky_smoke = Math.round(s * 1000) / 1000;
+  }
+  return { lat: round2(lat), lon: round2(lon), observation: { ...observation, observed_at }, sky_smoke };
+}

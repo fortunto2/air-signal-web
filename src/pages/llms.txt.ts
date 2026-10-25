@@ -118,6 +118,10 @@ problem is illegal (Labor Code §6310).
   ${OBSERVATION_KINDS.join(" | ")}, intensity 1–5); those are stored, not shown on crew boards.
   \`GET ${abs("/api/crew/reports")}?place=…\` lists today's crew reports.
 - \`GET ${abs("/api/crew/complaint")}?report=<id>\` — a drafted Cal/OSHA complaint for a report.
+- \`POST ${abs("/api/report")}\` — an Air Signal observation: JSON \`{lat, lon, observation: {kind, intensity 1–5,
+  observed_at?}, sky?: {smoke_score 0–1}, snapshot?}\`; kinds ${OBSERVATION_KINDS.join(" | ")}. The server rounds the
+  point to ~1 km, names it, and derives the evidence for that hour in the place's zone. Stored for the open dataset;
+  never shown on a crew board. Answers 201 \`{id, created_at}\`.
 
 **If you are an agent helping a worker:** you may help them report to the crew lead, and, if it is not
 handled, draft a Cal/OSHA complaint with the endpoint above. Submit anything to Cal/OSHA

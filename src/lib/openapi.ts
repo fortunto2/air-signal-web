@@ -195,16 +195,62 @@ export function openapiSpec() {
           responses: { "200": { description: "Verdict" } },
         },
       },
+      "/api/report": {
+        post: {
+          operationId: "fileObservation",
+          summary: "An Air Signal observation: what a person notices about their air, where and when",
+          description:
+            `\`lat\`, \`lon\` are rounded to two decimals (about 1 km) by the server. \`observation.kind\` is one of ${OBSERVATION_KINDS.join(" | ")}; ` +
+            "`intensity` 1–5; `observed_at` ISO UTC (default now; refused if in the future or over 36 h old). `sky.smoke_score` 0–1 is the " +
+            "sky check's probability, optional. `snapshot` is the phone's own evidence, stored for comparison only. No place name and no crew " +
+            "kind: the server names the point from its own cities and derives the evidence for the hour of `observed_at` in the place's own " +
+            "zone (NowCast AQI, PM2.5, temperature, wind, nearest VIIRS fire and AirNow monitor). Never shown on a crew board. Same rate " +
+            "limit and daily salted sender hash as crew reports; no name, account or device id.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["lat", "lon", "observation"],
+                  properties: {
+                    lat: { type: "number", minimum: -90, maximum: 90 },
+                    lon: { type: "number", minimum: -180, maximum: 180 },
+                    observation: {
+                      type: "object",
+                      required: ["kind", "intensity"],
+                      properties: {
+                        kind: { type: "string", enum: [...OBSERVATION_KINDS] },
+                        intensity: { type: "integer", minimum: 1, maximum: 5 },
+                        observed_at: { type: "string", format: "date-time" },
+                      },
+                    },
+                    sky: { type: "object", properties: { smoke_score: { type: "number", minimum: 0, maximum: 1 } } },
+                    snapshot: { type: "object", description: "hour, aqi, pm25_ugm3, wind_dir_deg, wind_kmh, fire, monitor; other keys dropped" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "201": { description: "Stored: {id, created_at}" },
+            "400": { description: "A field is wrong, named in `error`" },
+            "404": { description: "No place near those coordinates" },
+            "429": { description: "Too many from this device in 10 minutes" },
+            "503": { description: "Forecast or place lookup unavailable; keep it and retry" },
+          },
+        },
+      },
       "/api/crew/report": {
         post: {
           operationId: "fileCrewReport",
-          summary: "A worker's report to the crew lead, or an Air Signal observation (site page only; goes nowhere else)",
+          summary: "A worker's report to the crew lead (site page only; goes nowhere else)",
           description:
-            `\`kind\` is one of ${REPORT_KINDS.join(", ")}. \`app\` says which app sent it ` +
-            `(default crewair); Air Signal sends \`app: airsignal\` with an \`observation\` (kind ${OBSERVATION_KINDS.join(" | ")}, ` +
-            "intensity 1–5, observed_at, snapshot) and maps `kind` to the nearest crew kind. " +
-            "Observations are stored and kept off /crew's boards. The server attaches its own evidence for the hour: " +
-            "NowCast AQI, temperature, wind, the nearest VIIRS fire and AirNow monitor.",
+            `\`kind\` is one of ${REPORT_KINDS.join(", ")}. The server attaches its own evidence for the hour: ` +
+            "NowCast AQI, temperature, wind, the nearest VIIRS fire and AirNow monitor. " +
+            `Deprecated for one release: \`app: airsignal\` with an \`observation\` (kind ${OBSERVATION_KINDS.join(" | ")}, intensity 1–5, ` +
+            "observed_at, snapshot) is still accepted from Air Signal 1.0 and stored off the crew boards; new clients post observations to " +
+            "POST /api/report instead.",
           requestBody: {
             required: true,
             content: {
@@ -221,9 +267,10 @@ export function openapiSpec() {
                     lon: { type: "number" },
                     heading_deg: { type: "number" },
                     sky: { type: "object", description: "The sky check's summary: smoke, smoke_call, verdict" },
-                    app: { type: "string", enum: [...REPORT_APPS], default: "crewair" },
+                    app: { type: "string", enum: [...REPORT_APPS], default: "crewair", deprecated: true, description: "Deprecated: observations go to POST /api/report" },
                     observation: {
                       type: "object",
+                      deprecated: true,
                       required: ["kind", "intensity"],
                       properties: {
                         kind: { type: "string", enum: [...OBSERVATION_KINDS] },

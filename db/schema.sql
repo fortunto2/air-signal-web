@@ -221,3 +221,26 @@ CREATE TABLE IF NOT EXISTS grid_co2 (
   updated_at TEXT    NOT NULL,   -- ISO UTC
   PRIMARY KEY (day, hour)
 );
+
+-- observations — Air Signal citizen observations, POST /api/report. See db/migrations/0013_observations.sql.
+CREATE TABLE IF NOT EXISTS observations (
+  id            INTEGER PRIMARY KEY,
+  created_at    TEXT    NOT NULL,          -- ISO UTC, when the server received it
+  observed_at   TEXT    NOT NULL,          -- ISO UTC to the minute, when the person observed it
+  date          TEXT    NOT NULL,          -- the local day at the place, '2026-10-25'
+  hour          TEXT    NOT NULL,          -- the local hour the evidence is for, '2026-10-25T06:00'
+  tz            TEXT    NOT NULL,          -- IANA zone of `date` and `hour`
+  lat           REAL    NOT NULL,          -- two decimals
+  lon           REAL    NOT NULL,
+  site          TEXT    NOT NULL,          -- the nearest place's key (lib/crew.ts siteKey), for grouping
+  kind          TEXT    NOT NULL,          -- smoke_smell | haze | ash | dust | chemical_odour | clear
+  intensity     INTEGER NOT NULL,          -- 1–5
+  sky_smoke     REAL,                      -- the sky check's smoke probability 0–1, if attached
+  snapshot_json TEXT,                      -- the phone's own evidence, kept for comparison only
+  evidence_json TEXT    NOT NULL,          -- the server's evidence for `hour`
+  sender        TEXT    NOT NULL           -- sha-256(ip + day + salt), first 16 hex; erased after 2 days
+);
+
+CREATE INDEX IF NOT EXISTS observations_created ON observations (created_at);
+CREATE INDEX IF NOT EXISTS observations_sender ON observations (sender, created_at);
+CREATE INDEX IF NOT EXISTS observations_site_date ON observations (site, date);

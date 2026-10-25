@@ -22,8 +22,8 @@ of our own, described below.
 A report carries no name, account, device identifier or install code, and no photo. The rate-limit code
 changes every day, so two reports from different days cannot be linked to each other through it.
 
-Reports are sent to the same service as Crew Air's and, today, appear on the airsignal.app page for that
-area and day, which anyone with the link can open: kind, strength and time, not your coordinates.
+Reports go to the same service as Crew Air's but into their own table; they are not shown on the Crew Air
+pages for an area, and nothing is published yet (see Open data below).
 
 ## Usage counter
 

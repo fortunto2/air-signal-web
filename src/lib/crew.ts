@@ -16,6 +16,7 @@ import { slug } from "./site";
 import { getNearbyCities, type ReportKind } from "./db";
 import { typicalGridCo2, type GridCo2 } from "./grid-co2";
 import { median } from "./stats";
+import { evidenceAt } from "./evidence";
 import { PACIFIC, localDay, localHour as hourIn, localHourNumber } from "./tz";
 
 /** The zone a plan falls back to when a place has none: California's, where the rulebook is from. */
@@ -650,18 +651,7 @@ export function nowHour(tz = CREW_TZ): string {
  * "it was smoky" arrives with the NowCast, the nearest satellite fire and the ground monitor.
  */
 export function evidenceFor(answer: CrewAnswer, at = nowHour(answer.place.tz)) {
-  const hour = answer.plan.hours.find((h) => h.time === at) ?? null;
-  const wind = answer.wind.find((w) => w.time === at) ?? null;
-  return {
-    place: answer.place,
-    hour: at,
-    metrics: hour?.metrics ?? null,
-    /** 10 m wind that hour, °from and km/h: which way the smoke someone smelled was coming from. */
-    wind: wind ? { dir_deg: wind.dir_deg, kmh: wind.kmh } : null,
-    confidence: answer.plan.confidence.level,
-    fire: answer.plan.confidence.fire,
-    ground: answer.plan.confidence.ground,
-  };
+  return evidenceAt(answer, at);
 }
 
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];

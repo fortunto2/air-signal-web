@@ -895,16 +895,57 @@ export async function addCrewReport(r: {
 }
 
 /**
- * Retention the privacy page promises: the rate-limit hash is erased after 2 days (an IPv4 hash with a
- * fixed salt can be brute-forced, so it is pseudonymous data), raw reports are deleted after 24 months.
- * Both statements use `crew_reports_created` (migration 0010), so they read only the rows they touch.
+ * Retention the privacy pages promise, for crew reports and observations alike: the rate-limit hash is
+ * erased after 2 days (an IPv4 hash with a fixed salt can be brute-forced, so it is pseudonymous data),
+ * raw rows are deleted after 24 months. Every statement leads with `created_at` on an indexed column
+ * (migrations 0010, 0013), so each reads only the rows it touches.
  */
 export async function purgeOldReports(): Promise<void> {
   const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
   await DB().batch([
     DB().prepare("UPDATE crew_reports SET sender = '' WHERE created_at < ?1 AND sender != ''").bind(daysAgo(2)),
     DB().prepare("DELETE FROM crew_reports WHERE created_at < ?1").bind(daysAgo(730)),
+    DB().prepare("UPDATE observations SET sender = '' WHERE created_at < ?1 AND sender != ''").bind(daysAgo(2)),
+    DB().prepare("DELETE FROM observations WHERE created_at < ?1").bind(daysAgo(730)),
   ]);
+}
+
+// ── observations — Air Signal's citizen observations, POST /api/report ───────────────────────────
+
+/** How many observations this sender made in the last `minutes`; the same 10-per-10-minutes limit as reports. */
+export async function countRecentObservations(sender: string, minutes = 10): Promise<number> {
+  const since = new Date(Date.now() - minutes * 60_000).toISOString();
+  const row = await DB()
+    .prepare("SELECT COUNT(*) AS n FROM observations WHERE sender = ?1 AND created_at >= ?2")
+    .bind(sender, since)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+export async function addObservation(o: {
+  observed_at: string;
+  date: string;
+  hour: string;
+  tz: string;
+  lat: number;
+  lon: number;
+  site: string;
+  kind: string;
+  intensity: number;
+  sky_smoke: number | null;
+  snapshot: unknown | null;
+  evidence: unknown;
+  sender: string;
+}): Promise<{ id: number; created_at: string }> {
+  const created_at = new Date().toISOString();
+  const row = await DB()
+    .prepare(
+      `INSERT INTO observations (created_at, observed_at, date, hour, tz, lat, lon, site, kind, intensity, sky_smoke, snapshot_json, evidence_json, sender)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) RETURNING id`,
+    )
+    .bind(created_at, o.observed_at, o.date, o.hour, o.tz, o.lat, o.lon, o.site, o.kind, o.intensity, o.sky_smoke, o.snapshot ? JSON.stringify(o.snapshot) : null, JSON.stringify(o.evidence), o.sender)
+    .first<{ id: number }>();
+  return { id: row!.id, created_at };
 }
 
 /**
