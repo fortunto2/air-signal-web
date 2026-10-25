@@ -71,7 +71,7 @@ export const POST: APIRoute = async ({ request, clientAddress, locals }) => {
   // claims they said. Today, all 24 hours, because a report is about now, maybe outside the shift.
   let answer;
   try {
-    answer = await crewPlanAt(at, crewDate(0), ALL_DAY);
+    answer = await crewPlanAt(at, crewDate(0, at.tz), ALL_DAY, { gridCo2: false });
   } catch (e) {
     return fail(`forecast unavailable, try again: ${(e as Error).message}`, 503);
   }

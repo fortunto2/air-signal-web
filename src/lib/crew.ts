@@ -501,8 +501,11 @@ export async function planFromQuery(url: URL): Promise<PlanQuery> {
   }
 }
 
-/** The plan for a place already resolved, so callers that also need the site key geocode once. */
-export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Promise<CrewAnswer> {
+/**
+ * The plan for a place already resolved, so callers that also need the site key geocode once.
+ * `gridCo2: false` skips the D1 read for callers that discard it (a report's evidence).
+ */
+export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts: { gridCo2?: boolean } = {}): Promise<CrewAnswer> {
   // A day of history so the first shift hour has the 12 hours a NowCast needs.
   const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(CREW_TZ)}`;
   const tz = at.tz;
@@ -514,7 +517,7 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift): Pro
     nwsAlerts(at.lat, at.lon),
     // CAISO runs California's grid; a plan for Oregon says nothing about its carbon. A D1 hiccup
     // costs the column, never the plan.
-    at.state === "California" ? typicalGridCo2(crewDate(0)).catch(() => null) : Promise.resolve(null),
+    opts.gridCo2 !== false && at.state === "California" ? typicalGridCo2(crewDate(0)).catch(() => null) : Promise.resolve(null),
   ]);
   let hours: { time: string; pm25: number | null; temp_c: number | null }[];
   let fallback: CrewAnswer["fallback"];

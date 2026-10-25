@@ -950,10 +950,32 @@ export async function upsertGridCo2(day: string, rows: Omit<GridCo2Row, "day">[]
   await DB().batch(rows.map((r) => stmt.bind(day, r.hour, r.g_per_kwh, r.samples, now)));
 }
 
-/** The days the table holds, newest first; the cron fills the recent ones it lacks. */
-export async function listGridCo2Days(): Promise<string[]> {
-  const { results } = await DB().prepare("SELECT DISTINCT day FROM grid_co2 ORDER BY day DESC").all<{ day: string }>();
-  return results.map((r) => r.day);
+/**
+ * What the table holds for the last `days` days: how complete each day is (its 5-minute samples over
+ * all hours, 288 when whole) and when its history file last failed, if it did. A failed day is the one
+ * marker row the table carries: hour -1, no samples, so every reader that wants data filters it out.
+ */
+export async function listGridCo2Days(today: string, days = 8): Promise<{ day: string; samples: number; failed_at: string | null }[]> {
+  const { results } = await DB()
+    .prepare(
+      `SELECT day, SUM(CASE WHEN hour >= 0 THEN samples ELSE 0 END) AS samples,
+              MAX(CASE WHEN hour = -1 THEN updated_at END) AS failed_at
+       FROM grid_co2 WHERE day > date(?1, ?2) AND day <= ?1 GROUP BY day ORDER BY day DESC`,
+    )
+    .bind(today, `-${days} days`)
+    .all<{ day: string; samples: number; failed_at: string | null }>();
+  return results;
+}
+
+/** Remember that a day's history file could not be read, so the cron retries it a day later, not every run. */
+export async function markGridCo2DayFailed(day: string): Promise<void> {
+  await DB()
+    .prepare(
+      `INSERT INTO grid_co2 (day, hour, g_per_kwh, samples, updated_at) VALUES (?1, -1, 0, 0, ?2)
+       ON CONFLICT (day, hour) DO UPDATE SET updated_at = excluded.updated_at`,
+    )
+    .bind(day, new Date().toISOString())
+    .run();
 }
 
 /** Retention: nothing older than `keepDays` before `today`. */
@@ -961,11 +983,11 @@ export async function pruneGridCo2(today: string, keepDays = 14): Promise<void> 
   await DB().prepare("DELETE FROM grid_co2 WHERE day < date(?1, ?2)").bind(today, `-${keepDays} days`).run();
 }
 
-/** The last `days` days of hourly rows, for the typical-hour median. Asked once per isolate per half hour. */
-export const getGridCo2Recent = memo(HOUR / 2, async (today: string, days = 7): Promise<GridCo2Row[]> => {
+/** The last `days` days of hourly rows, for the typical-hour median; marker rows left out. */
+export async function getGridCo2Recent(today: string, days = 7): Promise<GridCo2Row[]> {
   const { results } = await DB()
-    .prepare("SELECT day, hour, g_per_kwh, samples FROM grid_co2 WHERE day > date(?1, ?2) AND day <= ?1 ORDER BY day, hour")
+    .prepare("SELECT day, hour, g_per_kwh, samples FROM grid_co2 WHERE day > date(?1, ?2) AND day <= ?1 AND hour >= 0 ORDER BY day, hour")
     .bind(today, `-${days} days`)
     .all<GridCo2Row>();
   return results;
-});
+}

@@ -6,7 +6,7 @@
 -- "typical", a pattern, never a forecast. The one table the Worker writes besides crew_reports.
 CREATE TABLE IF NOT EXISTS grid_co2 (
   day        TEXT    NOT NULL,   -- CAISO's day, Pacific, '2026-10-24'
-  hour       INTEGER NOT NULL,   -- 0–23, Pacific
+  hour       INTEGER NOT NULL,   -- 0–23, Pacific; -1 marks a day whose history file failed (samples 0)
   g_per_kwh  REAL    NOT NULL,   -- mean of the hour's 5-minute intensities
   samples    INTEGER NOT NULL,   -- how many 5-minute rows the mean has (12 when complete)
   updated_at TEXT    NOT NULL,   -- ISO UTC

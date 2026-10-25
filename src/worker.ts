@@ -11,7 +11,14 @@ export default {
   scheduled(_controller: ScheduledController, _env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
       refreshGridCo2()
-        .then((r) => console.log(`grid_co2: ${r.today} ${r.hours} hours${r.backfilled.length ? `, backfilled ${r.backfilled.join(" ")}` : ""}`))
+        .then((r) =>
+          console.log(
+            `grid_co2: ${r.today} ${r.hours} hours written` +
+              (r.backfilled.length ? `, backfilled ${r.backfilled.join(" ")}` : "") +
+              (r.failed.length ? `, failed ${r.failed.join(" ")}` : "") +
+              (r.pruned ? ", pruned" : ""),
+          ),
+        )
         .catch((e: Error) => console.error(`grid_co2: ${e.message}`)),
     );
   },
