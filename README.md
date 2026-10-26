@@ -14,12 +14,19 @@ by how much and resolves it rather than averaging. In Moscow the model said 130 
 agreed on 6.7, and the answer is 6.2 — the average would have been 68, and 68 was never true
 anywhere.
 
+[airsignal.app/crew](https://airsignal.app/crew) is **Crew Air**: an hour-by-hour shift plan for an
+outdoor crew under California's wildfire-smoke rule (Cal/OSHA §5141.1) and heat rule (§3395). It
+recomputes the EPA NowCast from hourly PM2.5, checks it against the nearest AirNow monitor and NASA
+VIIRS fires, takes crew reports and sky photos, and prints the record an inspector asks for. Built at
+the Stanford Cleantech Hackathon, October 2026.
+
 ## How it is built
 
 - **Astro 6**, `output: "server"`, on Cloudflare **Workers**
-- **D1** for everything, read by the worker and written only by `cli/`
+- **D1** for everything. `cli/` writes the city and sensor data; the worker writes only what people
+  send it: crew and air reports
 - **[airq-core](https://github.com/fortunto2/airq)** (Rust → WASM) for the scoring curves, the
-  sensor/model merge and the source attribution
+  sensor/model merge, the source attribution and the crew plans (`wasm_crew_plan`)
 - **MapLibre GL** over CARTO Positron
 - No tracking beyond a page counter, no ads, no account
 
