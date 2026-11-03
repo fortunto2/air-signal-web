@@ -1,4 +1,6 @@
 ---
+import Analytics from "superduper-site-kit/astro/Analytics.astro";
+import LegalFooter from "superduper-site-kit/astro/LegalFooter.astro";
 import { SITE, DEFAULT_LANG, LANGS, EMBED_SAMPLE, abs, paths } from "../lib/site";
 import "../styles/tokens.css";
 import "../styles/components.css";
@@ -234,7 +236,7 @@ const graph = [
           <a href={SITE.repo}>Source</a>, AGPL-3.0
         </span>
         <span>
-          <a href={paths.privacy()}>Privacy</a>
+          <a href={paths.privacy()}>Privacy</a> · <a href={paths.support()}>Support</a>
         </span>
         {
           updatedAt && (
@@ -257,6 +259,7 @@ const graph = [
         against the model where they disagree — <a href={SITE.repo}>the maths is open</a>, and so
         is the code.
       </p>
+      <LegalFooter class="legal-line" />
     </footer>
 
     <script is:inline>
@@ -277,6 +280,6 @@ const graph = [
       Analytics is deferred and self-hosted: the page's promise is that the reading is already on
       screen, and nothing third-party gets to run before it.
     -->
-    <script is:inline defer src={SITE.analytics.src} data-source={SITE.analytics.source}></script>
+    <Analytics source={SITE.analytics.source} script={SITE.analytics.src} />
   </body>
 </html>

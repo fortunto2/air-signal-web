@@ -1,13 +1,14 @@
 ---
 /**
- * Air Signal privacy policy, the App Store's privacy URL for the Air Signal iOS app. The text lives
- * in src/content/airsignal/privacy.md, copied from air-signal-ios/legal/airsignal/, so the page and
- * the App Store answers are written from one document. Crew Air's is /crew/privacy.
+ * Air Signal privacy policy, the App Store's privacy URL for the Air Signal iOS app. Rendered from
+ * superduper-site-kit's product registry (registry/products/air-signal.yaml), the one copy of the
+ * facts, audited against the app's code; superduperai.co/products/air-signal/privacy/ 301s here.
+ * Crew Air's is /crew/privacy.
  */
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
 import { SITE, paths } from "../lib/site";
-import { Content as Privacy } from "../content/airsignal/privacy.md";
+import PrivacyPolicy from "superduper-site-kit/astro/PrivacyPolicy.astro";
 ---
 
 <Layout title={`Air Signal privacy — ${SITE.name}`} description="What the Air Signal app collects (no account, no tracking, one usage counter), how long it keeps it, and your rights." path={paths.privacy()} pitch={false}>
@@ -15,7 +16,7 @@ import { Content as Privacy } from "../content/airsignal/privacy.md";
     <div class="app">
       <Bar />
       <article class="legal">
-        <Privacy />
+        <PrivacyPolicy slug="air-signal" supportHref={paths.support()} />
         <p class="legal-cross">Crew Air, the sister app for outdoor crews, has its own: <a href={paths.crewPrivacy()}>Crew Air privacy and terms</a>.</p>
       </article>
     </div>

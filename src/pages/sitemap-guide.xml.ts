@@ -25,6 +25,8 @@ export const GET: APIRoute = async () => {
     // The two apps' App Store privacy URLs. Rarely change; indexed so the store's link resolves to a known page.
     { loc: paths.privacy(), priority: "0.3" },
     { loc: paths.crewPrivacy(), priority: "0.3" },
+    { loc: paths.support(), priority: "0.3" },
+    { loc: paths.crewSupport(), priority: "0.3" },
     { loc: "/", priority: "1.0" },
   ];
 

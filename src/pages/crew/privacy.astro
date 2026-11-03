@@ -1,12 +1,13 @@
 ---
 /**
- * Crew Air privacy policy. The text lives in src/content/crew/privacy.md, copied from the hackathon
- * repo's legal/ folder, so the page and the App Store answers are written from one document.
+ * Crew Air privacy policy and terms. The policy renders from superduper-site-kit's product registry
+ * (registry/products/crew-air.yaml, audited against the app's code); the terms stay here in
+ * src/content/crew/terms.md.
  */
 import Layout from "../../layouts/Layout.astro";
 import Bar from "../../components/Bar.astro";
-import { SITE } from "../../lib/site";
-import { Content as Privacy } from "../../content/crew/privacy.md";
+import { SITE, paths } from "../../lib/site";
+import PrivacyPolicy from "superduper-site-kit/astro/PrivacyPolicy.astro";
 import { Content as Terms } from "../../content/crew/terms.md";
 ---
 
@@ -15,7 +16,7 @@ import { Content as Terms } from "../../content/crew/terms.md";
     <div class="app">
       <Bar />
       <article class="legal">
-        <Privacy />
+        <PrivacyPolicy slug="crew-air" supportHref={paths.crewSupport()} />
         <hr />
         <Terms />
       </article>

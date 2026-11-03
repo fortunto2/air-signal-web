@@ -111,6 +111,10 @@ export const paths = {
   crewPrivacy: () => `/crew/privacy`,
   /** Air Signal's privacy policy; the Air Signal app's App Store privacy URL. Static, wins over `[country]`. */
   privacy: () => `/privacy`,
+  /** Air Signal support (superduper-site-kit); the App Store support URL. */
+  support: () => `/support`,
+  /** Crew Air support; Crew Air's App Store support URL. */
+  crewSupport: () => `/crew/support`,
   /**
    * The guide. `/guide` is the index; `/guide/<signal>` is one signal explained at length.
    *

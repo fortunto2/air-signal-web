@@ -1,0 +1,24 @@
+---
+/** Air Signal support: contact and common questions, from superduper-site-kit's product registry. */
+import Layout from "../layouts/Layout.astro";
+import Bar from "../components/Bar.astro";
+import Support from "superduper-site-kit/astro/Support.astro";
+import { SITE, paths } from "../lib/site";
+---
+
+<Layout title={`Air Signal support — ${SITE.name}`} description="Help with Air Signal: contact, common questions, privacy policy." path={paths.support()} pitch={false}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar />
+      <div class="legal">
+        <Support slug="air-signal" privacyHref={paths.privacy()} homeHref="/" cardClass="box" />
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .legal { padding: 24px 20px 40px; max-width: 78ch; font-size: 15px; line-height: 1.55; }
+  .legal :global(a) { color: var(--accent); }
+  .legal :global(.box) { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+</style>

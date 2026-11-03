@@ -22,6 +22,9 @@
   --surface-2: #e7eaee;
   --line: #d3d9df;
   --line-soft: #e3e7eb;
+  /* superduper-site-kit components (policy, support, legal line) */
+  --sdk-muted: var(--ink-2);
+  --sdk-border: var(--line);
   --ink: #12171c;
   --ink-2: #454f59;
   --ink-3: #6c7883;
