@@ -137,7 +137,14 @@ has real numbers, and gating cities on sensors would delete the entire non-Europ
   and the only symptom is a blank map under a permanent "Loading sensors…". No error is raised.
 - **Every hour in a crew answer is in the place's own zone** (`place.tz`, from the geocoder or Open-Meteo's
   `timezone=auto` for bare coordinates). The CAISO cron alone is pinned to Pacific (`PACIFIC` in `src/lib/tz.ts`).
-  Outside California the engine runs with an empty rulebook (`src/lib/jurisdiction.ts`): `plan.jurisdiction` null,
-  `actions` empty, `home` null. A second rulebook is one line there plus its JSON in airq-core.
+  Two rulebooks (`src/lib/jurisdiction.ts`): Turkey by country (`TR`, airq-core `rulebooks/tr.json`, Turkish and
+  English texts, every rule labelled `law` or `guidance`) and California by state. Elsewhere `plan.jurisdiction` is
+  null, `actions` empty, `home` null. A new rulebook is one line there plus its JSON in airq-core. Turkish pages live
+  under `/tr` (`docs/turkey.md`).
+- **Open-Meteo refuses the Worker by IP, not by our traffic.** The free quota is 10 000 calls a day per source IP
+  and the Worker shares its egress IP with every tenant on the colo: on 3 Nov 2026 `/api/crew` for Antalya got
+  429 all day. Crew forecasts go through `src/lib/upstream-cache.ts` (isolate coalescing, colo cache per hour,
+  KV `UPSTREAM` last-good for 48 h) on a 0.05° cell, and `warm-crew` (CLI + `.github/workflows/warm-crew.yml`)
+  fills KV for the Turkish towns from GitHub's IP. The city pages (`live.ts`) still call Open-Meteo directly.
 - **Deploy with `make deploy`.** The adapter copies `wrangler.jsonc` into `dist/server/wrangler.json`
   at build time and wrangler reads *that*, so a bare `wrangler deploy` ships the previous config.

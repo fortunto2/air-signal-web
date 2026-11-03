@@ -1,0 +1,133 @@
+---
+/**
+ * /tr: Air Signal and Crew Air for Turkey, in Turkish. The towns with their own page, the planner,
+ * and the rulebook printed from the same data the plans run on (`core().wasm_rulebook("TR")`), so the
+ * page cannot cite a threshold the engine does not use.
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import { SITE } from "../../lib/site";
+import { core } from "../../lib/core";
+import { TR_PLACES } from "../../lib/tr-places";
+import { TR_BANDS } from "../../lib/tr-index";
+
+interface Rule { id: string; group: string; metric: string; gte: number; action: string; cite: string; basis?: string }
+interface Source { id: string; title: string; url: string; basis: string; note?: string }
+const book = JSON.parse(core().wasm_rulebook("TR", "tr")) as { name: string; rules: Rule[]; sources?: Source[]; note?: string };
+
+const METRIC: Record<string, [string, string]> = {
+  heat_index_c: ["Hissedilen sıcaklık", "°C"],
+  temp_c: ["Hava sıcaklığı", "°C"],
+  pm10_24h_ugm3: ["PM10, 24 saat ortalaması", "µg/m³"],
+  pm25_24h_ugm3: ["PM2.5, 24 saat ortalaması", "µg/m³"],
+  pm25_nowcast_ugm3: ["PM2.5, son saatler (NowCast)", "µg/m³"],
+  pm10_ugm3: ["PM10, saatlik", "µg/m³"],
+};
+const threshold = (r: Rule) => {
+  const [name, unit] = METRIC[r.metric] ?? [r.metric, ""];
+  return `${name} ≥ ${r.gte.toLocaleString("tr-TR")} ${unit}`;
+};
+// Placeholders are filled from the forecast at plan time; on the list they read as "the value".
+const plain = (t: string) => t.replace(/\{value\}/g, "X").replace(/\{aqi\}/g, "X");
+Astro.response.headers.set("cache-control", "public, max-age=600, s-maxage=3600");
+
+const description =
+  "Antalya ve ilçelerinde tarla, sera ve şantiye ekipleri için saatlik sıcak ve hava kalitesi planı. " +
+  "Eşikler Türkiye kaynaklarından, her biri yasa mı öneri mi diye işaretli.";
+---
+
+<Layout title={`Air Signal Türkiye: saha ekipleri için sıcak ve hava | ${SITE.name}`} description={description} path="/tr" lang="tr" alternates={[{ lang: "en", path: "/crew" }]} pitch={false}>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar search="Şehir ara" lang="tr" />
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">Air Signal · Crew Air · Türkiye</div>
+        <h1 style="font-size:28px;margin:5px 0 0">Tarlada, serada ve şantiyede bugün hangi saatler riskli</h1>
+        <p class="lede" style="margin-top:12px;font-size:15.5px">
+          Saatlik tahminden hissedilen sıcaklığı ve havadaki tozu (PM2.5, PM10) hesaplıyoruz, Türkiye'deki resmi
+          eşiklerle karşılaştırıyoruz ve vardiya için bir plan çıkarıyoruz: hangi saatte gölge ve su, hangi saatte
+          ağır işe ara, hangi saatler ağır iş için uygun. Ücretsiz, kayıt gerekmez.
+        </p>
+        <p style="margin-top:14px"><a class="trx-cta" href="/tr/crew">Vardiyamı planla</a></p>
+      </div>
+
+      <div class="trx-block">
+        <div class="eyebrow">Antalya ve ilçeleri</div>
+        <ul class="trx-towns">
+          {TR_PLACES.map((p) => (
+            <li><a href={`/tr/${p.slug}`}><b>{p.name}</b></a><span>{p.work}</span></li>
+          ))}
+        </ul>
+        <p class="trx-small">Başka bir yer için <a href="/tr/crew">planlayıcıya</a> şehir adını ya da koordinatı yazın.</p>
+      </div>
+
+      <div class="trx-block" id="kurallar">
+        <div class="eyebrow">Kurallar · {book.rules.length} eşik</div>
+        <p class="trx-small" style="margin-top:6px">
+          Bir kural <b>yasal eşik</b> ise bir mevzuat maddesi o sayıyı koyuyor demektir. <b>Öneri</b> ise bir bakanlık ya da kamu
+          kurumunun tavsiyesidir, yasal bağlayıcılığı yoktur. Türkiye'de açık havada çalışma için sayısal bir sıcaklık sınırı
+          koyan bir mevzuat bulamadık. İşveren 6331 sayılı Kanun'a göre risk değerlendirmesi yapmak ve çalışanı korumakla
+          yükümlüdür; çalışan ciddi ve yakın tehlike karşısında, önlem alınana kadar çalışmaktan kaçınabilir (md. 13).
+        </p>
+        <div style="overflow-x:auto">
+          <table class="trx-rules">
+            <thead><tr><th>Eşik</th><th>Ne yapılır</th><th>Dayanak</th><th>Kaynak</th></tr></thead>
+            <tbody>
+              {book.rules.map((r) => (
+                <tr>
+                  <td class="num">{threshold(r)}</td>
+                  <td>{plain(r.action)}</td>
+                  <td>{r.basis === "guidance" ? "öneri" : "yasal eşik"}</td>
+                  <td class="trx-cite">{r.cite}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="trx-small">
+          Hava kalitesi indeksi bantları:{TR_BANDS.map((b, k) => <span class={`fg-${b.band}`}>{k ? " · " : " "}{b.label} ({b.lo}–{b.hi})</span>)}.
+        </p>
+        {book.sources && book.sources.length > 0 && (
+          <>
+            <div class="eyebrow" style="margin-top:16px">Kaynaklar</div>
+            <ol class="trx-sources">
+              {book.sources.map((s) => (
+                <li><a href={s.url}>{s.title}</a> · {s.basis === "law" ? "mevzuat" : "resmi öneri"}{s.note ? `. ${s.note}` : ""}</li>
+              ))}
+            </ol>
+          </>
+        )}
+        {book.note && <p class="trx-small">{book.note}</p>}
+      </div>
+
+      <div class="trx-block">
+        <div class="eyebrow">Veri nereden geliyor</div>
+        <p class="trx-small" style="margin-top:6px">
+          Sıcaklık, nem, rüzgâr ve PM2.5/PM10 tahmini: Open-Meteo (Avrupa CAMS modeli). Open-Meteo yanıt vermezse son
+          48 saatin kayıtlı tahmini, o da yoksa sıcaklık için MET Norway. Orman yangını: NASA FIRMS uydu tespitleri, son 24 saat.
+          Bakanlığın ölçüm istasyonları (havaizleme.gov.tr) henüz yok: açık bir API ya da kullanım koşulları yayımlanmamış ve site
+          Türkiye dışından yanıt vermiyor. İzin alınabilirse Antalya'nın 8 istasyonu (Alanya, Gazipaşa, Kepez, Kumluca, Manavgat,
+          Muratpaşa, Serik, Trafik) kaynağıyla birlikte eklenecek.
+          Kaliforniya kuralları (Cal/OSHA) <a href="/crew?place=Fresno" hreflang="en">örnek olarak</a> duruyor.
+          Bu bir planlama aracıdır, hukuki görüş değildir.
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .trx-block { padding: 16px 20px 20px; border-top: 1px solid var(--line-soft); }
+  .trx-cta { display: inline-block; background: var(--accent); color: var(--surface); padding: 9px 14px; border-radius: var(--radius); text-decoration: none; font-weight: 560; }
+  .trx-towns { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 22px; }
+  .trx-towns li { display: flex; flex-direction: column; gap: 2px; }
+  .trx-towns span { font-size: 13px; color: var(--ink-3); }
+  .trx-small { font-size: 13.5px; color: var(--ink-2); margin-top: 10px; max-width: 90ch; }
+  .trx-rules { border-collapse: collapse; width: 100%; font-size: 13.5px; margin-top: 12px; }
+  .trx-rules th { text-align: left; font-weight: 520; color: var(--ink-3); font-size: 12px; padding: 6px 10px 6px 0; }
+  .trx-rules td { padding: 7px 10px 7px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
+  .trx-rules td.num { white-space: nowrap; }
+  .trx-cite { color: var(--ink-3); font-size: 12.5px; }
+  .trx-sources { font-size: 13px; color: var(--ink-2); padding-left: 18px; margin-top: 8px; display: grid; gap: 4px; }
+</style>

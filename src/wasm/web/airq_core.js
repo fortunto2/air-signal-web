@@ -119,7 +119,8 @@ export function wasm_comfort_score(json) {
  * the clear window for heavy work, and the BMS signal for the same day.
  *
  * Input: `{"hours":[{"time":"2026-10-24T13:00","pm25":80,"temp_c":28}],"date":"2026-10-24",
- * "start":7,"end":17}`, optionally `"rulebook":{...}` (California's is the default) and the
+ * "start":7,"end":17}`, optionally `"rulebook":{...}` or `"jurisdiction":"TR"` (California's is the
+ * default), `"lang":"tr"`, `"rh"`/`"pm10"` per hour, and the
  * checks: `"lat","lon","fires":[[lat,lon]],"ground":{time,pm25,stations,nearest,nearest_km}`.
  * Hours should start a day early so the NowCast has its history. Returns `crew::ShiftPlan`.
  * @param {string} json
@@ -582,6 +583,30 @@ export function wasm_progress_bar(score) {
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
         wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * An embedded rulebook as JSON (`"US-CA"`, `"TR"`), localized when `lang` is not empty, so a page
+ * can print the rules and their sources from the same data the plan runs on.
+ * @param {string} id
+ * @param {string} lang
+ * @returns {string}
+ */
+export function wasm_rulebook(id, lang) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(lang, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasm_rulebook(ptr0, len0, ptr1, len1);
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
 }
 

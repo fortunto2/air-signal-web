@@ -38,6 +38,7 @@ export interface AirqExtras {
   wasm_moon_phase(year: number, month: number, day: number): number;
   wasm_merge(json: string): string;
   wasm_crew_plan(json: string): string;
+  wasm_rulebook(id: string, lang: string): string;
 }
 
 let ready = false;

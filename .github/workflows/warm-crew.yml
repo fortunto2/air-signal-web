@@ -1,0 +1,27 @@
+name: warm-crew
+
+# Open-Meteo's answers for the Turkish towns into the worker's KV fallback, from GitHub's IP rather
+# than Cloudflare's shared one (cli/warm-crew.ts). 20 calls a run; every 6 hours keeps the stored
+# forecast under 6 h old, well inside the 48 h it is kept.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The token needs Workers KV Storage: Edit on top of the D1 permission the ingest uses.
+      - run: pnpm exec tsx cli/main.ts warm-crew --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

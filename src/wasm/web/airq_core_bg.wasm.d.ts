@@ -33,6 +33,7 @@ export const wasm_overall_aqi: (a: number, b: number) => number;
 export const wasm_pollen_status: (a: number, b: number) => [number, number];
 export const wasm_pollutant_status: (a: number, b: number, c: number) => [number, number];
 export const wasm_progress_bar: (a: number) => [number, number];
+export const wasm_rulebook: (a: number, b: number, c: number, d: number) => [number, number];
 export const wasm_signal_comfort: (a: number, b: number) => [number, number];
 export const wasm_signal_vector: (a: number, b: number) => [number, number];
 export const wasm_signal_weights: () => [number, number];

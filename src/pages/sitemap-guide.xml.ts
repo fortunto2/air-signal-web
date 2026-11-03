@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { ARTICLES } from "../lib/guide";
 import { abs, paths } from "../lib/site";
+import { TR_PLACES } from "../lib/tr-places";
 
 /**
  * The guide and the other pages that are not a place.
@@ -28,6 +29,10 @@ export const GET: APIRoute = async () => {
     { loc: paths.support(), priority: "0.3" },
     { loc: paths.crewSupport(), priority: "0.3" },
     { loc: "/", priority: "1.0" },
+    // Turkey, in Turkish: the landing, the planner and one page per town in tr-places.ts.
+    { loc: "/tr", priority: "0.9" },
+    { loc: "/tr/crew", priority: "0.8" },
+    ...TR_PLACES.map((p) => ({ loc: `/tr/${p.slug}`, priority: "0.7" })),
   ];
 
   const body =

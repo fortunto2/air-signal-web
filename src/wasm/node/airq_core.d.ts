@@ -51,7 +51,8 @@ export function wasm_comfort_score(json: string): string;
  * the clear window for heavy work, and the BMS signal for the same day.
  *
  * Input: `{"hours":[{"time":"2026-10-24T13:00","pm25":80,"temp_c":28}],"date":"2026-10-24",
- * "start":7,"end":17}`, optionally `"rulebook":{...}` (California's is the default) and the
+ * "start":7,"end":17}`, optionally `"rulebook":{...}` or `"jurisdiction":"TR"` (California's is the
+ * default), `"lang":"tr"`, `"rh"`/`"pm10"` per hour, and the
  * checks: `"lat","lon","fires":[[lat,lon]],"ground":{time,pm25,stations,nearest,nearest_km}`.
  * Hours should start a day early so the NowCast has its history. Returns `crew::ShiftPlan`.
  */
@@ -183,6 +184,12 @@ export function wasm_pollen_status(json: string): string;
 export function wasm_pollutant_status(pollutant: string, value: number): string;
 
 export function wasm_progress_bar(score: number): string;
+
+/**
+ * An embedded rulebook as JSON (`"US-CA"`, `"TR"`), localized when `lang` is not empty, so a page
+ * can print the rules and their sources from the same data the plan runs on.
+ */
+export function wasm_rulebook(id: string, lang: string): string;
 
 /**
  * Search cities by name prefix. Returns JSON array of {name, country, lat, lon}.

@@ -33,6 +33,11 @@
     }
   ],
 
+  // The last good answer from each Open-Meteo request, by grid cell, kept 48 h: what a plan falls
+  // back to when Open-Meteo refuses the shared Cloudflare egress IP for the rest of the day (429,
+  // seen 3 Nov 2026 on /api/crew for Antalya). src/lib/upstream-cache.ts.
+  "kv_namespaces": [{ "binding": "UPSTREAM", "id": "1878ed5b1eef4bbfa807d51e6ce6b118" }],
+
   "observability": { "enabled": true },
 
   // The domain is the product name; workers.dev stays off so there is exactly one indexable host

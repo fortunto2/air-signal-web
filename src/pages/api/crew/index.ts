@@ -4,7 +4,7 @@ import { jsonReply } from "../../../lib/http";
 
 /**
  * The crew plan as JSON, and the BMS signal inside it: `plan.bms.recirculate_at` is the hour a
- * building's air handler should close outside air. `?place=Fresno&date=2026-10-24&shift=07-17`.
+ * building's air handler should close outside air. `?place=Antalya&shift=07-17&lang=tr`; Turkish places get the TR rulebook.
  */
 export const GET: APIRoute = async ({ url }) => {
   const q = await planFromQuery(url);

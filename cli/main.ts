@@ -32,6 +32,7 @@ import * as up from "./upstreams.ts";
 import { query } from "./d1.ts";
 import { backfill } from "./backfill.ts";
 import { computeCpf } from "./cpf.ts";
+import { warmCrew } from "./warm-crew.ts";
 import { SIGNALS, comfortBand } from "../src/lib/site.ts";
 
 // ── flags ───────────────────────────────────────────────────────────────────
@@ -244,6 +245,7 @@ const usage = `usage: tsx cli/main.ts <command> [flags]
   cpf [--month YYYY-MM]       which direction the dirty hours blow from (needs backfill archives)
   comfort <lat> <lon>         the fourteen signals for a point
   integration                 upstream shapes and the no-shrink guarantee
+  warm-crew                   store Open-Meteo answers for the Turkish towns in the worker's KV fallback
 
 flags:
   --remote                    act on the production database instead of the local one
@@ -322,6 +324,10 @@ try {
 
     case "integration":
       await integration();
+      break;
+
+    case "warm-crew":
+      await warmCrew({ remote: !!opts.remote });
       break;
 
     default:

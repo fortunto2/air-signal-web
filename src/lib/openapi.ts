@@ -140,7 +140,7 @@ export function openapiSpec() {
       "/api/crew": {
         get: {
           operationId: "getCrewPlan",
-          summary: "Smoke and heat shift plan against Cal/OSHA rules, with fire and monitor checks, a BMS signal, a home signal, NWS alerts, wind, nearby fires, the grid's typical CO2 by hour and whether a worksite reading is advised",
+          summary: "Smoke and heat shift plan against the place's rulebook (Turkey: national air quality index and heat guidance; California: Cal/OSHA), with fire and monitor checks, a BMS signal, a home signal, NWS alerts, wind, nearby fires, the grid's typical CO2 by hour and whether a worksite reading is advised",
           description:
             "`place` is the resolved place: name, town, state, `country` (ISO 3166-1 alpha-2) and `tz`, the IANA zone every hour in the " +
             "answer is written in (the place's own; `place` may be any town on Earth or `lat,lon`). `plan.jurisdiction` is the rulebook " +
@@ -157,6 +157,7 @@ export function openapiSpec() {
             { name: "place", in: "query", required: true, schema: { type: "string" }, description: "Town name anywhere (\"Fresno\", \"Paris, France\") or `lat,lon`" },
             { name: "date", in: "query", schema: { type: "string", format: "date" }, description: "Defaults to today before noon in the place's zone, tomorrow after" },
             { name: "shift", in: "query", schema: { type: "string", example: "07-17" } },
+            { name: "lang", in: "query", schema: { type: "string", enum: ["en", "tr"] }, description: "Language of the action texts; Turkey's rulebook carries both" },
           ],
           responses: { "200": { description: "Plan" } },
         },

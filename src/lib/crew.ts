@@ -17,15 +17,22 @@ import { getNearbyCities, type ReportKind } from "./db";
 import { typicalGridCo2, type GridCo2 } from "./grid-co2";
 import { median } from "./stats";
 import { evidenceAt } from "./evidence";
-import { jurisdictionFor } from "./jurisdiction";
+import { jurisdictionFor, JURISDICTION_LANG } from "./jurisdiction";
+import { cachedJson, cell, upstreamFailures } from "./upstream-cache";
+import { forecastUrls } from "./forecast-urls";
+import { TR_TZ, nearestTrPlace, trPlaceByName, type TrPlace } from "./tr-places";
 import { PACIFIC, localDay, localHour as hourIn, localHourNumber } from "./tz";
 
 /** The zone a plan falls back to when a place has none: California's, where the rulebook is from. */
 export const CREW_TZ = PACIFIC;
 
+export type CrewMetric =
+  | "us_aqi_pm25" | "pm25_nowcast_ugm3" | "pm25_ugm3" | "pm25_24h_ugm3" | "pm10_ugm3" | "pm10_24h_ugm3"
+  | "temp_f" | "temp_c" | "rh_pct" | "heat_index_c" | "heat_index_f";
+
 export interface CrewHour {
   time: string;
-  metrics: Partial<Record<"us_aqi_pm25" | "pm25_nowcast_ugm3" | "pm25_ugm3" | "temp_f" | "temp_c", number>>;
+  metrics: Partial<Record<CrewMetric, number>>;
 }
 
 export interface CrewAction {
@@ -33,10 +40,12 @@ export interface CrewAction {
   rule: string;
   cite: string;
   text: string;
+  /** `law` (a binding threshold) or `guidance` (official advice, no legal force); absent on the clear-window line. */
+  basis?: "law" | "guidance";
 }
 
 export interface CrewPlan {
-  /** The rulebook applied: "US-CA" in California; null everywhere else today, where `actions` is empty (lib/jurisdiction.ts). */
+  /** The rulebook applied: "US-CA" in California, "TR" in Turkey; null everywhere else, where `actions` is empty (lib/jurisdiction.ts). */
   jurisdiction: string | null;
   hours: CrewHour[];
   actions: CrewAction[];
@@ -90,7 +99,11 @@ export interface CrewAnswer {
   date: string;
   shift: { start: number; end: number };
   /** Set when Open-Meteo was down and the plan was built from the fallbacks instead. */
-  fallback?: { air: "monitor"; monitor: string; temp: "open-meteo" | "nws" | "none"; reason: string };
+  fallback?: { air: "open-meteo" | "monitor" | "none"; monitor: string | null; temp: "open-meteo" | "nws" | "met-norway" | "none"; reason: string };
+  /** Set when Open-Meteo refused and the forecast is the last good answer stored, this many hours old. */
+  stale_hours?: number;
+  /** Language of `plan.actions[].text`. */
+  lang?: "en" | "tr";
   plan: CrewPlan;
   /** Active National Weather Service alerts for the point (Red Flag Warning, Heat Advisory, …). */
   alerts: { event: string; onset: string | null; ends: string | null }[];
@@ -180,7 +193,9 @@ function homeSignal(plan: CrewPlan): HomeSignal {
 }
 
 /** Active NWS alerts at a point: Red Flag Warnings, heat advisories, air quality alerts. Free, no key. */
-async function nwsAlerts(lat: number, lon: number): Promise<CrewAnswer["alerts"]> {
+async function nwsAlerts(lat: number, lon: number, country: string | null): Promise<CrewAnswer["alerts"]> {
+  // weather.gov answers 404 for a point outside the US: asking costs a round trip and says nothing.
+  if (country && country !== "US") return [];
   const fc = await cached(
     `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`,
     600,
@@ -243,13 +258,21 @@ function km(lat1: number, lon1: number, lat2: number, lon2: number): number {
 /** `"a","b",""` → `["a","b",""]`. AirNow's files quote every field and never embed a quote. */
 const fields = (line: string) => line.slice(1, -1).split('","');
 
-const FIRMS = [
-  "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_USA_contiguous_and_Hawaii_24h.csv",
-  "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_USA_contiguous_and_Hawaii_24h.csv",
-];
+const FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/data/active_fire";
+/**
+ * FIRMS publishes one 24 h file per region and satellite. The Europe file reaches past 35° E, so it
+ * covers the whole Turkish south coast (measured 3 Nov 2026: 54 detections inside Turkey's box).
+ */
+function firmsFiles(lat: number, lon: number): string[] {
+  const region = lon > -30 && lon < 45 && lat > 30 && lat < 72 ? "Europe" : "USA_contiguous_and_Hawaii";
+  return [
+    `${FIRMS_BASE}/noaa-20-viirs-c2/csv/J1_VIIRS_C2_${region}_24h.csv`,
+    `${FIRMS_BASE}/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_${region}_24h.csv`,
+  ];
+}
 
-/** VIIRS detections over the US, last 24 h, both satellites. Low-confidence pixels are dropped. */
-async function fetchFires(): Promise<[number, number][]> {
+/** VIIRS detections over the place's FIRMS region, last 24 h, both satellites. Low-confidence pixels are dropped. */
+async function fetchFires(lat: number, lon: number): Promise<[number, number][]> {
   const parse = (text: string) => {
     const [head, ...rows] = text.trim().split("\n");
     const cols = (head ?? "").split(",");
@@ -264,7 +287,7 @@ async function fetchFires(): Promise<[number, number][]> {
     }
     return out;
   };
-  const sets = await Promise.all(FIRMS.map((u) => cached(u, 1800, parse)));
+  const sets = await Promise.all(firmsFiles(lat, lon).map((u) => cached(u, 1800, parse)));
   return sets.flatMap((s) => s ?? []);
 }
 
@@ -317,7 +340,9 @@ function localHour(utc: string, tz: string): string {
  * AirNow posts an hour's file roughly an hour later and fills it in over the next one, so files are
  * searched newest first, up to four hours back, for one where a nearby monitor has a value. Keyless; the hourly file is ~1 MB and cached at the edge.
  */
-async function fetchGround(lat: number, lon: number, tz: string, maxKm = 25) {
+async function fetchGround(lat: number, lon: number, tz: string, maxKm = 25, country: string | null = null) {
+  // AirNow is the US network (plus a few embassies): a 1 MB file per hour is not worth reading for Antalya.
+  if (country && country !== "US") return null;
   // All four candidate hours are requested at once (each is shared per isolate and edge-cached), then
   // read newest first: worst case one round trip instead of four sequential 8-second waits.
   const files = [1, 2, 3, 4].map((back) => {
@@ -366,8 +391,12 @@ interface Hit {
  * "Fresno" means the valley. The sort is stable, so nothing else changes order.
  */
 async function searchPlaces(name: string): Promise<Hit[]> {
-  const r = await json(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20`, 86_400);
-  const hits: Hit[] = r.results ?? [];
+  // Through the KV-backed cache: the geocoder shares the forecast's quota, and a name looked up
+  // yesterday is still the same place today.
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20`;
+  const r = await cachedJson(url);
+  if (!r) throw new Error(`geocoding-api.open-meteo.com unavailable (${upstreamFailures.get(url) ?? "no answer"})`);
+  const hits: Hit[] = r.body.results ?? [];
   return hits.sort((a, b) => Number(b.admin1 === "California" && b.country_code === "US") - Number(a.admin1 === "California" && a.country_code === "US"));
 }
 
@@ -383,6 +412,20 @@ const toPlace = (g: Hit, approximate = false, lat = g.latitude, lon = g.longitud
   approximate,
 });
 
+/** One of the Turkish towns with its own page, as a plan's place. No geocoder call. */
+export function trCrewPlace(p: TrPlace, approximate = false, lat = p.lat, lon = p.lon): CrewPlace {
+  return {
+    name: approximate ? `near ${p.name}` : `${p.name}, Türkiye`,
+    town: p.name,
+    state: p.province,
+    country: "TR",
+    tz: TR_TZ,
+    lat,
+    lon,
+    approximate,
+  };
+}
+
 /**
  * `"36.748,-119.772"` → that coordinate, named after the nearest city in our own database (a reverse
  * geocode). The state decides the rulebook in the United States and only the geocoder knows it, so a
@@ -396,6 +439,9 @@ async function fromCoordinates(place: string): Promise<CrewPlace | null | undefi
   const lat = Math.round(Number(m[1]) * 1000) / 1000;
   const lon = Math.round(Number(m[2]) * 1000) / 1000;
   if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  // On the Antalya coast the town list answers without D1 or the geocoder.
+  const tr = nearestTrPlace(lat, lon);
+  if (tr) return trCrewPlace(tr, true, lat, lon);
   const [near] = await getNearbyCities(lat, lon, 0.5, 1).catch(() => []);
   if (!near) {
     const name = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
@@ -428,6 +474,8 @@ export async function placeSuggestions(q: string): Promise<{ name: string; detai
 export async function geocode(place: string): Promise<CrewPlace | null> {
   const coords = await fromCoordinates(place);
   if (coords !== undefined) return coords;
+  const tr = trPlaceByName(place);
+  if (tr) return trCrewPlace(tr);
   const [name, hint] = place.split(",").map((x) => x.trim());
   if (!name) return null;
   const hits = await searchPlaces(name);
@@ -515,92 +563,141 @@ export async function planFromQuery(url: URL): Promise<PlanQuery> {
     const at = await geocode(place);
     if (!at) return { ok: false, status: 404, error: `place not found: ${place}` };
     const date = parseDate(url.searchParams.get("date"), at.tz);
-    return { ok: true, place, date, shift, answer: await crewPlanAt(at, date, shift) };
+    const lang = url.searchParams.get("lang") === "tr" ? "tr" : "en";
+    return { ok: true, place, date, shift, answer: await crewPlanAt(at, date, shift, { lang }) };
   } catch (e) {
     return { ok: false, status: 502, error: `forecast unavailable: ${(e as Error).message}` };
   }
 }
 
+/** Hourly temperature, humidity and wind from MET Norway: global, keyless (a named User-Agent is the terms). */
+async function metNorwayHourly(lat: number, lon: number, tz: string): Promise<Map<string, { c: number | null; rh: number | null; dir: number | null; kmh: number | null }>> {
+  const out = new Map<string, { c: number | null; rh: number | null; dir: number | null; kmh: number | null }>();
+  const fc = await cached(
+    `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${cell(lat)}&lon=${cell(lon)}`,
+    3600,
+    (t) => JSON.parse(t),
+    { "User-Agent": "airsignal.app info@superduperai.co" },
+  );
+  for (const p of fc?.properties?.timeseries ?? []) {
+    const d = p?.data?.instant?.details ?? {};
+    const n = (v: unknown) => (typeof v === "number" ? v : null);
+    out.set(localHour(String(p.time), tz), {
+      c: n(d.air_temperature),
+      rh: n(d.relative_humidity),
+      dir: n(d.wind_from_direction),
+      kmh: typeof d.wind_speed === "number" ? Math.round(d.wind_speed * 3.6) : null,
+    });
+  }
+  return out;
+}
+
+export interface PlanOptions {
+  /** Skip the D1 read for callers that discard the grid's carbon (a report's evidence). */
+  gridCo2?: boolean;
+  /** Language of the action texts; defaults to English, which every rulebook carries. */
+  lang?: "en" | "tr";
+}
+
 /**
  * The plan for a place already resolved, so callers that also need the site key geocode once.
- * `gridCo2: false` skips the D1 read for callers that discard it (a report's evidence).
+ *
+ * Open-Meteo is read through `upstream-cache.ts` (isolate, colo cache by hour, KV last-good 48 h) on a
+ * 0.05° grid cell, so a city's traffic costs one call an hour. When it still refuses and nothing is
+ * stored, the plan is built from the fallbacks: MET Norway (or the NWS in the US) for temperature,
+ * humidity and wind, and the nearest ground monitor held for every hour for the air.
  */
-export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts: { gridCo2?: boolean } = {}): Promise<CrewAnswer> {
-  // A day of history so the first shift hour has the 12 hours a NowCast needs. Hours come back in the
-  // place's own zone; for bare coordinates with no zone yet, Open-Meteo names it (`timezone=auto`) and
-  // the forecast is awaited first so the ground check reads the same clock.
-  const q = `latitude=${at.lat}&longitude=${at.lon}&past_days=1&forecast_days=3&timezone=${encodeURIComponent(at.tz || "auto")}`;
-  const forecasts = Promise.all([
-    json(`https://air-quality-api.open-meteo.com/v1/air-quality?${q}&hourly=pm2_5`).catch((e: Error) => e),
-    json(`https://api.open-meteo.com/v1/forecast?${q}&hourly=temperature_2m,winddirection_10m,windspeed_10m`).catch((e: Error) => e),
-  ]);
+export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts: PlanOptions = {}): Promise<CrewAnswer> {
+  const lang = opts.lang ?? "en";
+  // A day of history so the first shift hour has the 12 hours a NowCast needs (and 24 for the daily
+  // means the Turkish index uses). Hours come back in the place's own zone; for bare coordinates with
+  // no zone yet, Open-Meteo names it (`timezone=auto`) and the forecast is awaited first.
+  const { air: aqUrl, weather: wxUrl } = forecastUrls(at.lat, at.lon, at.tz);
+  const forecasts = Promise.all([cachedJson(aqUrl), cachedJson(wxUrl)]);
   let tz = at.tz;
   if (!tz) {
     const [a, w] = await forecasts;
-    tz = (!(w instanceof Error) && w.timezone) || (!(a instanceof Error) && a.timezone) || PACIFIC;
+    tz = w?.body?.timezone || a?.body?.timezone || PACIFIC;
     at = { ...at, tz };
   }
-  const [[aqR, wxR], fires, ground, alerts, grid_co2] = await Promise.all([
+  const [[aqC, wxC], fires, ground, alerts, grid_co2] = await Promise.all([
     forecasts,
-    fetchFires(),
-    fetchGround(at.lat, at.lon, tz),
-    nwsAlerts(at.lat, at.lon),
+    fetchFires(at.lat, at.lon),
+    fetchGround(at.lat, at.lon, tz, 25, at.country),
+    nwsAlerts(at.lat, at.lon, at.country),
     // CAISO runs California's grid; a plan for Oregon says nothing about its carbon. A D1 hiccup
     // costs the column, never the plan.
     opts.gridCo2 !== false && at.state === "California" ? typicalGridCo2(crewDate(0)).catch(() => null) : Promise.resolve(null),
   ]);
-  let hours: { time: string; pm25: number | null; temp_c: number | null }[];
+  const aqR = aqC?.body;
+  const wxR = wxC?.body;
+  const staleHours = Math.max(aqC?.stale_hours ?? 0, wxC?.stale_hours ?? 0);
+  type Raw = { time: string; pm25: number | null; temp_c: number | null; rh: number | null; pm10: number | null };
+  let hours: Raw[];
   let fallback: CrewAnswer["fallback"];
   const wind = new Map<string, { dir_deg: number; kmh: number }>();
-  if (!(wxR instanceof Error)) {
+  // The weather fallback for every hour Open-Meteo did not give: NWS in the US, MET Norway elsewhere.
+  const backupWx = !wxR
+    ? at.country === "US" || (!at.country && at.state)
+      ? new Map([...(await nwsHourly(at.lat, at.lon, tz))].map(([t, w]) => [t, { ...w, rh: null as number | null }]))
+      : await metNorwayHourly(at.lat, at.lon, tz)
+    : null;
+  if (wxR) {
     (wxR.hourly.time as string[]).forEach((t, i) => {
       const d = wxR.hourly.winddirection_10m?.[i];
       const k = wxR.hourly.windspeed_10m?.[i];
       if (typeof d === "number" && typeof k === "number") wind.set(t, { dir_deg: d, kmh: Math.round(k) });
     });
   } else {
-    for (const [t, w] of await nwsHourly(at.lat, at.lon, tz)) if (w.dir !== null && w.kmh !== null) wind.set(t, { dir_deg: w.dir, kmh: w.kmh });
+    for (const [t, w] of backupWx!) if (w.dir !== null && w.kmh !== null) wind.set(t, { dir_deg: w.dir, kmh: w.kmh });
   }
-  if (!(aqR instanceof Error) && !(wxR instanceof Error)) {
-    const temp = new Map<string, number | null>(
-      (wxR.hourly.time as string[]).map((t, i) => [t, wxR.hourly.temperature_2m[i]]),
-    );
-    hours = (aqR.hourly.time as string[]).map((time, i) => ({
-      time,
-      pm25: aqR.hourly.pm2_5[i] ?? null,
-      temp_c: temp.get(time) ?? null,
-    }));
+  const weatherAt = (time: string): { c: number | null; rh: number | null } => {
+    if (wxR) {
+      const i = (wxR.hourly.time as string[]).indexOf(time);
+      return i < 0 ? { c: null, rh: null } : { c: wxR.hourly.temperature_2m?.[i] ?? null, rh: wxR.hourly.relative_humidity_2m?.[i] ?? null };
+    }
+    const w = backupWx!.get(time);
+    return { c: w?.c ?? null, rh: w?.rh ?? null };
+  };
+  const tempSource = wxR ? "open-meteo" : backupWx!.size ? (at.country === "US" ? "nws" : "met-norway") : "none";
+  if (aqR) {
+    hours = (aqR.hourly.time as string[]).map((time, i) => {
+      const w = weatherAt(time);
+      return { time, pm25: aqR.hourly.pm2_5[i] ?? null, pm10: aqR.hourly.pm10?.[i] ?? null, temp_c: w.c, rh: w.rh };
+    });
+    if (!wxR) fallback = { air: "open-meteo", monitor: null, temp: tempSource, reason: upstreamFailures.get(wxUrl) ?? "weather forecast unavailable" };
   } else {
     // Open-Meteo shares a daily limit across Cloudflare's egress IPs and can refuse a whole day.
     // A safety tool must still answer: the air holds at the nearest monitor's reading (persistence,
-    // said on the page), the temperature comes from the National Weather Service.
-    const reason = String(aqR instanceof Error ? aqR.message : (wxR as Error).message);
-    const held = ground ?? (await fetchGround(at.lat, at.lon, tz, 100));
-    if (!held) throw new Error(`${reason}; no ground monitor within 100 km to fall back on`);
-    const temp: Map<string, number | null> =
-      wxR instanceof Error
-        ? new Map([...(await nwsHourly(at.lat, at.lon, tz))].map(([t, w]) => [t, w.c]))
-        : new Map((wxR.hourly.time as string[]).map((t, i) => [t, wxR.hourly.temperature_2m[i]]));
+    // said on the page); with no monitor in reach the heat rules still run and the air is blank.
+    const reason = upstreamFailures.get(aqUrl) ?? "air quality forecast unavailable";
+    const held = ground ?? (await fetchGround(at.lat, at.lon, tz, 100, at.country));
+    if (!held && tempSource === "none") throw new Error(`${reason}; no ground monitor within 100 km and no weather forecast to fall back on`);
     const t0 = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 36 * 3_600_000;
     hours = Array.from({ length: 36 + 80 }, (_, k) => {
       const time = localHour(new Date(t0 + k * 3_600_000).toISOString(), tz);
-      return { time, pm25: held.pm25, temp_c: temp.get(time) ?? null };
+      const w = weatherAt(time);
+      return { time, pm25: held?.pm25 ?? null, pm10: null, temp_c: w.c, rh: w.rh };
     });
-    fallback = { air: "monitor", monitor: `${held.nearest}, ${held.nearest_km} km`, temp: !(wxR instanceof Error) ? "open-meteo" : temp.size ? "nws" : "none", reason };
+    fallback = {
+      air: held ? "monitor" : "none",
+      monitor: held ? `${held.nearest}, ${held.nearest_km} km` : null,
+      temp: tempSource,
+      reason,
+    };
   }
   // Only detections that could matter: the US list runs to tens of thousands in fire season, and the
   // engine looks no further than ~2° anyway.
   const near = fires.filter(([la, lo]) => Math.abs(la - at.lat) < 2 && Math.abs(lo - at.lon) < 2.5);
   const jurisdiction = jurisdictionFor(at.country, at.state);
+  const book = jurisdiction ? { jurisdiction } : { rulebook: NO_RULEBOOK };
   const out = JSON.parse(
-    core().wasm_crew_plan(
-      JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground, ...(jurisdiction === "US-CA" ? {} : { rulebook: NO_RULEBOOK }) }),
-    ),
+    core().wasm_crew_plan(JSON.stringify({ hours, date, ...shift, lat: at.lat, lon: at.lon, fires: near, ground, ...book, lang })),
   );
   if (out.error) throw new Error(out.error);
   out.jurisdiction = jurisdiction;
   // With no forecast the "model" is the monitor itself; comparing them would claim a check that never ran.
-  if (fallback) {
+  if (fallback && !aqR) {
     out.confidence.notes = (out.confidence.notes as string[]).map((n) =>
       n.replace(/; the model had [\d.]+\..*$/, "; the plan holds this reading for every hour."),
     );
@@ -616,9 +713,17 @@ export async function crewPlanAt(at: CrewPlace, date: string, shift: Shift, opts
     .slice(0, 400);
   return {
     place: at, date, shift, plan, alerts, home: jurisdiction === "US-CA" ? homeSignal(plan) : null, dispatch: dispatchFor(plan), wind: windOut, fires_near, grid_co2,
+    lang,
     ...(fallback ? { fallback } : {}),
+    ...(staleHours > 0 ? { stale_hours: staleHours } : {}),
   };
 }
+
+/** The language a place's own page speaks: Turkish for Turkey, English elsewhere. */
+export const placeLang = (p: Pick<CrewPlace, "country" | "state">): "en" | "tr" => {
+  const j = jurisdictionFor(p.country, p.state);
+  return j ? JURISDICTION_LANG[j] : "en";
+};
 
 /**
  * The site a report belongs to: country, state and town, so Berlin (DE) and Berlin (NH), Springfield

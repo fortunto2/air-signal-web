@@ -15,9 +15,11 @@ interface Props {
   search?: string;
   /** Opt out entirely — for pages that are themselves a search surface. */
   noSearch?: boolean;
+  /** The Turkish pages get a Turkish nav pointing at their own sections. */
+  lang?: "en" | "tr";
 }
 
-const { search = "Search a city or sensor", noSearch = false } = Astro.props;
+const { search = "Search a city or sensor", noSearch = false, lang = "en" } = Astro.props;
 ---
 
 <div class="bar">
@@ -46,13 +48,24 @@ const { search = "Search a city or sensor", noSearch = false } = Astro.props;
     )
   }
 
+  {lang === "tr" ? (
+    <nav>
+      <a href="/tr">Türkiye</a>
+      <a href="/tr/crew">Ekipler</a>
+      <a href={paths.map()}>Harita</a>
+      <a href="/tr#kurallar">Kurallar</a>
+      <a href={paths.crew()} hreflang="en">English</a>
+    </nav>
+  ) : (
   <nav>
     <a href={paths.map()}>Map</a>
     <a href={paths.countries()}>Countries</a>
     <a href={paths.ranking()}>Ranking</a>
     <a href={paths.crew()}>Crews</a>
+    <a href="/tr" hreflang="tr">Türkçe</a>
     <a href={paths.guide()}>Guide</a>
     <a href={paths.howItWorks()}>How it works</a>
     <a href={paths.api()}>API</a>
   </nav>
+  )}
 </div>

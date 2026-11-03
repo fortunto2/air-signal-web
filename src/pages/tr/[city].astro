@@ -1,0 +1,83 @@
+---
+/**
+ * A Turkish town's page: today's crew plan under Turkey's rulebook, in Turkish. Only the towns in
+ * `tr-places.ts` exist here; any other slug is a 404, so `/tr/<anything>` cannot grow thin pages.
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import TrPlan from "../../components/TrPlan.astro";
+import { SITE } from "../../lib/site";
+import { crewDefaultDate, crewPlanAt, trCrewPlace, type CrewAnswer } from "../../lib/crew";
+import { TR_PLACES, TR_TZ, trPlaceBySlug } from "../../lib/tr-places";
+
+const town = trPlaceBySlug(Astro.params.city ?? "");
+if (!town) return new Response(null, { status: 404 });
+
+// Kumluca has no English city page yet (not in the cities table), so it has no English alternate.
+const EN_MISSING = new Set(["kumluca"]);
+const shift = { start: 7, end: 17 };
+const date = crewDefaultDate(TR_TZ);
+let answer: CrewAnswer | null = null;
+try {
+  answer = await crewPlanAt(trCrewPlace(town), date, shift, { lang: "tr", gridCo2: false });
+} catch {
+  Astro.response.status = 502;
+}
+// The plan changes by the hour; ten minutes at the edge keeps a crawler burst to one render.
+Astro.response.headers.set("cache-control", answer ? "public, max-age=300, s-maxage=600" : "no-store");
+
+const dayLabel = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(
+  new Date(`${date}T12:00:00Z`),
+);
+const others = TR_PLACES.filter((p) => p.slug !== town.slug);
+const title = `${town.name}: sahada sıcak ve hava kalitesi, saat saat | ${SITE.name}`;
+const description =
+  `${town.name} (${town.province}) için bugünün vardiya planı: hissedilen sıcaklık, PM2.5 ve PM10, ` +
+  `hava kalitesi indeksi bandı ve eşiklerin aşıldığı saat. ${town.work}.`;
+const schema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: title,
+    inLanguage: "tr",
+    about: { "@type": "Place", name: `${town.name}, ${town.province}, Türkiye`, geo: { "@type": "GeoCoordinates", latitude: town.lat, longitude: town.lon } },
+  },
+];
+---
+
+<Layout
+  title={title}
+  description={description}
+  path={`/tr/${town.slug}`}
+  lang="tr"
+  alternates={EN_MISSING.has(town.slug) ? [] : [{ lang: "en", path: `/turkey/${town.slug}` }]}
+  schema={schema}
+  pitch={false}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar search="Şehir ara" lang="tr">
+        <div style="font-size:13.5px;color:var(--ink-3)"><a href="/tr" style="color:var(--accent);text-decoration:none">Türkiye</a> / {town.name}</div>
+      </Bar>
+
+      <div style="padding:24px 20px 6px">
+        <div class="eyebrow">{town.district} · {town.province} · {dayLabel}, 07:00–17:00</div>
+        <h1 style="font-size:27px;margin:5px 0 0">{town.name}: sahada sıcak ve hava</h1>
+        <p class="lede" style="margin-top:10px;font-size:15.5px">{town.work}. Aşağıdaki plan gündüz vardiyası içindir; başka saatler için <a href={`/tr/crew?place=${encodeURIComponent(town.name)}`}>planı değiştirin</a>.</p>
+      </div>
+
+      {answer ? <TrPlan answer={answer} /> : <p style="padding:12px 20px;color:var(--s-poor)">Tahmin servisi şu an yanıt vermiyor. Birkaç dakika sonra tekrar deneyin.</p>}
+
+      <div style="padding:14px 20px 22px;border-top:1px solid var(--line-soft);font-size:14px">
+        <div class="eyebrow">Diğer ilçeler</div>
+        <p style="margin-top:6px;line-height:1.9">
+          {others.map((p, i) => <>{i ? " · " : ""}<a href={`/tr/${p.slug}`}>{p.name}</a></>)}
+        </p>
+        <p style="margin-top:8px;color:var(--ink-2)">
+          <a href="/tr#kurallar">Kurallar ve kaynakları</a>
+          {!EN_MISSING.has(town.slug) && <> · <a href={`/turkey/${town.slug}`} hreflang="en">English</a></>}
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>

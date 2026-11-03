@@ -1,0 +1,179 @@
+---
+/**
+ * Crew Air in Turkish: the same plan as /crew, under Turkey's rulebook, in Turkish. A plain GET
+ * form rendered on the server, so the plan is in the HTML for a reader with no JavaScript. With no
+ * `place` it plans Antalya. The towns in `tr-places.ts` resolve without a geocoder call.
+ */
+import Layout from "../../layouts/Layout.astro";
+import Bar from "../../components/Bar.astro";
+import TrPlan from "../../components/TrPlan.astro";
+import { SITE, abs } from "../../lib/site";
+import { crewDate, crewDefaultDate, crewPlanAt, formatShift, geocode, parseShift, type CrewAnswer } from "../../lib/crew";
+import { TR_PLACES, TR_TZ } from "../../lib/tr-places";
+
+const qs = Astro.url.searchParams;
+const place = qs.get("place")?.trim() || "Antalya";
+const shift = qs.get("start") && qs.get("end") ? parseShift(`${qs.get("start")}-${qs.get("end")}`) : parseShift(qs.get("shift"));
+const shiftRaw = formatShift(shift);
+const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
+Astro.response.headers.set("cache-control", "no-store");
+
+let answer: CrewAnswer | null = null;
+let failure: string | null = null;
+let tz = TR_TZ;
+let days = [0, 1, 2].map((d) => crewDate(d, tz));
+let date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefaultDate(tz);
+try {
+  const at = await geocode(place);
+  if (!at) failure = `“${place}” bulunamadı. Bir şehir ya da ilçe adı yazın.`;
+  else {
+    tz = at.tz || TR_TZ;
+    days = [0, 1, 2].map((d) => crewDate(d, tz));
+    date = days.includes(qs.get("date") ?? "") ? qs.get("date")! : crewDefaultDate(tz);
+    answer = await crewPlanAt(at, date, shift, { lang: "tr" });
+  }
+} catch {
+  failure = "Tahmin servisi yanıt vermedi. Bir dakika sonra tekrar deneyin.";
+  Astro.response.status = 502;
+}
+
+const dayLabel = (d: string) =>
+  new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
+const enPath = `/crew?place=${encodeURIComponent(place)}&shift=${shiftRaw}`;
+const apiPath = `/api/crew?place=${encodeURIComponent(place)}&date=${date}&shift=${shiftRaw}&lang=tr`;
+const outsideTr = answer && answer.plan.jurisdiction !== "TR";
+const description =
+  "Tarla, sera ve şantiye ekipleri için vardiya planı: yeri ve saatleri girin, hissedilen sıcaklığın ve hava kirliliğinin " +
+  "resmi eşikleri hangi saatte aştığını, ağır işin hangi saatlere alınacağını görün. Antalya ve ilçeleri için.";
+---
+
+<Layout
+  title={`Saha ekipleri için sıcak ve hava planı | ${SITE.name}`}
+  description={description}
+  path="/tr/crew"
+  lang="tr"
+  alternates={[{ lang: "en", path: "/crew" }]}
+  pitch={false}
+>
+  <main class="wrap" style="padding-top:22px" id="main">
+    <div class="app">
+      <Bar search="Şehir ara" lang="tr" />
+
+      <div style="padding:24px 20px 8px">
+        <div class="eyebrow">Crew Air · Türkiye</div>
+        <h1 style="font-size:27px;margin:5px 0 0">Vardiyada sıcak ve hava kirliliği hangi saatte eşiği aşıyor</h1>
+        <p class="lede" style="margin-top:12px;font-size:15.5px">
+          Ekibin çalıştığı yeri ve vardiya saatlerini girin. Plan, hissedilen sıcaklığın ve havadaki tozun
+          hangi saatte resmi eşikleri aştığını ve ağır işin hangi saatlere alınması gerektiğini gösterir.
+          Türkiye'de bu eşiklerin çoğu yasa değil, bakanlık önerisidir; her satırda hangisi olduğu yazar.
+        </p>
+      </div>
+
+      <form class="trc-form" method="get" action="/tr/crew">
+        <label>
+          <span class="eyebrow">Yer</span>
+          <input name="place" value={place} list="tr-towns" placeholder="Kumluca ya da tarlaya yakın bir yer" autocomplete="off" required />
+          <datalist id="tr-towns">{TR_PLACES.map((p) => <option value={p.name} />)}</datalist>
+        </label>
+        <label>
+          <span class="eyebrow">Gün</span>
+          <select name="date">{days.map((d) => <option value={d} selected={d === date}>{dayLabel(d)}</option>)}</select>
+        </label>
+        <label>
+          <span class="eyebrow">Başlangıç</span>
+          <select name="start">{Array.from({ length: 24 }, (_, h) => <option value={h} selected={h === shift.start}>{hourLabel(h)}</option>)}</select>
+        </label>
+        <label>
+          <span class="eyebrow">Bitiş</span>
+          <select name="end">{Array.from({ length: 24 }, (_, h) => h + 1).map((h) => <option value={h} selected={h === shift.end}>{hourLabel(h)}</option>)}</select>
+        </label>
+        <button type="submit">Planla</button>
+        <button type="button" class="trc-locate" data-locate>Konumumu kullan</button>
+      </form>
+
+      {failure && <p class="trc-note" role="alert">{failure}</p>}
+
+      {answer && (
+        <>
+          <div class="trc-head">
+            <div class="eyebrow">{dayLabel(date)} · {shiftRaw.replace("-", ":00–")}:00</div>
+            <h2 style="margin-top:4px">{answer.place.name}</h2>
+          </div>
+          {outsideTr && (
+            <p class="trc-note">
+              Bu yer Türkiye dışında: plan {answer.plan.jurisdiction === "US-CA" ? "Kaliforniya (Cal/OSHA) kurallarıyla" : "eşiksiz, yalnızca tahminle"} yapıldı.
+            </p>
+          )}
+          <TrPlan answer={answer} />
+          <p class="trc-links">
+            <a href={enPath} hreflang="en">English</a> · <a href={apiPath}>JSON (API)</a> · <a href="/tr">Antalya ilçeleri</a>
+          </p>
+        </>
+      )}
+
+      <div class="trc-about">
+        <div class="eyebrow">Kurallar nereden geliyor</div>
+        <p>
+          Eşikler tek bir veri dosyasında, kaynaklarıyla birlikte duruyor:
+          <a href="/tr#kurallar">kural listesi</a> (airq-core <code>rulebooks/tr.json</code>).
+          Her kural ya yasal eşik ya da öneri olarak işaretli. Bu sayfa bir planlama aracıdır, hukuki görüş değildir.
+          İşverenin 6331 sayılı Kanun'a göre risk değerlendirmesi yapma yükümlülüğü devam eder.
+        </p>
+        <p>
+          Kaliforniya kuralları (Cal/OSHA) da duruyor, örnek olarak: <a href="/crew?place=Fresno" hreflang="en">Fresno için plan</a>.
+        </p>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script is:inline>
+  document.querySelector("[data-locate]")?.addEventListener("click", (e) => {
+    const b = e.currentTarget;
+    if (!navigator.geolocation) return;
+    b.textContent = "Konum alınıyor…";
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        const f = b.form;
+        f.place.value = `${p.coords.latitude.toFixed(3)},${p.coords.longitude.toFixed(3)}`;
+        f.submit();
+      },
+      () => (b.textContent = "Konum alınamadı"),
+      { timeout: 10000 },
+    );
+  });
+</script>
+
+<style>
+  .trc-form {
+    display: grid;
+    grid-template-columns: 1.6fr 1.3fr 0.7fr 0.7fr auto;
+    gap: 12px;
+    align-items: end;
+    padding: 14px 20px 20px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .trc-form label { display: flex; flex-direction: column; gap: 5px; }
+  .trc-form input, .trc-form select, .trc-form button {
+    font: inherit;
+    font-size: 15px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+    min-width: 0;
+  }
+  .trc-form button[type="submit"] { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 560; cursor: pointer; }
+  .trc-form .trc-locate { grid-column: 1; justify-self: start; font-size: 13px; padding: 5px 9px; cursor: pointer; }
+  .trc-note { padding: 12px 20px; color: var(--s-poor); max-width: 80ch; }
+  .trc-head { padding: 18px 20px 8px; }
+  .trc-links { padding: 0 20px 16px; font-size: 13.5px; }
+  .trc-about { padding: 16px 20px 22px; border-top: 1px solid var(--line-soft); font-size: 14px; color: var(--ink-2); }
+  .trc-about p { margin-top: 6px; max-width: 80ch; }
+  @media (max-width: 760px) {
+    .trc-form { grid-template-columns: 1fr 1fr; }
+    .trc-form label:first-child { grid-column: 1 / -1; }
+    .trc-form button[type="submit"] { grid-column: 1 / -1; }
+  }
+</style>

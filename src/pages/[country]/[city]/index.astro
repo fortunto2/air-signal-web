@@ -29,6 +29,7 @@ import { cityView, ago } from "../../../lib/view";
 import { EXPLAIN } from "../../../lib/explain";
 import { SIGNAL_TO_SLUG } from "../../../lib/guide";
 import { SITE, abs, paths, comfortBand, pmBand } from "../../../lib/site";
+import { trPlaceBySlug } from "../../../lib/tr-places";
 
 const { country, city: citySlug } = Astro.params;
 const row = await getCity(country!, citySlug!);
@@ -188,6 +189,7 @@ const schema = [
   schema={schema}
   updatedAt={v.updatedAt}
   pitch={false}
+  alternates={country === "turkey" && trPlaceBySlug(citySlug!) ? [{ lang: "tr", path: `/tr/${citySlug}` }] : undefined}
 >
   <main class="wrap" style="padding-top:22px" id="main">
     <div class="app">

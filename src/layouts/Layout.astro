@@ -38,6 +38,13 @@ interface Props {
    */
   pitchPlace?: string;
   pitchName?: string;
+  /** The page's language. English everywhere but the Turkish pages under /tr. */
+  lang?: "en" | "tr";
+  /**
+   * The same page in other languages, for hreflang. Absent: the page is English-only and points at
+   * itself, as before. Present: every version listed here plus this one, x-default on the English.
+   */
+  alternates?: { lang: "en" | "tr"; path: string }[];
 }
 
 const {
@@ -51,7 +58,11 @@ const {
   pitch = true,
   pitchPlace = EMBED_SAMPLE.place,
   pitchName = EMBED_SAMPLE.name,
+  lang = DEFAULT_LANG,
+  alternates,
 } = Astro.props;
+const versions = alternates ? [{ lang, path }, ...alternates.filter((a) => a.lang !== lang)] : null;
+const xDefault = versions ? (versions.find((v) => v.lang === "en") ?? versions[0]!).path : path;
 
 // The snippet the button copies, and the one that produced the badge beside it. Built here so the
 // two cannot describe different things — the whole failure mode of a "copy this" box.
@@ -77,14 +88,14 @@ const graph = [
     "@type": "WebSite",
     name: SITE.name,
     url: SITE.origin,
-    inLanguage: DEFAULT_LANG,
+    inLanguage: lang,
   },
   ...schema,
 ];
 ---
 
 <!doctype html>
-<html lang={DEFAULT_LANG}>
+<html lang={lang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -94,11 +105,11 @@ const graph = [
     {noindex && <meta name="robots" content="noindex, follow" />}
 
     {
-      LANGS.map((lang) => (
-        <link rel="alternate" hreflang={lang} href={abs(path)} />
-      ))
+      versions
+        ? versions.map((v) => <link rel="alternate" hreflang={v.lang} href={abs(v.path)} />)
+        : LANGS.map((l) => <link rel="alternate" hreflang={l} href={abs(path)} />)
     }
-    <link rel="alternate" hreflang="x-default" href={abs(path)} />
+    <link rel="alternate" hreflang="x-default" href={abs(xDefault)} />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE.name} />

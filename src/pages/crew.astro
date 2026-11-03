@@ -1,10 +1,11 @@
 ---
 /**
- * Crews: a smoke and heat shift plan for outdoor work in California.
+ * Crews: a smoke and heat shift plan for outdoor work, under the place's rulebook (Turkey, or
+ * California as the hackathon's example). /tr/crew is the same plan in Turkish.
  *
  * A plain GET form, rendered on the server, so the plan is in the HTML for a reader with no
  * JavaScript and for a crawler alike. The maths is `airq-core` (`crew.rs`) through `lib/crew.ts`;
- * this file only lays it out. With no `place` the page plans Sacramento, so it is never empty.
+ * this file only lays it out. With no `place` the page plans Antalya, so it is never empty.
  */
 import Layout from "../layouts/Layout.astro";
 import Bar from "../components/Bar.astro";
@@ -30,7 +31,7 @@ import {
 import { REPORT_KINDS, listCrewReports, type CrewReport } from "../lib/db";
 import { BACKUP_MARGIN, backupHours, backupSizing } from "../lib/battery";
 
-const DEFAULT_PLACE = "Sacramento";
+const DEFAULT_PLACE = "Antalya";
 const REPO = "https://github.com/fortunto2/stanford-cleantech-2026";
 
 const qs = Astro.url.searchParams;
@@ -117,15 +118,16 @@ const determination = (() => {
   if (!answer || !plan) return "";
   const g = plan.confidence.ground;
   const fire = plan.confidence.fire && plan.confidence.fire.nearest_km <= 50 ? ` VIIRS fire ${Math.round(plan.confidence.fire.nearest_km)} km ${plan.confidence.fire.direction}: a worksite reading is advised.` : "";
-  if (answer.fallback) return `Held at the AirNow monitor ${answer.fallback.monitor} (latest reading); forecast service unavailable.${fire}`;
+  if (answer.fallback?.air === "monitor") return `Held at the ground monitor ${answer.fallback.monitor} (latest reading); forecast service unavailable.${fire}`;
+  if (answer.fallback?.air === "none") return `No air forecast and no ground monitor within 100 km: the smoke rules could not be checked.${fire}`;
   const check = g ? `, checked against AirNow monitor ${g.nearest}, ${g.nearest_km} km (${g.pm25} µg/m³ at ${g.time.slice(11, 16)})` : ", no AirNow monitor within 25 km";
   return `Forecast PM2.5 (Open-Meteo CAMS) as an EPA NowCast${check}.${fire}`;
 })();
 
 const description =
-  "Smoke and heat shift plan for farm, contractor and utility line crews in California: enter a place " +
-  "and a shift, get the hour Cal/OSHA requires N95s (§5141.1, AQI 151) or shade and water (§3395, 80°F), " +
-  "from an hourly forecast with the EPA NowCast, and a record of how the AQI was determined.";
+  "Heat and smoke shift plan for farm, greenhouse and construction crews in Turkey, and California as an example: " +
+  "enter a place and a shift, get the hour each rule starts (Turkey's air quality index bands and heat guidance; " +
+  "Cal/OSHA §5141.1 and §3395), from an hourly forecast, with a record of how the numbers were made.";
 
 const schema = [
   {
@@ -140,19 +142,20 @@ const schema = [
 ];
 ---
 
-<Layout title={`Smoke and heat shift plan for outdoor crews — ${SITE.name}`} description={description} path={paths.crew()} schema={schema} pitch={false}>
+<Layout title={`Heat and smoke shift plan for outdoor crews | ${SITE.name}`} description={description} path={paths.crew()} schema={schema} pitch={false} alternates={[{ lang: "tr", path: "/tr/crew" }]}>
   <main class="wrap" style="padding-top:22px" id="main">
     <div class="app">
       <Bar />
 
       <div style="padding:24px 20px 8px">
-        <div class="eyebrow">For crews · California</div>
-        <h1 style="font-size:27px;margin:5px 0 0">The hour Cal/OSHA’s smoke and heat rules start on your shift</h1>
+        <div class="eyebrow">For crews · Turkey and California · <a href="/tr/crew" hreflang="tr">Türkçe</a></div>
+        <h1 style="font-size:27px;margin:5px 0 0">The hour the heat and smoke rules start on your shift</h1>
         <p class="lede no-print" style="margin-top:12px;font-size:15.5px">
-          Cal/OSHA wants N95s handed out once the air hits AQI 151, and shade and water at 80°F,
-          for a farm, contractor or utility line crew alike. Type where the crew works and when the
-          shift runs, and you get the hour each rule starts, the clear window for the heavy work,
-          and a record of how the AQI was determined.
+          Type where the crew works and when the shift runs. You get the hour each heat or air rule
+          starts, the clear window for the heavy work, and a record of how the numbers were made.
+          The rules are data, one file per jurisdiction: Turkey (the national air quality index and
+          the heat guidance, mostly advice rather than law, and each line says which) and California,
+          the hackathon example (Cal/OSHA: N95s at AQI 151, shade and water at 80°F).
         </p>
       </div>
 
@@ -214,10 +217,21 @@ const schema = [
 
             {answer.fallback && (
               <p class="crew-note">
-                The air forecast service is down right now, so this plan holds the air at the nearest
-                ground monitor’s latest reading ({answer.fallback.monitor}) instead of
-                forecasting it{answer.fallback.temp === "nws" ? "; temperatures are the National Weather Service forecast" : answer.fallback.temp === "none" ? "; no temperature forecast was available" : ""}.
+                {answer.fallback.air === "monitor"
+                  ? `The air forecast service is down right now, so this plan holds the air at the nearest ground monitor’s latest reading (${answer.fallback.monitor}) instead of forecasting it`
+                  : answer.fallback.air === "none"
+                    ? "The air forecast service is down right now and there is no ground monitor within 100 km, so the smoke rules are not checked"
+                    : "The weather forecast service is down right now"}
+                {answer.fallback.temp === "nws" ? "; temperatures are the National Weather Service forecast" : answer.fallback.temp === "met-norway" ? "; temperatures are MET Norway’s forecast" : answer.fallback.temp === "none" ? "; no temperature forecast was available" : ""}.
                 Check again before the afternoon.
+              </p>
+            )}
+            {!!answer.stale_hours && (
+              <p class="crew-note">The forecast service refused us just now, so this plan uses its last answer, {answer.stale_hours} h old. It covers three days, so today’s hours are still in it.</p>
+            )}
+            {plan.jurisdiction === "TR" && (
+              <p class="crew-note">
+                Turkish rules: the national air quality index bands and the heat guidance of the Ministry of Labour and the Ministry of Health. Most are guidance, not law; each line says which. <a href={`/tr/crew?place=${encodeURIComponent(place)}&shift=${shiftRaw}`} hreflang="tr">Bu planı Türkçe aç</a>.
               </p>
             )}
             {plan.jurisdiction === null && (
@@ -528,7 +542,8 @@ const schema = [
       </div>
 
       <div class="crew-block no-print">
-        <h2>The rules, as we read them</h2>
+        <h2>The California rules, as we read them</h2>
+        <p class="crew-legend">Turkey’s rules, with their sources and whether each is law or guidance, are listed on <a href="/tr#kurallar" hreflang="tr">/tr</a>.</p>
         <ol class="crew-actions">
           <li><span class="num">AQI 151</span><span>N95s available for voluntary use, crew told about the smoke, exposure cut where you can (55.5 µg/m³ PM2.5).</span><span class="cite">T8 §5141.1</span></li>
           <li><span class="num">AQI 500+</span><span>Respirators required; above the scale, so the rule works on concentration: 500.5 µg/m³.</span><span class="cite">T8 §5141.1, App. A</span></li>

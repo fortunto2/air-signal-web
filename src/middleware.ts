@@ -77,6 +77,8 @@ function quality(accept: string, type: string): number {
 function markdownPath(pathname: string): string | null {
   if (pathname.includes(".")) return null;
   const segments = pathname.split("/").filter(Boolean);
+  // /tr/* is the Turkish section, not a country called "tr": no Markdown twin there yet.
+  if (segments[0] === "tr") return null;
   // The root twins too. An agent checking one URL checks that one, and it was the reason an
   // agent-readiness audit reported this site as HTML-only while every city page had a twin.
   if (segments.length === 0) return "/index.md";

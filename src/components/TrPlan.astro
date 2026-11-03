@@ -1,0 +1,206 @@
+---
+/**
+ * A crew plan in Turkish: the actions with their basis (law or guidance), the hours, and where the
+ * numbers came from. Shared by /tr/crew and /tr/<town>, so the two cannot word a rule differently.
+ * The rule texts themselves come from the rulebook (airq-core `rulebooks/tr.json`), in Turkish.
+ */
+import type { CrewAnswer } from "../lib/crew";
+import { trIndex, TR_BANDS } from "../lib/tr-index";
+import { sprayClass, sprayWindows } from "../lib/spray";
+
+interface Props {
+  answer: CrewAnswer;
+  /** Hide the per-hour table (the town page shows only the summary above the fold). */
+  compact?: boolean;
+}
+const { answer, compact = false } = Astro.props;
+const plan = answer.plan;
+const clock = (t: string) => t.slice(11, 16);
+const round = (v: number | undefined) => (v === undefined ? "–" : String(Math.round(v)));
+const peakHeat = plan.hours.reduce<number | undefined>((m, h) => {
+  const v = h.metrics.heat_index_c ?? h.metrics.temp_c;
+  return v === undefined ? m : m === undefined ? v : Math.max(m, v);
+}, undefined);
+const worst = plan.hours.reduce<ReturnType<typeof trIndex>>((w, h) => {
+  const i = trIndex(h.metrics.pm10_24h_ugm3);
+  return i && (!w || i.index > w.index) ? i : w;
+}, null);
+const heatBand = (c: number | undefined) =>
+  // The rulebook's three heat steps (NWS categories): 26.7, 32.2, 39.4 °C.
+  c === undefined ? "quiet" : c >= 39.4 ? "bad" : c >= 32.2 ? "poor" : c >= 26.7 ? "fair" : "good";
+const windows = sprayWindows(answer.wind);
+const windAt = new Map(answer.wind.map((w) => [w.time, w.kmh]));
+const SPRAY_TR = { calm: "durgun", ideal: "uygun", "no-herbicide": "herbisit yok", windy: "rüzgârlı" } as const;
+const fire = plan.confidence.fire;
+const fireNear = !!fire && fire.nearest_km <= 50;
+const g = plan.confidence.ground;
+const LEVEL = {
+  "sensor-confirmed": "Yer istasyonuyla doğrulandı",
+  "model-adjusted": "Yer istasyonuna göre düzeltildi",
+  "model-only": "Yalnızca model",
+} as const;
+---
+
+<div class="trp">
+  <div class="trp-peaks">
+    <span>
+      <span class="eyebrow">En yüksek hissedilen</span>
+      <b class={`num fg-${heatBand(peakHeat)}`}>{peakHeat === undefined ? "–" : `${Math.round(peakHeat)}°C`}</b>
+    </span>
+    <span>
+      <span class="eyebrow">PM10 indeksi, en kötü saat</span>
+      <b class={`num fg-${worst?.band ?? "quiet"}`}>{worst ? `${worst.index} · ${worst.label}` : "–"}</b>
+    </span>
+  </div>
+
+  {answer.stale_hours ? (
+    <p class="trp-note">Tahmin servisi şu an yanıt vermiyor; plan {answer.stale_hours} saat önceki tahminle yapıldı. Tahmin üç günü kapsıyor, bugünün saatleri içinde var.</p>
+  ) : null}
+  {answer.fallback ? (
+    <p class="trp-note">
+      {answer.fallback.air === "none"
+        ? "Hava kalitesi tahmini şu an alınamıyor ve 100 km içinde yer istasyonu yok: bu planda yalnızca sıcaklık kuralları çalışıyor."
+        : answer.fallback.air === "monitor"
+          ? `Hava kalitesi tahmini şu an alınamıyor; hava, en yakın istasyonun son ölçümünde (${answer.fallback.monitor}) sabit tutuldu.`
+          : "Hava durumu tahmini şu an alınamıyor."}
+      {answer.fallback.temp === "met-norway" ? " Sıcaklık ve nem MET Norway tahmininden." : answer.fallback.temp === "none" ? " Sıcaklık tahmini de yok." : ""}
+    </p>
+  ) : null}
+
+  <ol class="trp-actions">
+    {plan.actions.length === 0 && (
+      <li>
+        <span class="num">gün boyu</span>
+        <span>Vardiyada hiçbir eşik aşılmıyor. Normal çalışma.</span>
+        <span />
+      </li>
+    )}
+    {plan.actions.map((a) => (
+      <li>
+        <span class="num">{clock(a.time)}</span>
+        <span>
+          {a.text}
+          {a.basis && <em class={`trp-basis trp-${a.basis}`}>{a.basis === "law" ? "yasal eşik" : "öneri, yasal eşik değil"}</em>}
+        </span>
+        <span class="cite">{a.cite}</span>
+      </li>
+    ))}
+  </ol>
+
+  {!compact && (
+    <div class="trp-table-wrap">
+      <table class="trp-hours">
+        <thead>
+          <tr>
+            <th>Saat</th>
+            <th class="num">Sıcaklık °C</th>
+            <th class="num">Nem %</th>
+            <th class="num">Hissedilen °C</th>
+            <th class="num">PM2.5</th>
+            <th class="num">PM10</th>
+            <th>PM10 indeksi (24 sa)</th>
+            <th class="num">Rüzgâr km/sa</th>
+          </tr>
+        </thead>
+        <tbody>
+          {plan.hours.map((h) => {
+            const i = trIndex(h.metrics.pm10_24h_ugm3);
+            return (
+              <tr>
+                <td class="num">{clock(h.time)}</td>
+                <td class="num">{round(h.metrics.temp_c)}</td>
+                <td class="num">{round(h.metrics.rh_pct)}</td>
+                <td class={`num fg-${heatBand(h.metrics.heat_index_c)}`}>{round(h.metrics.heat_index_c)}</td>
+                <td class="num">{round(h.metrics.pm25_ugm3)}</td>
+                <td class="num">{round(h.metrics.pm10_ugm3)}</td>
+                <td class={`fg-${i?.band ?? "quiet"}`}>{i ? i.label : "–"}</td>
+                <td class="num" title={windAt.has(h.time) ? SPRAY_TR[sprayClass(windAt.get(h.time)!)] : ""}>{windAt.get(h.time) ?? "–"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p class="trp-legend">
+        PM2.5 ve PM10: µg/m³, saatlik model tahmini. İndeks, son 24 saatin PM10 ortalamasından Ulusal Hava Kalitesi İndeksi bantlarıyla hesaplanır
+        (PM2.5 Türkiye'nin indeksinde yok):
+        {TR_BANDS.map((b, k) => <span class={`fg-${b.band}`}>{k ? " · " : " "}{b.label}</span>)}.
+        Hissedilen sıcaklık, sıcaklık ve nemden ABD Ulusal Hava Servisi formülüyle hesaplanır.
+      </p>
+    </div>
+  )}
+
+  <div class="trp-spray">
+    <span class="eyebrow">İlaçlama penceresi · rüzgâra göre</span>
+    <p>
+      {answer.wind.length === 0
+        ? "Rüzgâr tahmini yok, ilaçlama penceresi hesaplanamadı."
+        : windows.length
+          ? `Rüzgâr 3–7 km/sa arasında: ${windows.map((w) => `${w.from}–${w.to}`).join(", ")}.`
+          : "Vardiyada rüzgârın 3–7 km/sa arasında kaldığı saat yok."}
+      {" "}FAO'nun yer ilaçlaması kılavuzuna göre 3 km/sa altında (durgun hava, sürüklenme ve inversiyon) ve 10 km/sa üstünde ilaçlama yapılmaz, 7–10 km/sa arasında herbisit atılmaz.
+      Bağlayıcı olan ürünün etiketidir. Tahmin 10 metredeki rüzgâr; püskürtme yüksekliğinde rüzgâr daha zayıftır.
+    </p>
+  </div>
+
+  <div class="trp-check">
+    <span class="eyebrow">{LEVEL[plan.confidence.level]}</span>
+    <p>
+      {g
+        ? `${g.nearest} istasyonu (${Math.round(g.nearest_km)} km) saat ${clock(g.time)}’da PM2.5 ${g.pm25} µg/m³ ölçtü; model ${g.model_pm25} diyordu.`
+        : "25 km içinde modeli karşılaştıracak bir yer istasyonu yok: hava kalitesi değerleri CAMS modelinden (Open-Meteo)."}
+    </p>
+    <p class={fireNear ? "trp-fire" : ""}>
+      {fire
+        ? fireNear
+          ? `NASA uyduları son 24 saatte ${Math.round(fire.nearest_km)} km uzakta yangın gördü (50 km içinde ${fire.within_50km} tespit). Yangına bu kadar yakın yerde duman modeli olduğundan düşük gösterir: gökyüzüne bakın, duman görülüyorsa yukarıdaki PM2.5 kurallarını şimdiden uygulayın.`
+          : `En yakın uydu yangın tespiti ${Math.round(fire.nearest_km)} km uzakta (son 24 saat).`
+        : "Son 24 saatte yaklaşık 200 km içinde uydu yangın tespiti yok (NASA FIRMS)."}
+    </p>
+  </div>
+</div>
+
+<style>
+  .trp-peaks { display: flex; gap: 26px; flex-wrap: wrap; padding: 4px 20px 12px; }
+  .trp-peaks > span { display: flex; flex-direction: column; }
+  .trp-peaks b { font-size: 24px; font-weight: 560; }
+  .trp-note { padding: 0 20px 12px; color: var(--s-poor); max-width: 80ch; }
+  .trp-actions { list-style: none; margin: 0; padding: 0 20px 14px; display: grid; gap: 8px; }
+  .trp-actions li {
+    display: grid;
+    grid-template-columns: 64px 1fr minmax(0, 260px);
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+  .trp-actions .cite { font-size: 12.5px; color: var(--ink-3); }
+  .trp-basis {
+    display: inline-block;
+    margin-left: 8px;
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1px 5px;
+  }
+  .trp-law { color: var(--s-bad); border-color: var(--s-bad); }
+  .trp-table-wrap { padding: 0 20px 12px; overflow-x: auto; }
+  .trp-hours { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  .trp-hours th { text-align: left; font-weight: 520; color: var(--ink-3); font-size: 12px; padding: 6px 8px 6px 0; }
+  .trp-hours td { padding: 4px 8px 4px 0; border-top: 1px solid var(--line-soft); }
+  .trp-hours .num { text-align: right; }
+  .trp-legend { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; max-width: 90ch; }
+  .trp-spray { padding: 4px 20px 10px; font-size: 13.5px; color: var(--ink-2); }
+  .trp-spray p { margin-top: 4px; max-width: 80ch; }
+  .trp-check { padding: 6px 20px 16px; font-size: 13.5px; color: var(--ink-2); }
+  .trp-check p { margin-top: 4px; max-width: 80ch; }
+  .trp-fire { color: var(--s-poor); font-weight: 520; }
+  @media (max-width: 640px) {
+    .trp-actions li { grid-template-columns: 52px 1fr; }
+    .trp-actions .cite { grid-column: 2; }
+  }
+</style>
