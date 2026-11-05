@@ -22,6 +22,9 @@ export const GET: APIRoute = () => {
         ],
         "service-meta": [
           { href: abs("/.well-known/agent-card.json"), type: "application/json", title: "A2A agent card" },
+          { href: abs("/.well-known/mcp/server-card.json"), type: "application/json", title: "MCP server card (endpoint /mcp)" },
+          { href: abs("/.well-known/ard.json"), type: "application/json", title: "Agentic resource catalogue" },
+          { href: abs("/agents.txt"), type: "text/plain", title: "agents.txt" },
           { href: abs("/llms.txt"), type: "text/plain", title: "llms.txt" },
           { href: abs("/llms-full.txt"), type: "text/plain", title: "llms-full.txt" },
         ],

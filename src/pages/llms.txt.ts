@@ -80,7 +80,9 @@ The home page, every country and every city also answer with Markdown if you sen
 - \`${abs("/a2a")}\` — A2A over JSON-RPC 2.0. One method, \`message/send\`. Ask it for a city by
   name, a device by id, or a coordinate pair, and it answers with the sentence and the same numbers
   as structured data.
-- \`${abs("/.well-known/agent-card.json")}\` — what that endpoint can do
+- \`${abs("/mcp")}\` — MCP (Streamable HTTP, read-only, no key). Tools: \`air_quality_for_place\`,
+  \`search_places\`. Card: \`${abs("/.well-known/mcp/server-card.json")}\`; policy: \`${abs("/agents.txt")}\`
+- \`${abs("/.well-known/agent-card.json")}\` — what the A2A endpoint can do
 - \`${abs("/.well-known/api-catalog")}\` — everything above, as one link set
 
 There is no authentication anywhere here and nothing to sign up for. That is also why there is no
