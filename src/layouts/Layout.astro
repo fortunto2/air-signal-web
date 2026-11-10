@@ -199,30 +199,9 @@ const graph = [
       )
     }
 
-    <script is:inline>
-      // Four lines rather than an island: shipping a framework to call one clipboard method would
-      // cost the visitor more than the widget it is advertising.
-      document.querySelector("[data-pitch-copy]")?.addEventListener("click", async (event) => {
-        const button = event.currentTarget;
-        const code = document.getElementById("pitch-code")?.textContent ?? "";
-        try {
-          await navigator.clipboard.writeText(code);
-          button.textContent = "Copied";
-        } catch {
-          // Refused without a gesture on some browsers, and always over plain http. Select it so
-          // the reader can copy it themselves rather than press a button that quietly lied.
-          const node = document.getElementById("pitch-code");
-          if (node) {
-            const range = document.createRange();
-            range.selectNodeContents(node);
-            const selection = window.getSelection();
-            selection?.removeAllRanges();
-            selection?.addRange(range);
-          }
-          button.textContent = "Select and copy";
-        }
-        setTimeout(() => (button.textContent = "Copy"), 2400);
-      });
+    {/* The pitch strip button is wired in scripts/copy.ts, loaded once below. */}
+    <script>
+      import "../scripts/copy";
     </script>
 
     {/* Only where the strip is, so no other page pays for a script it does not use. */}

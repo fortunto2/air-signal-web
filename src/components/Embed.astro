@@ -61,31 +61,6 @@ const snippet = `<a href="${abs(path)}" data-airsignal="${place}">Air quality in
   </div>
 </details>
 
-<script is:inline>
-  // Inline and tiny: an island for one clipboard call would ship a framework to do what four lines
-  // do. Scoped to this component's own button, so a second copy of it on a page still works.
-  document.querySelectorAll(".embed [data-copy]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const code = button.closest(".embed-body")?.querySelector("code")?.textContent ?? "";
-      try {
-        await navigator.clipboard.writeText(code);
-        button.textContent = "Copied";
-      } catch {
-        // Clipboard is refused without a user gesture on some browsers and over http. Select the
-        // text instead so the reader can copy it themselves rather than press a button that lies.
-        const node = button.closest(".embed-body")?.querySelector("code");
-        if (node) {
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(range);
-        }
-        button.textContent = "Select and copy";
-      }
-      setTimeout(() => (button.textContent = "Copy"), 2400);
-    });
-  });
-</script>
+{/* The Copy button is wired in scripts/copy.ts (loaded by the layout). */}
 
 <script is:inline async src="/embed.js"></script>

@@ -32,6 +32,9 @@ importers:
       superduper-site-kit:
         specifier: git+file:///Users/rustam/startups/shared/superduper-site-kit
         version: git+file:///Users/rustam/startups/shared/superduper-site-kit#f49fca7ce9030b3047aeceb64759e4d8f2107cfa(astro@6.4.8(@types/node@26.1.2)(jiti@2.7.0)(lightningcss@1.33.0)(rollup@4.62.4)(tsx@4.23.8)(yaml@2.9.0))
+      superduper-tools:
+        specifier: git+file:///Users/rustam/startups/shared/superduper-tools
+        version: git+file:///Users/rustam/startups/shared/superduper-tools#836dbf30c008f3f920ef47a569f35d78e12fec7a(astro@6.4.8(@types/node@26.1.2)(jiti@2.7.0)(lightningcss@1.33.0)(rollup@4.62.4)(tsx@4.23.8)(yaml@2.9.0))
       tailwindcss:
         specifier: ^4.2.2
         version: 4.3.3
@@ -2431,6 +2434,15 @@ packages:
   superduper-site-kit@git+file:///Users/rustam/startups/shared/superduper-site-kit#f49fca7ce9030b3047aeceb64759e4d8f2107cfa:
     resolution: {commit: f49fca7ce9030b3047aeceb64759e4d8f2107cfa, repo: file:///Users/rustam/startups/shared/superduper-site-kit, type: git}
     version: 0.1.0
+    peerDependencies:
+      astro: '>=5.0.0'
+    peerDependenciesMeta:
+      astro:
+        optional: true
+
+  superduper-tools@git+file:///Users/rustam/startups/shared/superduper-tools#836dbf30c008f3f920ef47a569f35d78e12fec7a:
+    resolution: {commit: 836dbf30c008f3f920ef47a569f35d78e12fec7a, repo: file:///Users/rustam/startups/shared/superduper-tools, type: git}
+    version: 0.1.1
     peerDependencies:
       astro: '>=5.0.0'
     peerDependenciesMeta:
@@ -5463,6 +5475,10 @@ snapshots:
       ansi-regex: 6.2.2
 
   superduper-site-kit@git+file:///Users/rustam/startups/shared/superduper-site-kit#f49fca7ce9030b3047aeceb64759e4d8f2107cfa(astro@6.4.8(@types/node@26.1.2)(jiti@2.7.0)(lightningcss@1.33.0)(rollup@4.62.4)(tsx@4.23.8)(yaml@2.9.0)):
+    optionalDependencies:
+      astro: 6.4.8(@types/node@26.1.2)(jiti@2.7.0)(lightningcss@1.33.0)(rollup@4.62.4)(tsx@4.23.8)(yaml@2.9.0)
+
+  superduper-tools@git+file:///Users/rustam/startups/shared/superduper-tools#836dbf30c008f3f920ef47a569f35d78e12fec7a(astro@6.4.8(@types/node@26.1.2)(jiti@2.7.0)(lightningcss@1.33.0)(rollup@4.62.4)(tsx@4.23.8)(yaml@2.9.0)):
     optionalDependencies:
       astro: 6.4.8(@types/node@26.1.2)(jiti@2.7.0)(lightningcss@1.33.0)(rollup@4.62.4)(tsx@4.23.8)(yaml@2.9.0)
 
